@@ -1,0 +1,33 @@
+[package]
+name = "data-layer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+quant-common = { path = "../common", features = ["db"] }
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true, features = ["maths"] }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+redis = { workspace = true }
+deadpool-redis = { workspace = true }
+influxdb = { workspace = true }
+
+# Data processing
+csv = { workspace = true }
+async-trait = "0.1"
+
+[dev-dependencies]
+rust_decimal_macros = "1.36"

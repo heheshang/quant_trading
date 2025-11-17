@@ -1,0 +1,27 @@
+[package]
+name = "strategy-layer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+quant-common = { path = "../common" }
+data-layer = { path = "../data-layer" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# Mathematical computations
+ndarray = { workspace = true }
+statrs = { workspace = true }
+async-trait = "0.1"
+[dev-dependencies]
+rust_decimal_macros = "1.36"

@@ -1,0 +1,27 @@
+[package]
+name = "security"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+quant-common = { path = "../common" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# Cryptography and security
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+jsonwebtoken = { workspace = true }
+base64 = "0.21"
+sha2 = "0.10"
+hmac = "0.12"

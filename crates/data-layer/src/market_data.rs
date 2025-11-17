@@ -1,0 +1,118 @@
+use quant_common::{Error, Result};
+use quant_common::types::MarketData;
+use rust_decimal::Decimal;
+use chrono::{DateTime, Utc};
+
+/// 数据源接口
+#[async_trait::async_trait]
+pub trait DataSource: Send + Sync {
+    /// 获取实时行情
+    async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData>;
+    
+    /// 获取历史数据
+    async fn get_historical_data(
+        &self,
+        symbol: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<MarketData>>;
+    
+    /// 订阅实时行情
+    async fn subscribe(&self, symbols: Vec<String>) -> Result<()>;
+    
+    /// 取消订阅
+    async fn unsubscribe(&self, symbols: Vec<String>) -> Result<()>;
+}
+
+/// 市场数据管理器
+pub struct MarketDataManager {
+    sources: Vec<Box<dyn DataSource>>,
+}
+
+impl MarketDataManager {
+    /// 创建新的市场数据管理器
+    pub fn new() -> Self {
+        Self {
+            sources: Vec::new(),
+        }
+    }
+
+    /// 添加数据源
+    pub fn add_source(&mut self, source: Box<dyn DataSource>) {
+        self.sources.push(source);
+    }
+
+    /// 获取实时行情（从第一个可用的数据源）
+    pub async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData> {
+        for source in &self.sources {
+            match source.get_realtime_data(symbol).await {
+                Ok(data) => return Ok(data),
+                Err(_) => continue,
+            }
+        }
+        Err(Error::NotFound(format!("No data found for symbol: {}", symbol)))
+    }
+
+    /// 获取历史数据
+    pub async fn get_historical_data(
+        &self,
+        symbol: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<MarketData>> {
+        for source in &self.sources {
+            match source.get_historical_data(symbol, start, end).await {
+                Ok(data) => return Ok(data),
+                Err(_) => continue,
+            }
+        }
+        Err(Error::NotFound(format!("No historical data found for symbol: {}", symbol)))
+    }
+}
+
+impl Default for MarketDataManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 示例数据源（模拟数据）
+pub struct MockDataSource;
+
+#[async_trait::async_trait]
+impl DataSource for MockDataSource {
+    async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData> {
+        Ok(MarketData {
+            symbol: symbol.to_string(),
+            timestamp: Utc::now(),
+            open: Decimal::new(10000, 2),
+            high: Decimal::new(10100, 2),
+            low: Decimal::new(9900, 2),
+            close: Decimal::new(10050, 2),
+            volume: Decimal::new(1000000, 0),
+            turnover: Decimal::new(100500000, 2),
+            open_interest: None,
+            bid_prices: vec![],
+            bid_volumes: vec![],
+            ask_prices: vec![],
+            ask_volumes: vec![],
+        })
+    }
+
+    async fn get_historical_data(
+        &self,
+        _symbol: &str,
+        _start: DateTime<Utc>,
+        _end: DateTime<Utc>,
+    ) -> Result<Vec<MarketData>> {
+        Ok(Vec::new())
+    }
+
+    async fn subscribe(&self, _symbols: Vec<String>) -> Result<()> {
+        Ok(())
+    }
+
+    async fn unsubscribe(&self, _symbols: Vec<String>) -> Result<()> {
+        Ok(())
+    }
+}

@@ -1,0 +1,22 @@
+[package]
+name = "monitor-layer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+quant-common = { path = "../common" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+prometheus = { workspace = true }
+lazy_static = { workspace = true }
+[dev-dependencies]
+rust_decimal_macros = "1.36"
