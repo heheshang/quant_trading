@@ -1,7 +1,8 @@
 <template>
   <div id="app">
     <el-container class="layout-container">
-      <el-aside width="200px" class="sidebar">
+      <!-- Show sidebar only when authenticated -->
+      <el-aside width="200px" class="sidebar" v-if="isAuthenticated">
         <el-menu
           :default-active="$route.path"
           router
@@ -49,6 +50,11 @@
             <span>系统设置</span>
           </el-menu-item>
           
+          <el-menu-item index="/profile">
+            <el-icon><User /></el-icon>
+            <span>个人账户</span>
+          </el-menu-item>
+          
           <el-menu-item index="/test">
             <el-icon><Setting /></el-icon>
             <span>测试页面</span>
@@ -57,12 +63,14 @@
       </el-aside>
       
       <el-container>
-        <el-header class="header">
+        <!-- Show header only when authenticated -->
+        <el-header class="header" v-if="isAuthenticated">
           <div class="header-content">
             <h3>{{ pageTitle }}</h3>
             <div class="user-info">
               <el-icon><User /></el-icon>
-              <span>管理员</span>
+              <span>{{ username }}</span>
+              <el-button type="text" @click="logout">退出</el-button>
             </div>
           </div>
         </el-header>
@@ -76,10 +84,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, ref, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 const route = useRoute();
+const router = useRouter();
+const username = ref('管理员');
+const isAuthenticated = ref(false);
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
@@ -90,10 +101,47 @@ const pageTitle = computed(() => {
     '/risk': '风险管理',
     '/monitor': '实时监控',
     '/settings': '系统设置',
+    '/profile': '个人账户',
     '/test': '测试页面',
   };
   return titles[route.path] || '量化交易系统';
 });
+
+// Check authentication status on mount
+onMounted(() => {
+  const authStatus = localStorage.getItem('isAuthenticated');
+  isAuthenticated.value = authStatus === 'true';
+  
+  const storedUsername = localStorage.getItem('username');
+  if (storedUsername) {
+    username.value = storedUsername;
+  }
+  
+  // If not authenticated and not on login page, redirect to login
+  if (!isAuthenticated.value && route.path !== '/login') {
+    router.push('/login');
+  }
+});
+
+// Watch for route changes to update authentication status
+router.afterEach(() => {
+  const authStatus = localStorage.getItem('isAuthenticated');
+  isAuthenticated.value = authStatus === 'true';
+  
+  const storedUsername = localStorage.getItem('username');
+  if (storedUsername) {
+    username.value = storedUsername;
+  }
+});
+
+// Logout function
+const logout = () => {
+  localStorage.removeItem('isAuthenticated');
+  localStorage.removeItem('username');
+  localStorage.removeItem('authToken');
+  isAuthenticated.value = false;
+  router.push('/login');
+};
 </script>
 
 <style scoped>

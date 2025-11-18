@@ -34,8 +34,7 @@ pub struct RedisConfig {
 pub struct InfluxDBConfig {
     pub url: String,
     pub token: String,
-    pub org: String,
-    pub bucket: String,
+    pub database: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,8 +95,7 @@ impl Default for AppConfig {
             influxdb: InfluxDBConfig {
                 url: "http://localhost:8086".to_string(),
                 token: "".to_string(),
-                org: "quant-trading".to_string(),
-                bucket: "market-data".to_string(),
+                database: "market-data".to_string(),
             },
             trading: TradingConfig {
                 enable_paper_trading: true,

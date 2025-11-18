@@ -10,7 +10,7 @@ mod commands;
 mod state;
 
 use state::AppState;
-    use monitor_layer::{ORDERS_TOTAL, ORDERS_FILLED, ORDERS_CANCELLED, ACCOUNT_BALANCE, POSITION_VALUE, DAILY_PNL};
+use monitor_layer::{ACCOUNT_BALANCE, POSITION_VALUE, DAILY_PNL};
 
 #[tokio::main]
 async fn main() {
@@ -49,6 +49,7 @@ async fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
+            commands::update_config,
             commands::get_market_data,
             commands::submit_order,
             commands::get_account_info,
@@ -59,6 +60,19 @@ async fn main() {
             commands::get_alerts,
             commands::acknowledge_alert,
             commands::get_logs,
+            commands::get_strategies,
+            commands::save_strategy,
+            commands::delete_strategy,
+            commands::toggle_strategy,
+            commands::get_risk_metrics,
+            commands::get_risk_config,
+            commands::update_risk_config,
+            commands::pre_trade_check,
+            commands::login,
+            commands::verify_token,
+            commands::update_profile,
+            commands::change_password,
+            commands::get_user_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
