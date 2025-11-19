@@ -5,7 +5,7 @@ use quant_common::types::MarketData;
 use quant_common::{Error, Result};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value as JsonValue, json};
+use serde_json::Value as JsonValue;
 
 /// 时序数据库客户端（InfluxDB）
 pub struct TimeSeriesDB {
@@ -85,7 +85,7 @@ impl TimeSeriesDB {
         // 解析结果并转换为 MarketData
         // 这里简化处理，实际需要根据 InfluxDB 返回格式解析
         let parsed_market_data = 
-        self.parse_market_data_result(json!(result), symbol)?;
+        self.parse_market_data_result(serde_json::from_str(&result).unwrap(), symbol)?;
         Ok(parsed_market_data)
     }
 
@@ -100,10 +100,11 @@ impl TimeSeriesDB {
     /// 解析 InfluxDB 查询结果并转换为 MarketData 向量
     fn parse_market_data_result(&self, query_result: JsonValue, symbol_param: &str) -> Result<Vec<MarketData>> {
         let mut market_data_vec = Vec::new();
-        
+        println!("{:?}", query_result.get("results"));
         // 解析 JSON 结构
         if let Some(results) = query_result.get("results").and_then(|r| r.as_array()) {
             for result in results {
+                println!("{:?}", result);
                 if let Some(series) = result.get("series").and_then(|s| s.as_array()) {
                     for serie in series {
                         // 获取列信息
@@ -292,7 +293,8 @@ mod tests {
             database: dotenv::var("INFLUXDB_DATABASE").unwrap(),
         };
         let db = TimeSeriesDB::new(&config).unwrap();
-        let market_data = db.query_market_data("TEST", Utc::now() - chrono::Duration::hours(2), Utc::now()).await.unwrap();
+        let market_data = db.query_market_data("TEST", Utc::now() - chrono::Duration::hours(24), Utc::now()).await.unwrap();
         println!("{:?}", market_data);
+        assert!(!market_data.is_empty());
     }
 }

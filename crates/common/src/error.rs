@@ -40,6 +40,9 @@ pub enum Error {
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+
+    #[error("OKX error: {0}")]
+    OKX(#[from] okx::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

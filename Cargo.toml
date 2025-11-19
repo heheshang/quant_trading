@@ -81,3 +81,4 @@ lazy_static = "1.4"
 # Mathematical computations
 ndarray = "0.15"
 statrs = "0.16"
+okx = "0.1.9"

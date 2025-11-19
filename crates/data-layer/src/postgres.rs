@@ -54,21 +54,21 @@ impl PostgresClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use dotenv::dotenv;
     #[tokio::test]
     async fn test_connection() {
-        let _config = DatabaseConfig {
-            host: "localhost".to_string(),
-            port: 5432,
-            username: "quant".to_string(),
-            password: "quant_password".to_string(),
-            database: "quant_test".to_string(),
+        let config = DatabaseConfig {
+            host: dotenv::var("DATABASE_HOST").unwrap(),
+            port: dotenv::var("DATABASE_PORT").unwrap().parse::<u16>().unwrap(),
+            username: dotenv::var("DATABASE_USERNAME").unwrap(),
+            password: dotenv::var("DATABASE_PASSWORD").unwrap(),
+            database: dotenv::var("DATABASE_NAME").unwrap(),
             max_connections: 5,
         };
 
         // This test requires a running PostgreSQL instance
         // Uncomment when database is available
-        // let client = PostgresClient::new(&config).await;
-        // assert!(client.is_ok());
+        let client = PostgresClient::new(&config).await;
+        assert!(client.is_ok());
     }
 }

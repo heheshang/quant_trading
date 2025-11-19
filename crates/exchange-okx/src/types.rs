@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// OKX 环境配置
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq, Eq)]
 pub enum OkxEnvironment {
     Live,       // 实盘
     Demo,       // 模拟盘
