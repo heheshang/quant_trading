@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 quant-common = { path = "../common" }
 data-layer = { path = "../data-layer" }
+exchange-okx = { path = "../exchange-okx" }
 
 tokio = { workspace = true }
 serde = { workspace = true }

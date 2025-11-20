@@ -18,5 +18,6 @@ tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 prometheus = { workspace = true }
 lazy_static = { workspace = true }
+reqwest = { workspace = true }
 [dev-dependencies]
 rust_decimal_macros = "1.36"

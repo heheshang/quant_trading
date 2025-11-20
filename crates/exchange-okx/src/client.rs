@@ -12,7 +12,7 @@ use quant_common::{Error, Result};
 #[derive(Debug)]
 pub struct Client {
     api: OkxClient,
-    environment: OkxEnvironment,
+    _environment: OkxEnvironment,
     account_api: OkxAccount,
     market_api: OkxMarket,
     trade_api: OkxTrade,
@@ -44,7 +44,7 @@ impl Client {
 
         Ok(Self {
             api,
-            environment,
+            _environment: environment,
             account_api,
             market_api,
             trade_api,

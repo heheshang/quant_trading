@@ -98,7 +98,7 @@ pub struct OkxCandle {
 }
 
 /// 下单请求
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OkxPlaceOrderRequest {
     pub inst_id: String,

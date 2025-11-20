@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub risk: RiskConfig,
     pub monitoring: MonitoringConfig,
     pub security: SecurityConfig,
+    pub okx: OkxConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +75,15 @@ pub struct SecurityConfig {
     pub allowed_ips: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OkxConfig {
+    pub api_key: String,
+    pub api_secret: String,
+    pub passphrase: String,
+    pub environment: String, // "live" or "demo"
+    pub enable: bool,
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -125,6 +135,13 @@ impl Default for AppConfig {
                 token_expiry_hours: 24,
                 enable_2fa: false,
                 allowed_ips: vec!["127.0.0.1".to_string()],
+            },
+            okx: OkxConfig {
+                api_key: std::env::var("OKX_API_KEY").unwrap_or_default(),
+                api_secret: std::env::var("OKX_API_SECRET").unwrap_or_default(),
+                passphrase: std::env::var("OKX_PASSPHRASE").unwrap_or_default(),
+                environment: std::env::var("OKX_ENVIRONMENT").unwrap_or_else(|_| "demo".to_string()),
+                enable: std::env::var("OKX_ENABLE").unwrap_or_else(|_| "false".to_string()) == "true",
             },
         }
     }

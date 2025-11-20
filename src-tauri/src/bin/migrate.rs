@@ -11,7 +11,11 @@ async fn main() {
     monitor_layer::logging::init_logging(monitor_layer::logging::LoggingConfig {
         log_level: "info".to_string(),
         log_dir: "./logs".to_string(),
-    });
+        service_name: "migrate-db".to_string(),
+        enable_json_logging: false,
+        enable_file_logging: true,
+        enable_stdout_logging: true,
+    }).expect("Failed to initialize logging");
 
     let args: Vec<String> = std::env::args().collect();
     
