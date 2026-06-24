@@ -8,37 +8,80 @@
 
 ### 核心特性
 
-- ✅ **模块化架构**：高内聚低耦合的五大核心模块
-- ✅ **多数据库支持**：PostgreSQL (关系型) + Redis (缓存) + InfluxDB (时序)
+- ✅ **模块化架构**：13 个 Rust crate 分层设计，高内聚低耦合
+- ✅ **双数据库存储**：PostgreSQL（关系型 + RANGE 分区时序）+ Redis（缓存）
 - ✅ **完整回测系统**：支持策略开发、参数优化、性能评估
 - ✅ **智能执行算法**：TWAP、VWAP、冰山订单等
 - ✅ **三层风控体系**：事前、事中、事后全流程风险管理
 - ✅ **实时监控告警**：Prometheus 指标 + 多渠道告警
-- ✅ **现代化界面**：Vue3 + Element Plus + ECharts
+- ✅ **OKX 交易所集成**：官方 SDK 对接，支持模拟盘/实盘切换
+- ✅ **类型安全错误处理**：全链路 typed errors，零 `String` 错误传播
+- ✅ **现代化界面**：Vue3 + Element Plus + ECharts + Pinia
 
 ## 🏗️ 系统架构
 
 ```
 quant-trading-system/
-├── src-tauri/                 # Tauri 后端（Rust）
+├── src-tauri/                      # Tauri 后端入口（Rust）
 │   └── src/
-│       ├── main.rs            # 主入口
-│       ├── commands.rs        # Tauri 命令
-│       └── state.rs           # 应用状态
-├── crates/                    # Rust 模块
-│   ├── common/                # 公共模块（类型、错误、工具）
-│   ├── data-layer/            # 数据管理层
-│   ├── strategy-layer/        # 策略开发层
-│   ├── trading-layer/         # 交易执行层
-│   ├── risk-layer/            # 风险管理层
-│   └── monitor-layer/         # 监控告警层
-├── src/                       # Vue3 前端
-│   ├── views/                 # 视图页面
-│   ├── router/                # 路由配置
-│   └── main.ts                # 前端入口
-├── Cargo.toml                 # Workspace 配置
-├── package.json               # 前端依赖
-└── .env.example               # 环境变量模板
+│       ├── main.rs                 # 主入口
+│       ├── commands.rs             # Tauri 命令层（17 个测试）
+│       ├── ws_commands.rs          # WebSocket 命令
+│       └── state.rs                # 应用状态
+├── crates/                         # Rust 工作空间（13 crates）
+│   ├── common/                     # 公共类型、配置、工具
+│   ├── domain/                     # 领域层（纯业务逻辑，零 IO）
+│   ├── data-layer/                 # 数据层（PostgreSQL + Redis + OKX）
+│   ├── repository/                 # 仓储层（数据库访问抽象）
+│   ├── clients/                    # 外部客户端（Redis 缓存等）
+│   ├── services/                   # 服务层（业务编排，typed errors）
+│   ├── exchange-okx/               # OKX 交易所对接
+│   ├── strategy-layer/             # 策略开发层
+│   ├── trading-layer/              # 交易执行层
+│   ├── risk-layer/                 # 风险管理层
+│   ├── monitor-layer/              # 监控告警层
+│   └── security/                   # 安全模块（加密、认证、审计）
+├── src/                            # Vue3 前端
+│   ├── views/                      # 页面（10 个视图）
+│   ├── components/                 # 通用组件
+│   ├── composables/                # 组合式函数
+│   ├── stores/                     # Pinia 状态管理
+│   └── services/                   # API 服务层
+├── Cargo.toml                      # Workspace 配置
+├── package.json                    # 前端依赖
+├── rustfmt.toml                    # Rust 格式化配置
+├── clippy.toml                     # Clippy lint 配置
+└── .env.example                    # 环境变量模板
+```
+
+### 架构分层
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Vue3 前端 (src/)                      │
+│         Element Plus + ECharts + Pinia + Axios          │
+├─────────────────────────────────────────────────────────┤
+│                 Tauri 命令层 (src-tauri/)                 │
+│              commands.rs + ws_commands.rs               │
+├─────────────────────────────────────────────────────────┤
+│                  服务层 (crates/services)                 │
+│     ServiceError typed errors + ServiceResult<T>        │
+│  AccountService · AuthService · MarketService ·         │
+│  OkxService · RiskService · StrategyService ·           │
+│  ConfigService                                          │
+├─────────────────────────────────────────────────────────┤
+│           领域层 (crates/domain)  零 IO 依赖              │
+│        纯业务逻辑 · 类型定义 · 工具函数                    │
+├──────────────┬──────────────┬───────────────────────────┤
+│  数据层       │  交易层       │  风控层                    │
+│  data-layer  │  trading-    │  risk-layer               │
+│  repository  │  layer       │  · pre_trade              │
+│  clients     │  exchange-   │  · real_time              │
+│              │  okx         │  · post_trade · var       │
+├──────────────┴──────────────┴───────────────────────────┤
+│              基础设施 (PostgreSQL + Redis)                │
+│   PostgreSQL RANGE 分区时序 · Redis 连接池缓存            │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## 🚀 快速开始
@@ -49,20 +92,19 @@ quant-trading-system/
 - **Node.js**: 18+
 - **PostgreSQL**: 14+
 - **Redis**: 6+
-- **InfluxDB**: 2.x (可选)
 
 ### 安装步骤
 
 1. **克隆项目**
 ```bash
-git clone <repository-url>
-cd ea_test
+git clone https://github.com/heheshang/quant_trading.git
+cd quant_trading
 ```
 
 2. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，配置数据库连接等信息
+# 编辑 .env 文件，配置数据库连接、OKX API 密钥等
 ```
 
 3. **安装前端依赖**
@@ -70,17 +112,26 @@ cp .env.example .env
 npm install
 ```
 
-4. **运行开发环境**
+4. **初始化数据库**
+```bash
+# 创建数据库
+createdb quant_trading
+
+# 运行迁移
+cargo run --bin migrate
+```
+
+5. **运行开发环境**
 ```bash
 # 方式1：同时启动前后端
 npm run tauri dev
 
 # 方式2：分别启动
 npm run dev          # 启动前端
-cargo tauri dev      # 启动 Tauri
+cargo tauri dev      # 启动 Tauri 后端
 ```
 
-5. **生产构建**
+6. **生产构建**
 ```bash
 npm run build
 npm run tauri build
@@ -88,38 +139,83 @@ npm run tauri build
 
 ## 📦 核心模块说明
 
-### 1. 数据管理模块 (data-layer)
+### 1. 公共模块 (`crates/common`)
 
-- **PostgreSQL**: 存储订单、持仓、账户等关系型数据
-- **Redis**: 缓存热点数据，降低延迟
-- **InfluxDB**: 存储高频行情时序数据
+- **类型定义**：Order、Position、Account、StrategyParams、BacktestResult 等
+- **配置管理**：AppConfig（数据库、Redis、交易、风控、OKX、安全配置）
+- **工具函数**：时间处理、数学计算等
+
+### 2. 领域层 (`crates/domain`)
+
+- **纯业务逻辑**：零 IO 依赖，不引入 sqlx/reqwest/redis
+- **类型与工具**：复用 common 层定义，保持领域纯净
+
+### 3. 数据层 (`crates/data-layer`)
+
+- **PostgreSQL**：订单、持仓、账户、策略、回测结果存储
+- **Redis**：热点数据缓存，连接池管理（deadpool-redis）
+- **OKX 数据源**：历史行情、实时行情接入
 - **数据质量**：实时清洗、去重、异常检测
+- **迁移管理**：SQL 迁移脚本自动执行
 
-### 2. 策略开发模块 (strategy-layer)
+### 4. 仓储层 (`crates/repository`)
 
-- **策略接口**：统一的策略开发框架
-- **技术指标**：SMA、EMA、RSI、MACD、布林带等
+- **PostgresClient**：连接池封装，SQL 执行
+- **MarketDataRepository**：行情数据仓储
+- **RepositoryError**：仓储层 typed errors
+
+### 5. 服务层 (`crates/services`)
+
+- **业务编排**：组合 domain + repository + clients
+- **Typed Errors**：`ServiceError`（16 个变体）+ `ServiceResult<T>`
+- **7 个服务**：
+  - `AccountService` — 账户、订单、持仓管理
+  - `AuthService` — 登录、JWT、用户资料、密码管理
+  - `MarketService` — 实时/历史行情
+  - `OkxService` — OKX 交易所封装（`with_okx_client!` 宏）
+  - `RiskService` — 风控指标、配置、事前检查
+  - `StrategyService` — 策略 CRUD、回测执行
+  - `ConfigService` — 运行时配置读写
+
+### 6. 策略层 (`crates/strategy-layer`)
+
+- **策略接口**：统一的 `Strategy` trait + `StrategyContext`
+- **技术指标**：SMA、EMA、RSI、MACD、布林带（命名常量，无魔法数字）
 - **回测引擎**：高保真回测，包含滑点、手续费模拟
-- **性能指标**：夏普比率、最大回撤、胜率等
+- **性能指标**：夏普比率、最大回撤、胜率、盈亏比
 
-### 3. 交易执行模块 (trading-layer)
+### 7. 交易层 (`crates/trading-layer`)
 
 - **订单管理**：订单生命周期管理
 - **执行引擎**：支持模拟盘和实盘切换
 - **算法交易**：TWAP、VWAP、冰山订单
-- **延迟监控**：从信号到成交的全链路延迟统计
+- **OKX 执行器**：对接 OKX 交易所下单
 
-### 4. 风险管理模块 (risk-layer)
+### 8. 风控层 (`crates/risk-layer`)
 
-- **事前风控**：资金检查、持仓限制、集中度控制
-- **实时监控**：账户风险、保证金、回撤监控
-- **事后分析**：VaR 计算、压力测试、归因分析
+- **事前风控** (`pre_trade`)：资金检查、持仓限制、集中度控制
+- **实时监控** (`real_time`)：账户风险、保证金、回撤监控
+- **事后分析** (`post_trade`)：归因分析
+- **VaR 计算** (`var`)：风险价值估算
 
-### 5. 监控告警模块 (monitor-layer)
+### 9. 监控层 (`crates/monitor-layer`)
 
 - **Prometheus 指标**：订单量、延迟、账户余额等
 - **结构化日志**：基于 tracing 的分级日志系统
 - **多渠道告警**：邮件、Webhook、企业微信
+
+### 10. 安全模块 (`crates/security`)
+
+- **加密**：AES-GCM 数据加密、Argon2 密码哈希
+- **认证**：JWT 令牌生成与验证
+- **API 密钥管理**：加密存储
+- **审计日志**：操作追踪
+
+### 11. OKX 交易所 (`crates/exchange-okx`)
+
+- **官方 SDK**：基于 `okx` crate
+- **REST API**：行情、下单、撤单、账户查询
+- **WebSocket**：实时行情推送
 
 ## 💡 使用示例
 
@@ -146,6 +242,7 @@ impl Strategy for MyStrategy {
 
 ```rust
 use strategy_layer::BacktestEngine;
+use rust_decimal::Decimal;
 
 let mut engine = BacktestEngine::new(
     Decimal::new(1000000, 0),  // 初始资金
@@ -159,49 +256,121 @@ println!("夏普比率: {}", result.sharpe_ratio);
 println!("最大回撤: {}", result.max_drawdown);
 ```
 
-## 📊 数据库迁移
+### Typed Error 处理
+
+```rust
+use crates::services::error::{ServiceError, ServiceResult};
+
+// 服务层返回 typed errors
+async fn get_account(&self) -> ServiceResult<Account> {
+    let client = self.postgres
+        .as_ref()
+        .ok_or(ServiceError::DatabaseNotConnected)?;
+    // ...
+}
+
+// 调用方精确匹配错误类型
+match service.get_account().await {
+    Ok(account) => { /* ... */ },
+    Err(ServiceError::DatabaseNotConnected) => { /* 重连 */ },
+    Err(ServiceError::Database(e)) => { /* 记录 SQL 错误 */ },
+    Err(e) => { /* 其他错误 */ },
+}
+```
+
+## 🧪 测试
+
+### 测试覆盖
+
+- **213 个测试**全部通过，0 失败
+- **4 个集成测试**（需真实 PostgreSQL，默认 `#[ignore]`）
+- **Services crate**：43 个测试（含 7 个 strategy_service 测试）
+- **Tauri 命令层**：17 个测试
+- **风控层**：事前/事中/事后全流程测试
+
+### 运行测试
 
 ```bash
-# 创建数据库
-createdb quant_trading
+# 全工作空间测试（排除需要 OKX 真实连接的 exchange-okx）
+cargo test --workspace --exclude exchange-okx
 
-# 运行迁移（需要实现）
-# sqlx migrate run
+# 单个 crate 测试
+cargo test -p quant-services
+
+# 带 clippy 检查
+cargo clippy --workspace --exclude exchange-okx -- -D warnings
+```
+
+### 代码质量
+
+```bash
+# 格式化检查
+cargo fmt --check
+
+# Clippy lint（零警告）
+cargo clippy --workspace --no-deps -- -D warnings
 ```
 
 ## 🔒 安全与合规
 
 - ✅ 数据传输加密（TLS）
-- ✅ API 密钥加密存储
+- ✅ API 密钥加密存储（AES-GCM）
+- ✅ 密码哈希存储（Argon2）
+- ✅ JWT 令牌认证
 - ✅ 操作审计日志
-- ✅ IP 白名单
-- ✅ 双因子认证（2FA）
+- ✅ `.env.example` 无敏感信息泄露
 
 ## 📈 性能优化
 
 - 向量化计算（Rust + ndarray）
-- Redis 缓存热点数据
+- Redis 缓存热点数据（连接池）
 - 异步 IO（Tokio）
-- 连接池管理
+- PostgreSQL 连接池管理
 - 批量操作优化
+- PostgreSQL RANGE 分区时序数据存储
+
+## 🛠️ 开发工具配置
+
+### Rust 配置
+
+- `rustfmt.toml` — 代码格式化规则
+- `clippy.toml` — Lint 严格度配置
+- Workspace 统一依赖版本管理
+
+### 依赖版本
+
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Rust | 1.77+ | Edition 2021 |
+| Tauri | 2.0 | 桌面应用框架 |
+| sqlx | 0.7 | PostgreSQL 异步驱动 |
+| redis | 1.2 | Redis 客户端 |
+| Vue | 3.4 | 前端框架 |
+| Element Plus | - | UI 组件库 |
+| ECharts | 5.4 | 图表库 |
+| Pinia | 2.1 | 状态管理 |
 
 ## 🛣️ 开发路线图
 
 ### 第一阶段（已完成）✅
-- [x] 项目架构搭建
-- [x] 数据层实现
-- [x] 策略层实现
-- [x] 交易层实现
-- [x] 风控层实现
-- [x] 监控层实现
-- [x] 前端界面框架
+- [x] 项目架构搭建（13 crate 分层）
+- [x] 数据层实现（PostgreSQL + Redis）
+- [x] 策略层实现（回测引擎 + 技术指标）
+- [x] 交易层实现（订单管理 + 算法交易）
+- [x] 风控层实现（三层风控体系）
+- [x] 监控层实现（Prometheus + 告警）
+- [x] 安全模块（加密 + 认证 + 审计）
+- [x] OKX 交易所集成
+- [x] 前端界面（10 个视图）
+- [x] Typed errors 全链路（ServiceError 16 变体）
+- [x] 测试覆盖（213 tests passing）
 
 ### 第二阶段（进行中）
-- [ ] 数据库迁移脚本
-- [ ] 交易所 API 对接
-- [ ] 完善回测功能
-- [ ] WebSocket 实时行情
+- [ ] 数据库迁移脚本完善
+- [ ] WebSocket 实时行情推送
 - [ ] 更多技术指标
+- [ ] 策略参数优化器
+- [ ] 前端实时监控仪表盘
 
 ### 第三阶段（计划中）
 - [ ] 机器学习模型集成
@@ -212,7 +381,19 @@ createdb quant_trading
 
 ## 🤝 贡献指南
 
-欢迎提交 Issue 和 Pull Request！
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送分支 (`git push origin feature/amazing-feature`)
+5. 提交 Pull Request
+
+### 开发规范
+
+- 遵循 `rustfmt.toml` 格式化规则
+- Clippy 零警告
+- 新功能必须附带测试
+- 错误处理使用 typed errors（禁止 `String` 错误传播）
+- 公共 API 必须有文档注释
 
 ## 📄 许可证
 
