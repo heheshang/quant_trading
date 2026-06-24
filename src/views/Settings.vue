@@ -194,51 +194,7 @@
         </el-card>
       </el-tab-pane>
       
-      <!-- 时序数据库设置 -->
-      <el-tab-pane label="时序数据库" name="influxdb">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>InfluxDB配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="influxdbFormRef" :model="config.influxdb" :rules="influxdbRules" label-width="120px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="URL" prop="url">
-                  <el-input v-model="config.influxdb.url" placeholder="输入InfluxDB URL" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="Token" prop="token">
-                  <el-input 
-                    v-model="config.influxdb.token" 
-                    type="password" 
-                    placeholder="输入访问Token" 
-                    show-password
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="组织" prop="org">
-                  <el-input v-model="config.influxdb.org" placeholder="输入组织名称" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="Bucket" prop="bucket">
-                  <el-input v-model="config.influxdb.bucket" placeholder="输入Bucket名称" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
+
       
       <!-- 交易设置 -->
       <el-tab-pane label="交易" name="trading">
@@ -573,13 +529,6 @@ interface RedisConfig {
   pool_size: number;
 }
 
-interface InfluxDBConfig {
-  url: string;
-  token: string;
-  org: string;
-  bucket: string;
-}
-
 interface TradingConfig {
   enable_paper_trading: boolean;
   max_orders_per_second: number;
@@ -616,7 +565,6 @@ interface SecurityConfig {
 interface SystemConfig {
   database: DatabaseConfig;
   redis: RedisConfig;
-  influxdb: InfluxDBConfig;
   trading: TradingConfig;
   risk: RiskConfig;
   monitoring: MonitoringConfig;
@@ -630,7 +578,6 @@ interface SystemConfig {
 const systemInfoFormRef = ref<FormInstance>();
 const databaseFormRef = ref<FormInstance>();
 const redisFormRef = ref<FormInstance>();
-const influxdbFormRef = ref<FormInstance>();
 const tradingFormRef = ref<FormInstance>();
 const riskFormRef = ref<FormInstance>();
 const monitoringFormRef = ref<FormInstance>();
@@ -690,15 +637,6 @@ const redisRules: FormRules = {
     { required: true, message: '请输入连接池大小', trigger: 'blur' },
     { type: 'number', min: 1, max: 100, message: '连接池大小范围 1-100', trigger: 'blur' },
   ],
-};
-
-const influxdbRules: FormRules = {
-  url: [
-    { required: true, message: '请输入InfluxDB URL', trigger: 'blur' },
-  ],
-  token: [],
-  org: [],
-  bucket: [],
 };
 
 const tradingRules: FormRules = {
@@ -796,12 +734,6 @@ const config = ref<SystemConfig>({
     db: 0,
     pool_size: 20,
   },
-  influxdb: {
-    url: 'http://localhost:8086',
-    token: '',
-    org: 'quant-trading',
-    bucket: 'market-data',
-  },
   trading: {
     enable_paper_trading: true,
     max_orders_per_second: 100,
@@ -834,6 +766,24 @@ const config = ref<SystemConfig>({
 });
 
 // ========================
+// Helper — shallow deep merge: preserves default keys missing from source
+// ========================
+
+function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const k = key as keyof T;
+    const sv = source[k];
+    if (sv !== null && typeof sv === 'object' && !Array.isArray(sv)) {
+      result[k] = deepMerge(result[k] ?? ({} as any), sv as any);
+    } else if (sv !== undefined) {
+      result[k] = sv as any;
+    }
+  }
+  return result;
+}
+
+// ========================
 // Methods
 // ========================
 
@@ -841,7 +791,8 @@ const config = ref<SystemConfig>({
 async function fetchConfig() {
   try {
     const data = await invoke<SystemConfig>('get_config');
-    config.value = data;
+    // Deep merge: backend fields override defaults, missing nested keys keep defaults.
+    config.value = deepMerge(config.value, data);
   } catch (error) {
     console.error('Failed to fetch config:', error);
     ElMessage.error('获取配置失败');
@@ -856,7 +807,6 @@ async function saveConfig() {
     systemInfoFormRef,
     databaseFormRef,
     redisFormRef,
-    influxdbFormRef,
     tradingFormRef,
     riskFormRef,
     monitoringFormRef,

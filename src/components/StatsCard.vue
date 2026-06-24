@@ -17,13 +17,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 
 const props = withDefaults(
   defineProps<{
     title: string
     value: string | number
-    icon?: string
+    icon?: string | Component
     iconBg?: string
     trend?: number
     loading?: boolean

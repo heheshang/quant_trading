@@ -1,14 +1,17 @@
 <template>
   <div class="monitor-dashboard">
     <el-row :gutter="20" class="header">
-      <el-col :span="18">
+      <el-col :span="16">
         <h2>实时监控</h2>
       </el-col>
-      <el-col :span="6" class="controls">
-        <el-button type="primary" @click="refreshData" :loading="loading">刷新数据</el-button>
-        <el-button @click="toggleAutoRefresh">
-          {{ autoRefresh ? '停止自动刷新' : '开始自动刷新' }}
-        </el-button>
+      <el-col :span="8" class="controls">
+        <div class="status-area">
+          <ConnectionStatus />
+          <el-tag v-if="isPollingFallback" type="warning" size="small" class="polling-badge">
+            轮询模式
+          </el-tag>
+          <el-button type="primary" @click="refreshData" :loading="loading">刷新数据</el-button>
+        </div>
       </el-col>
     </el-row>
 
@@ -135,23 +138,14 @@
                 </div>
               </template>
               <el-table :data="alerts" style="width: 100%">
-                <el-table-column prop="timestamp" label="时间" width="180">
-                  <template #default="scope">
-                    {{ formatDate(scope.row.timestamp) }}
-                  </template>
-                </el-table-column>
+                <el-table-column prop="timestamp" label="时间" width="180" />
                 <el-table-column prop="source" label="来源" width="150" />
-                <el-table-column prop="level" label="级别" width="100">
-                  <template #default="scope">
-                    <el-tag :type="getAlertLevelType(scope.row.level)">
-                      {{ getAlertLevelText(scope.row.level) }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
+                <el-table-column prop="level" label="级别" width="100" />
                 <el-table-column prop="message" label="消息" />
                 <el-table-column label="操作" width="150">
                   <template #default="scope">
-                    <el-button 
+                    <el-button
+                      v-if="scope?.row"
                       size="small" 
                       type="primary" 
                       @click="acknowledgeAlert(scope.row.alert_id)"
@@ -211,9 +205,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue';
 import * as echarts from 'echarts';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { 
   TrendCharts, 
   Check, 
@@ -222,30 +217,59 @@ import {
   Coin, 
   Trophy 
 } from '@element-plus/icons-vue';
+import { useWebSocketStatus } from '@/composables/useWebSocketStatus';
+import { useMarketData } from '@/composables/useMarketData';
+import ConnectionStatus from '@/components/ws/ConnectionStatus.vue';
+import type { Alert, AlertLevel, LogEntry } from '@/services/types';
 
-// Reactive data
+// --- WS event payload types ---
+interface WsAlertPayload {
+  alert_id: string
+  level: AlertLevel
+  source: string
+  message: string
+  timestamp: string
+}
+
+interface WsLogPayload {
+  timestamp: string
+  level: string
+  message: string
+  module: string | null
+}
+
+// --- WebSocket status (singleton — calls startListening only once globally) ---
+const { status: wsStatus, startListening: startWsStatusListening } = useWebSocketStatus();
+const { startListening: startMarketListening } = useMarketData();
+
+// --- Reactive data ---
 const activeTab = ref('metrics');
 const loading = ref(false);
-const autoRefresh = ref(true);
-const refreshInterval = ref<number | null>(null);
+const isPollingFallback = ref(false);
 
 // Metrics data
 const metrics = ref<Record<string, number>>({});
 const metricsHistory = ref<Array<{time: string, metrics: Record<string, number>}>>([]);
 
-// Alerts data
-const alerts = ref<any[]>([]);
+// Alerts data (shallowRef for WS-pushed data efficiency)
+const alerts = shallowRef<Alert[]>([]);
 
-// Logs data
-const logs = ref<any[]>([]);
+// Logs data (shallowRef for WS-pushed data efficiency)
+const logs = shallowRef<LogEntry[]>([]);
 const logLevel = ref('');
 
-// Format numbers
+// --- Polling fallback state ---
+let disconnectTimerId: ReturnType<typeof setTimeout> | null = null;
+let pollTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+// --- WS listener cleanup ---
+const unlisteners: UnlistenFn[] = [];
+
+// --- Format helpers ---
 function formatNumber(value: number): string {
   return value.toLocaleString('zh-CN');
 }
 
-// Format currency
 function formatCurrency(value: number): string {
   return value.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
@@ -253,7 +277,6 @@ function formatCurrency(value: number): string {
   });
 }
 
-// Format date
 function formatDate(dateInput: string | { timestamp: string }): string {
   let dateString: string;
   
@@ -263,12 +286,9 @@ function formatDate(dateInput: string | { timestamp: string }): string {
     dateString = dateInput.timestamp;
   }
   
-  // Handle different timestamp formats
   if (dateString.endsWith('Z')) {
-    // ISO format with Z suffix
     return new Date(dateString).toLocaleString('zh-CN');
   } else if (dateString.includes('.')) {
-    // Format with microseconds
     const [mainPart, _] = dateString.split('.');
     return new Date(mainPart + 'Z').toLocaleString('zh-CN');
   } else {
@@ -276,49 +296,24 @@ function formatDate(dateInput: string | { timestamp: string }): string {
   }
 }
 
-// Get alert level type for Element Plus tag
-function getAlertLevelType(level: string): 'success' | 'warning' | 'danger' | 'info' | '' {
-  switch (level) {
-    case 'Info': return 'info';
-    case 'Warning': return 'warning';
-    case 'Critical': return 'danger';
-    default: return 'info';
-  }
-}
-
-// Get alert level text
-function getAlertLevelText(level: string): string {
-  switch (level) {
-    case 'Info': return '信息';
-    case 'Warning': return '警告';
-    case 'Critical': return '严重';
-    default: return level;
-  }
-}
-
-// Fetch metrics
+// --- Data fetch functions (polling fallback) ---
 async function fetchMetrics() {
   try {
     const data = await invoke<Record<string, number>>('get_metrics');
     metrics.value = data;
-    console.log('Metrics:', data);
-    // Add to history for chart
     const now = new Date().toLocaleTimeString('zh-CN');
     metricsHistory.value.push({
       time: now,
       metrics: { ...data }
     });
     
-    // Keep only last 20 data points
     if (metricsHistory.value.length > 20) {
       metricsHistory.value.shift();
     }
     
-    // Update chart
     updateMetricsChart();
   } catch (error) {
     console.error('Failed to fetch metrics:', error);
-    // Mock data for web development
     metrics.value = {
       orders_total: Math.floor(Math.random() * 1000),
       orders_filled: Math.floor(Math.random() * 800),
@@ -330,14 +325,12 @@ async function fetchMetrics() {
   }
 }
 
-// Fetch alerts
 async function fetchAlerts() {
   try {
-    const data = await invoke<any[]>('get_alerts');
+    const data = await invoke<Alert[]>('get_alerts');
     alerts.value = data;
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
-    // Mock data for web development
     alerts.value = [
       {
         alert_id: '1',
@@ -359,60 +352,60 @@ async function fetchAlerts() {
   }
 }
 
-// Acknowledge alert
 async function acknowledgeAlert(alertId: string) {
   try {
     await invoke<boolean>('acknowledge_alert', { alertId });
     
-    // Update local state
-    const alert = alerts.value.find(a => a.alert_id === alertId);
+    const current = alerts.value;
+    const alert = current.find(a => a.alert_id === alertId);
     if (alert) {
       alert.acknowledged = true;
+      alerts.value = [...current];
     }
   } catch (error) {
     console.error('Failed to acknowledge alert:', error);
-    // Mock for web development
-    const alert = alerts.value.find(a => a.alert_id === alertId);
+    const current = alerts.value;
+    const alert = current.find(a => a.alert_id === alertId);
     if (alert) {
       alert.acknowledged = true;
+      alerts.value = [...current];
     }
-    console.log('Acknowledging alert:', alertId);
   }
 }
 
-// Fetch logs
 async function fetchLogs() {
   try {
-    const data = await invoke<any[]>('get_logs', { 
+    const data = await invoke<LogEntry[]>('get_logs', { 
       level: logLevel.value || null, 
       limit: 50 
     });
     logs.value = data;
-    console.log('Logs:', data);
   } catch (error) {
     console.error('Failed to fetch logs:', error);
-    // Mock logs for now
     logs.value = [
       {
         timestamp: new Date().toISOString(),
         level: 'info',
-        message: 'System started successfully111'
+        message: 'System started successfully',
+        module: 'system'
       },
       {
         timestamp: new Date(Date.now() - 60000).toISOString(),
         level: 'warning',
-        message: 'Account margin ratio approaching limit'
+        message: 'Account margin ratio approaching limit',
+        module: 'risk'
       },
       {
         timestamp: new Date(Date.now() - 120000).toISOString(),
         level: 'error',
-        message: 'Order execution failed for symbol 600519.SH'
+        message: 'Order execution failed for symbol 600519.SH',
+        module: 'trading'
       }
     ];
   }
 }
 
-// Refresh all data
+// --- Manual refresh ---
 async function refreshData() {
   loading.value = true;
   try {
@@ -428,39 +421,63 @@ async function refreshData() {
   }
 }
 
-// Toggle auto refresh
-function toggleAutoRefresh() {
-  autoRefresh.value = !autoRefresh.value;
-  if (autoRefresh.value) {
-    startAutoRefresh();
-  } else {
-    stopAutoRefresh();
+// --- Polling fallback (setTimeout chain, NOT setInterval) ---
+async function pollData() {
+  await Promise.all([
+    fetchMetrics(),
+    fetchAlerts(),
+    fetchLogs()
+  ]);
+}
+
+function schedulePoll() {
+  if (!isPollingFallback.value) return;
+  pollTimeoutId = setTimeout(async () => {
+    await pollData();
+    schedulePoll();
+  }, 5000);
+}
+
+function startPollingFallback() {
+  isPollingFallback.value = true;
+  schedulePoll();
+}
+
+function stopPollingFallback() {
+  isPollingFallback.value = false;
+  if (pollTimeoutId !== null) {
+    clearTimeout(pollTimeoutId);
+    pollTimeoutId = null;
   }
 }
 
-// Start auto refresh
-function startAutoRefresh() {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value);
+// --- Watch WS status for disconnect → polling fallback ---
+watch(wsStatus, (newStatus) => {
+  if (newStatus === 'disconnected') {
+    // Start 60s countdown before falling back to polling
+    disconnectTimerId = setTimeout(() => {
+      startPollingFallback();
+    }, 60000);
+  } else if (newStatus === 'connected') {
+    // Cancel the disconnect timer
+    if (disconnectTimerId !== null) {
+      clearTimeout(disconnectTimerId);
+      disconnectTimerId = null;
+    }
+    // Stop polling fallback if active
+    stopPollingFallback();
   }
-  refreshInterval.value = window.setInterval(() => {
-    refreshData();
-  }, 5000); // Refresh every 5 seconds
-}
+  // 'reconnecting' status: do nothing, keep waiting
+});
 
-// Stop auto refresh
-function stopAutoRefresh() {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value);
-    refreshInterval.value = null;
-  }
-}
+// --- ECharts ---
+const metricsChart = shallowRef<echarts.ECharts | null>(null);
 
-// Initialize metrics chart
 function initMetricsChart() {
   const chartDom = document.getElementById('metrics-chart');
   if (chartDom) {
-    const chart = echarts.init(chartDom);
+    metricsChart.value?.dispose();
+    metricsChart.value = echarts.init(chartDom);
     
     const option = {
       tooltip: {
@@ -504,16 +521,13 @@ function initMetricsChart() {
       ]
     };
     
-    chart.setOption(option);
+    metricsChart.value.setOption(option);
   }
 }
 
-// Update metrics chart
 function updateMetricsChart() {
-  const chartDom = document.getElementById('metrics-chart');
-  if (chartDom && metricsHistory.value.length > 0) {
-    const chart = echarts.getInstanceByDom(chartDom) || echarts.init(chartDom);
-    
+  const chart = metricsChart.value;
+  if (chart && metricsHistory.value.length > 0) {
     const times = metricsHistory.value.map(item => item.time);
     const ordersTotal = metricsHistory.value.map(item => item.metrics.orders_total || 0);
     const ordersFilled = metricsHistory.value.map(item => item.metrics.orders_filled || 0);
@@ -525,40 +539,86 @@ function updateMetricsChart() {
         data: times
       },
       series: [
-        {
-          name: '总订单数',
-          data: ordersTotal
-        },
-        {
-          name: '已成交订单',
-          data: ordersFilled
-        },
-        {
-          name: '账户余额',
-          data: accountBalance
-        },
-        {
-          name: '今日盈亏',
-          data: dailyPnl
-        }
+        { name: '总订单数', data: ordersTotal },
+        { name: '已成交订单', data: ordersFilled },
+        { name: '账户余额', data: accountBalance },
+        { name: '今日盈亏', data: dailyPnl }
       ]
     });
   }
 }
 
-// Initialize on mount
+// --- WS event listeners ---
+async function startWsListeners() {
+  // Listen for ticker events → refresh metrics (throttled to 5s)
+  let lastMetricsFetch = 0;
+  const tickerUnlisten = await listen<unknown>('ws:ticker', () => {
+    const now = Date.now();
+    if (now - lastMetricsFetch < 5000) return;
+    lastMetricsFetch = now;
+    fetchMetrics();
+  });
+  unlisteners.push(tickerUnlisten);
+
+  // Listen for alert events → push to alerts table
+  const alertsUnlisten = await listen<WsAlertPayload>('ws:alerts', (event) => {
+    const payload = event.payload;
+    const newAlert: Alert = {
+      alert_id: payload.alert_id,
+      level: payload.level,
+      source: payload.source,
+      message: payload.message,
+      timestamp: payload.timestamp,
+      acknowledged: false,
+    };
+    alerts.value = [newAlert, ...alerts.value];
+  });
+  unlisteners.push(alertsUnlisten);
+
+  // Listen for log events → push to log stream
+  const logsUnlisten = await listen<WsLogPayload>('ws:logs', (event) => {
+    const payload = event.payload;
+    const newLog: LogEntry = {
+      timestamp: payload.timestamp,
+      level: payload.level,
+      message: payload.message,
+      module: payload.module,
+    };
+    logs.value = [newLog, ...logs.value];
+  });
+  unlisteners.push(logsUnlisten);
+}
+
+// --- Lifecycle ---
 onMounted(async () => {
   initMetricsChart();
+  // Start WS status listener (idempotent singleton)
+  await startWsStatusListening();
+  // Fire one manual refresh on mount
   await refreshData();
-  startAutoRefresh();
+  // Start WS listeners
+  await startWsListeners();
+  startMarketListening();
 });
 
-// Clean up on unmount
 onUnmounted(() => {
-  stopAutoRefresh();
+  // Clean up WS listeners
+  for (const unlisten of unlisteners) {
+    unlisten();
+  }
+  unlisteners.length = 0;
+  // Clean up timers
+  if (disconnectTimerId !== null) {
+    clearTimeout(disconnectTimerId);
+    disconnectTimerId = null;
+  }
+  stopPollingFallback();
+  // Dispose ECharts metrics chart
+  metricsChart.value?.dispose();
+  metricsChart.value = null;
 });
 
-// Watch for tab changes
+// Watch for tab changes (keep existing behavior)
 watch(activeTab, (newTab) => {
   if (newTab === 'metrics') {
     updateMetricsChart();
@@ -578,6 +638,17 @@ watch(activeTab, (newTab) => {
 
 .controls {
   text-align: right;
+}
+
+.status-area {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.polling-badge {
+  flex-shrink: 0;
 }
 
 .metric-card {
