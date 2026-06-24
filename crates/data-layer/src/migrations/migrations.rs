@@ -360,12 +360,178 @@ impl Migration for Migration003 {
     }
 }
 
+/// Migration 004: Create market_data partitioned table
+pub struct Migration004;
+
+#[async_trait::async_trait]
+impl Migration for Migration004 {
+    fn version(&self) -> i32 {
+        4
+    }
+
+    fn name(&self) -> &str {
+        "create_market_data_table"
+    }
+
+    async fn up(&self, pool: &PgPool) -> Result<()> {
+        // Create parent partitioned table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS market_data (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                instrument_id VARCHAR(50) NOT NULL,
+                timeframe VARCHAR(10) NOT NULL,
+                timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+                open DECIMAL(20, 8) NOT NULL,
+                high DECIMAL(20, 8) NOT NULL,
+                low DECIMAL(20, 8) NOT NULL,
+                close DECIMAL(20, 8) NOT NULL,
+                volume DECIMAL(20, 8) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            ) PARTITION BY RANGE (timestamp)
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to create market_data table: {}", e)))?;
+
+        // Create monthly partitions for 2024 and 2025
+        for year in &[2024, 2025] {
+            for month in 1..=12 {
+                let partition_name = format!("market_data_{}_{:02}", year, month);
+                let start_date = format!("{}-{:02}-01", year, month);
+                let end_date = if month == 12 {
+                    format!("{}-01-01", year + 1)
+                } else {
+                    format!("{}-{:02}-01", year, month + 1)
+                };
+
+                let sql = format!(
+                    "CREATE TABLE IF NOT EXISTS {} PARTITION OF market_data FOR VALUES FROM ('{}') TO ('{}')",
+                    partition_name, start_date, end_date
+                );
+
+                sqlx::query(&sql)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| Error::Database(format!("Failed to create partition {}: {}", partition_name, e)))?;
+            }
+        }
+
+        // Create indices
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_market_data_uniq
+            ON market_data (instrument_id, timeframe, timestamp)
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to create unique index: {}", e)))?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_market_data_query
+            ON market_data (instrument_id, timeframe, timestamp DESC)
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to create query index: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn down(&self, pool: &PgPool) -> Result<()> {
+        sqlx::query("DROP TABLE IF EXISTS market_data CASCADE")
+            .execute(pool)
+            .await
+            .map_err(|e| Error::Database(format!("Failed to drop market_data table: {}", e)))?;
+
+        Ok(())
+    }
+}
+
+/// Migration 005: Add JSONB fields to backtest_results and strategies tables
+pub struct Migration005;
+
+#[async_trait::async_trait]
+impl Migration for Migration005 {
+    fn version(&self) -> i32 {
+        5
+    }
+
+    fn name(&self) -> &str {
+        "add_json_fields_to_backtest_and_strategies"
+    }
+
+    async fn up(&self, pool: &PgPool) -> Result<()> {
+        sqlx::query(
+            r#"
+            ALTER TABLE backtest_results
+            ADD COLUMN IF NOT EXISTS parameters_json JSONB
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            Error::Database(format!(
+                "Failed to add parameters_json to backtest_results: {}",
+                e
+            ))
+        })?;
+
+        sqlx::query(
+            r#"
+            ALTER TABLE strategies
+            ADD COLUMN IF NOT EXISTS indicator_config_json JSONB
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            Error::Database(format!(
+                "Failed to add indicator_config_json to strategies: {}",
+                e
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    async fn down(&self, pool: &PgPool) -> Result<()> {
+        sqlx::query("ALTER TABLE backtest_results DROP COLUMN IF EXISTS parameters_json")
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                Error::Database(format!(
+                    "Failed to drop parameters_json from backtest_results: {}",
+                    e
+                ))
+            })?;
+
+        sqlx::query("ALTER TABLE strategies DROP COLUMN IF EXISTS indicator_config_json")
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                Error::Database(format!(
+                    "Failed to drop indicator_config_json from strategies: {}",
+                    e
+                ))
+            })?;
+
+        Ok(())
+    }
+}
+
 /// Get all available migrations
 pub fn get_all_migrations() -> Vec<Arc<dyn Migration>> {
     vec![
         Arc::new(Migration001) as Arc<dyn Migration>,
         Arc::new(Migration002) as Arc<dyn Migration>,
         Arc::new(Migration003) as Arc<dyn Migration>,
+        Arc::new(Migration004) as Arc<dyn Migration>,
+        Arc::new(Migration005) as Arc<dyn Migration>,
     ]
 }
 
@@ -395,12 +561,28 @@ mod tests {
     }
 
     #[test]
+    fn test_migration004_metadata() {
+        let migration = Migration004;
+        assert_eq!(migration.version(), 4);
+        assert_eq!(migration.name(), "create_market_data_table");
+    }
+
+    #[test]
+    fn test_migration005_metadata() {
+        let migration = Migration005;
+        assert_eq!(migration.version(), 5);
+        assert_eq!(migration.name(), "add_json_fields_to_backtest_and_strategies");
+    }
+
+    #[test]
     fn test_get_all_migrations() {
         let migrations = get_all_migrations();
-        assert_eq!(migrations.len(), 3);
+        assert_eq!(migrations.len(), 5);
         assert_eq!(migrations[0].version(), 1);
         assert_eq!(migrations[1].version(), 2);
         assert_eq!(migrations[2].version(), 3);
+        assert_eq!(migrations[3].version(), 4);
+        assert_eq!(migrations[4].version(), 5);
     }
 
     #[test]
