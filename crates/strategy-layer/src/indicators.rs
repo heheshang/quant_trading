@@ -1,9 +1,11 @@
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use tracing::{info, instrument};
 
 const RSI_SCALE: Decimal = Decimal::ONE_HUNDRED;
 
 /// 简单移动平均(SMA)
+#[instrument(level = "debug", skip(data), fields(data_len = data.len(), period))]
 pub fn sma(data: &[Decimal], period: usize) -> Vec<Decimal> {
     let mut result = Vec::new();
 
@@ -18,10 +20,12 @@ pub fn sma(data: &[Decimal], period: usize) -> Vec<Decimal> {
         result.push(avg);
     }
 
+    info!(result_len = result.len(), period, "SMA computed");
     result
 }
 
 /// 指数移动平均(EMA)
+#[instrument(level = "debug", skip(data), fields(data_len = data.len(), period))]
 pub fn ema(data: &[Decimal], period: usize) -> Vec<Decimal> {
     let mut result = Vec::new();
 
@@ -45,6 +49,7 @@ pub fn ema(data: &[Decimal], period: usize) -> Vec<Decimal> {
         result.push(ema_value);
     }
 
+    info!(result_len = result.len(), period, "EMA computed");
     result
 }
 
@@ -55,6 +60,7 @@ pub struct BollingerBands {
     pub lower: Vec<Decimal>,
 }
 
+#[instrument(level = "debug", skip(data), fields(data_len = data.len(), period))]
 pub fn bollinger_bands(
     data: &[Decimal],
     period: usize,
@@ -88,6 +94,7 @@ pub fn bollinger_bands(
 }
 
 /// 相对强弱指标(RSI)
+#[instrument(level = "debug", skip(data), fields(data_len = data.len(), period))]
 pub fn rsi(data: &[Decimal], period: usize) -> Vec<Decimal> {
     let mut result = Vec::new();
 
@@ -126,6 +133,7 @@ pub fn rsi(data: &[Decimal], period: usize) -> Vec<Decimal> {
         result.push(rsi_value);
     }
 
+    info!(result_len = result.len(), period, "RSI computed");
     result
 }
 
@@ -136,6 +144,7 @@ pub struct MACD {
     pub histogram: Vec<Decimal>,
 }
 
+#[instrument(level = "debug", skip(data), fields(data_len = data.len(), fast_period, slow_period, signal_period))]
 pub fn macd(
     data: &[Decimal],
     fast_period: usize,
@@ -161,6 +170,7 @@ pub fn macd(
         histogram.push(macd_line[i] - signal_line[i]);
     }
 
+    info!(macd_len = macd_line.len(), signal_len = signal_line.len(), histogram_len = histogram.len(), "MACD computed");
     MACD {
         macd_line,
         signal_line,
@@ -249,6 +259,7 @@ fn validate_ohlc_equal(high: &[Decimal], low: &[Decimal], close: &[Decimal]) -> 
 // I-1: ATR — Average True Range  (波动率指标)
 // ---------------------------------------------------------------------------
 
+#[instrument(level = "debug", skip(high, low, close), fields(data_len = high.len(), period))]
 pub fn atr(
     high: &[Decimal],
     low: &[Decimal],
@@ -283,6 +294,7 @@ fn compute_true_range(high: &[Decimal], low: &[Decimal], close: &[Decimal]) -> V
 // I-2: ADX — Average Directional Index  (趋势强度指标)
 // ---------------------------------------------------------------------------
 
+#[instrument(level = "debug", skip(high, low, close), fields(data_len = high.len(), period))]
 pub fn adx(
     high: &[Decimal],
     low: &[Decimal],
@@ -353,6 +365,7 @@ pub fn adx(
 // I-3: Stochastic Oscillator  (随机动量指标)
 // ---------------------------------------------------------------------------
 
+#[instrument(level = "debug", skip(high, low, close), fields(data_len = high.len(), k_period, d_period))]
 pub fn stochastic(
     high: &[Decimal],
     low: &[Decimal],
@@ -414,6 +427,7 @@ pub fn stochastic(
 // I-4: CCI — Commodity Channel Index  (顺势指标)
 // ---------------------------------------------------------------------------
 
+#[instrument(level = "debug", skip(high, low, close), fields(data_len = high.len(), period))]
 pub fn cci(
     high: &[Decimal],
     low: &[Decimal],
@@ -471,6 +485,7 @@ pub fn cci(
 // I-5: OBV — On-Balance Volume  (能量潮指标)
 // ---------------------------------------------------------------------------
 
+#[instrument(level = "debug", skip(close, volume), fields(data_len = close.len()))]
 pub fn obv(close: &[Decimal], volume: &[Decimal]) -> IndicatorResult<Vec<Decimal>> {
     if close.len() != volume.len() {
         return Err(IndicatorError::InputLengthMismatch {

@@ -2,7 +2,7 @@ use super::{Migration, MigrationRecord};
 use quant_common::{Error, Result};
 use sqlx::PgPool;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{error, info, instrument, warn};
 
 /// Migration Manager - handles database schema migrations
 pub struct MigrationManager {
@@ -25,6 +25,7 @@ impl MigrationManager {
     }
 
     /// Initialize the migrations table
+    #[instrument(skip(self))]
     pub async fn init(&self) -> Result<()> {
         info!("Initializing migrations table");
 
@@ -47,6 +48,7 @@ impl MigrationManager {
     }
 
     /// Get current database version
+    #[instrument(skip(self))]
     pub async fn get_current_version(&self) -> Result<i32> {
         let result =
             sqlx::query_scalar::<_, i32>("SELECT COALESCE(MAX(version), 0) FROM migrations")
@@ -58,6 +60,7 @@ impl MigrationManager {
     }
 
     /// Get all applied migrations
+    #[instrument(skip(self))]
     pub async fn get_applied_migrations(&self) -> Result<Vec<MigrationRecord>> {
         let records = sqlx::query_as::<_, MigrationRecord>(
             "SELECT id, version, name, applied_at FROM migrations ORDER BY version ASC",
@@ -105,6 +108,7 @@ impl MigrationManager {
     }
 
     /// Run all pending migrations
+    #[instrument(skip(self))]
     pub async fn migrate(&self) -> Result<()> {
         self.init().await?;
 
@@ -171,6 +175,7 @@ impl MigrationManager {
     }
 
     /// Rollback to a specific version
+    #[instrument(skip(self), fields(target_version))]
     pub async fn rollback_to(&self, target_version: i32) -> Result<()> {
         let current_version = self.get_current_version().await?;
 
@@ -239,6 +244,7 @@ impl MigrationManager {
     }
 
     /// Get pending migrations
+    #[instrument(skip(self))]
     pub async fn get_pending_migrations(&self) -> Result<Vec<Arc<dyn Migration>>> {
         let current_version = self.get_current_version().await?;
 

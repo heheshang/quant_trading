@@ -4,10 +4,13 @@ use quant_domain::MarketData;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::{error, info, instrument};
 
 /// 市场数据存储（PostgreSQL 分区表）
 ///
 /// 底层使用 market_data 分区表（按时间 RANGE 分区）。
+#[derive(Debug)]
 pub struct MarketDataRepository {
     pool: Arc<PgPool>,
 }
@@ -19,8 +22,10 @@ impl MarketDataRepository {
     }
 
     /// 写入单条市场数据。
+    #[instrument(skip(self, data), fields(symbol = %data.symbol))]
     pub async fn write_market_data(&self, data: &MarketData) -> Result<()> {
-        sqlx::query(
+        let start = Instant::now();
+        let result = sqlx::query(
             r#"
             INSERT INTO market_data
                 (symbol, timestamp, open, high, low, close, volume, turnover,
@@ -43,26 +48,39 @@ impl MarketDataRepository {
         .bind(&data.ask_volumes)
         .execute(&*self.pool)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(|e| {
+            error!(symbol = %data.symbol, "Failed to write market data: {}", e);
+            Error::Database(e.to_string())
+        })?;
 
+        let duration_ms = start.elapsed().as_millis();
+        let rows = result.rows_affected();
+        info!(symbol = %data.symbol, duration_ms, rows, "Market data written successfully");
         Ok(())
     }
 
     /// 批量写入市场数据。
+    #[instrument(skip(data), fields(count = data.len()))]
     pub async fn write_market_data_batch(&self, data: &[MarketData]) -> Result<()> {
+        let start = Instant::now();
+        let count = data.len();
         for market_data in data {
             self.write_market_data(market_data).await?;
         }
+        let duration_ms = start.elapsed().as_millis();
+        info!(count, duration_ms, "Batch market data written successfully");
         Ok(())
     }
 
     /// 按交易对和时间范围查询市场数据。
+    #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn query_market_data(
         &self,
         symbol: &str,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<MarketData>> {
+        let query_start = Instant::now();
         let rows = sqlx::query_as::<_, MarketDataRow>(
             r#"
             SELECT symbol, timestamp, open, high, low, close, volume, turnover,
@@ -77,8 +95,14 @@ impl MarketDataRepository {
         .bind(end)
         .fetch_all(&*self.pool)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(|e| {
+            error!(symbol = %symbol, "Failed to query market data: {}", e);
+            Error::Database(e.to_string())
+        })?;
 
+        let duration_ms = query_start.elapsed().as_millis();
+        let result_count = rows.len();
+        info!(symbol = %symbol, duration_ms, result_count, "Market data queried successfully");
         Ok(rows.into_iter().map(MarketData::from).collect())
     }
 }

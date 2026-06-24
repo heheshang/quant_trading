@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use quant_common::types::{MarketData, Order, Position, StrategyParams};
 use quant_common::Result;
+use tracing::{info, instrument, warn};
 
 const DEFAULT_ENTRY_THRESHOLD: f64 = 2.0;
 
@@ -40,6 +41,7 @@ pub struct MeanReversionStrategy {
 }
 
 impl MeanReversionStrategy {
+    #[instrument]
     pub fn new() -> Self {
         Self {
             params: StrategyParams {
@@ -66,10 +68,11 @@ impl MeanReversionStrategy {
 
 #[async_trait]
 impl Strategy for MeanReversionStrategy {
+    #[instrument(skip(self), fields(strategy_id = %params.strategy_id))]
     async fn initialize(&mut self, params: StrategyParams) -> Result<()> {
+        info!(strategy_id = %params.strategy_id, "Initializing strategy");
         self.params = params.clone();
 
-        // 从参数中提取配置
         if let Some(lookback) = params.params.get("lookback_period") {
             self.lookback_period = lookback.as_u64().unwrap_or(20) as usize;
         }
@@ -80,20 +83,31 @@ impl Strategy for MeanReversionStrategy {
             self.exit_threshold = exit.as_f64().unwrap_or(0.5);
         }
 
+        info!(strategy_id = %params.strategy_id, "Strategy initialized");
         Ok(())
     }
 
+    #[instrument(skip(self, context), fields(strategy_id = %self.params.strategy_id))]
     async fn generate_signals(&self, context: &StrategyContext) -> Result<Vec<Order>> {
+        info!(
+            strategy_id = %self.params.strategy_id,
+            data_points = context.market_data.len(),
+            positions = context.positions.len(),
+            "Generating signals"
+        );
         let orders = Vec::new();
 
-        // 示例逻辑：计算价格偏离均值的程度
         if context.market_data.len() < self.lookback_period {
+            warn!(
+                strategy_id = %self.params.strategy_id,
+                available = context.market_data.len(),
+                required = self.lookback_period,
+                "Insufficient market data for signal generation"
+            );
             return Ok(orders);
         }
 
-        // 实际策略实现会更复杂
-        // 这里仅作演示
-
+        info!(strategy_id = %self.params.strategy_id, orders = orders.len(), "Signal generation complete");
         Ok(orders)
     }
 
@@ -105,7 +119,9 @@ impl Strategy for MeanReversionStrategy {
         &self.params
     }
 
+    #[instrument(skip(self), fields(strategy_id = %params.strategy_id))]
     async fn update_params(&mut self, params: StrategyParams) -> Result<()> {
+        info!(strategy_id = %params.strategy_id, "Updating strategy params");
         self.initialize(params).await
     }
 }

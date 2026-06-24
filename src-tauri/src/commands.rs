@@ -1016,6 +1016,8 @@ mod tests {
             config: Arc::new(RwLock::new(AppConfig::default())),
             alert_manager,
             log_buffer,
+            pg_client: None,
+            redis_cache: None,
             okx_client: Arc::new(RwLock::new(None)),
             okx_executor: Arc::new(RwLock::new(None)),
             okx_data_source: Arc::new(RwLock::new(None)),

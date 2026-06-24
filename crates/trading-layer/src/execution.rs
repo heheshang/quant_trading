@@ -4,7 +4,7 @@ use quant_common::types::{MarketData, Order, OrderStatus};
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 /// 执行引擎
 pub struct ExecutionEngine {
@@ -21,6 +21,7 @@ impl ExecutionEngine {
     }
 
     /// 执行订单
+    #[instrument(skip(self, market_data), fields(order_id = %order.order_id, symbol = %order.symbol, side = ?order.side, paper = %self.config.enable_paper_trading))]
     pub async fn execute_order(&self, order: Order, market_data: &MarketData) -> Result<()> {
         info!("Executing order: {:?}", order.order_id);
 

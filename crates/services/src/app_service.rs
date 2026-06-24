@@ -10,6 +10,7 @@ use quant_common::config::AppConfig;
 use quant_repository::{MarketDataRepository, PostgresClient};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{info, instrument};
 use trading_engine::OkxExecutor;
 
 use crate::account_service::AccountService;
@@ -48,6 +49,7 @@ impl AppServices {
     /// Construct AppServices from raw infrastructure references.
     ///
     /// Each service is wired with only the dependencies it needs.
+    #[instrument(skip_all)]
     pub fn new(
         config: Arc<RwLock<AppConfig>>,
         postgres: Option<Arc<PostgresClient>>,
@@ -57,6 +59,7 @@ impl AppServices {
         okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
         okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     ) -> Self {
+        info!("Initializing AppServices");
         Self {
             config_service: ConfigService::new(config.clone()),
             auth_service: AuthService::new(config.clone(), postgres.clone()),

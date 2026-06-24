@@ -2,7 +2,7 @@ use quant_common::config::RiskConfig;
 use quant_common::types::{Account, Order, Position};
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 const DEFAULT_MAX_CONCENTRATION: f64 = 0.2;
 
@@ -17,6 +17,7 @@ impl PreTradeRiskChecker {
     }
 
     /// 检查订单是否通过风控
+    #[instrument(skip(self), fields(risk_check = "pre_trade"))]
     pub fn check_order(
         &self,
         order: &Order,

@@ -4,6 +4,7 @@ use data_layer::OkxDataSource;
 use quant_common::types::MarketData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{error, instrument};
 
 /// Market data service — retrieves real-time and historical data.
 pub struct MarketService {
@@ -15,19 +16,27 @@ impl MarketService {
         Self { okx_data_source }
     }
 
+    #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn get_realtime_data(&self, symbol: &str) -> ServiceResult<MarketData> {
         let ds = self.okx_data_source.read().await;
         match ds.as_ref() {
             Some(source) => source
                 .get_realtime_data(symbol)
                 .await
-                .map_err(|e| ServiceError::DataSource(e.to_string())),
-            None => Err(ServiceError::Other(
-                "OKX data source not available (check API configuration)".into(),
-            )),
+                .map_err(|e| {
+                    error!(symbol = %symbol, "Failed to get realtime data: {}", e);
+                    ServiceError::DataSource(e.to_string())
+                }),
+            None => {
+                error!("OKX data source not available for realtime data");
+                Err(ServiceError::Other(
+                    "OKX data source not available (check API configuration)".into(),
+                ))
+            }
         }
     }
 
+    #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn get_historical_data(
         &self,
         symbol: &str,
@@ -39,8 +48,14 @@ impl MarketService {
             Some(source) => source
                 .get_historical_data(symbol, start, end)
                 .await
-                .map_err(|e| ServiceError::DataSource(e.to_string())),
-            None => Err(ServiceError::Other("OKX data source not available".into())),
+                .map_err(|e| {
+                    error!(symbol = %symbol, "Failed to get historical data: {}", e);
+                    ServiceError::DataSource(e.to_string())
+                }),
+            None => {
+                error!("OKX data source not available for historical data");
+                Err(ServiceError::Other("OKX data source not available".into()))
+            }
         }
     }
 }

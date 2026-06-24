@@ -219,3 +219,39 @@ pub struct LogEntry {
     pub message: String,
     pub module: Option<String>,
 }
+
+impl LogEntry {
+    pub fn new(
+        level: impl Into<String>,
+        message: impl Into<String>,
+        module: Option<String>,
+    ) -> Self {
+        Self {
+            timestamp: Utc::now(),
+            level: level.into(),
+            message: message.into(),
+            module,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_logentry_new_with_module() {
+        let entry = LogEntry::new("INFO", "Server started", Some("main".into()));
+        assert_eq!(entry.level, "INFO");
+        assert_eq!(entry.message, "Server started");
+        assert_eq!(entry.module, Some("main".into()));
+    }
+
+    #[test]
+    fn test_logentry_new_without_module() {
+        let entry = LogEntry::new("WARN", "Disk usage high", None);
+        assert_eq!(entry.level, "WARN");
+        assert_eq!(entry.message, "Disk usage high");
+        assert_eq!(entry.module, None);
+    }
+}

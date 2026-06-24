@@ -1,6 +1,7 @@
 use chrono::Utc;
 use quant_common::types::{Order, OrderSide, OrderType};
 use rust_decimal::Decimal;
+use tracing::{info, instrument};
 use uuid::Uuid;
 
 /// 交易信号类型
@@ -52,7 +53,7 @@ impl Signal {
 pub struct SignalGenerator;
 
 impl SignalGenerator {
-    /// 基于RSI生成信号
+    #[instrument(fields(symbol = %symbol, rsi = %rsi_value, price = %price))]
     pub fn from_rsi(rsi_value: Decimal, symbol: String, price: Decimal) -> Signal {
         let signal_type = if rsi_value < Decimal::from(30) {
             SignalType::Buy // 超卖
@@ -78,6 +79,14 @@ impl SignalGenerator {
             0.0
         };
 
+        info!(
+            symbol = %symbol,
+            rsi = %rsi_value,
+            signal = ?signal_type,
+            strength,
+            "RSI signal generated"
+        );
+
         Signal {
             signal_type,
             symbol,
@@ -87,7 +96,7 @@ impl SignalGenerator {
         }
     }
 
-    /// 基于MACD生成信号
+    #[instrument(fields(symbol = %symbol, macd = %macd, signal_line = %signal, price = %price))]
     pub fn from_macd(macd: Decimal, signal: Decimal, symbol: String, price: Decimal) -> Signal {
         let histogram = macd - signal;
 
@@ -101,6 +110,16 @@ impl SignalGenerator {
 
         let strength: f64 = (histogram.abs() / price).to_string().parse().unwrap_or(0.5);
         let strength = strength.min(1.0);
+
+        info!(
+            symbol = %symbol,
+            macd = %macd,
+            signal_line = %signal,
+            histogram = %histogram,
+            signal = ?signal_type,
+            strength,
+            "MACD signal generated"
+        );
 
         Signal {
             signal_type,

@@ -2,13 +2,14 @@ use quant_common::types::MarketData;
 use quant_common::{Error, Result};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 /// 数据质量检查器
 pub struct DataQualityChecker;
 
 impl DataQualityChecker {
     /// 检查市场数据质量
+    #[instrument(skip(self, data), fields(symbol = %data.symbol))]
     pub fn check_market_data(&self, data: &MarketData) -> Result<()> {
         // 检查价格合理性
         if data.open <= Decimal::ZERO
@@ -44,6 +45,7 @@ impl DataQualityChecker {
     }
 
     /// 检测异常值（使用3σ原则）
+    #[instrument(skip(self, data), fields(len = data.len(), threshold))]
     pub fn detect_outliers(&self, data: &[Decimal], threshold: f64) -> Vec<usize> {
         if data.is_empty() {
             return Vec::new();
@@ -85,6 +87,7 @@ impl DataQualityChecker {
     }
 
     /// 数据去重
+    #[instrument(skip(self, data), fields(len = data.len()))]
     pub fn remove_duplicates(&self, data: &mut Vec<MarketData>) {
         let original_len = data.len();
         data.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
@@ -97,6 +100,7 @@ impl DataQualityChecker {
     }
 
     /// 填充缺失数据（前向填充）
+    #[instrument(skip(self, data), fields(len = data.len()))]
     pub fn forward_fill(&self, data: &mut [MarketData]) {
         if data.is_empty() {
             return;

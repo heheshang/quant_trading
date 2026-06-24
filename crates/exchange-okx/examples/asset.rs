@@ -2,24 +2,21 @@ use okx::api::api_trait::OkxApiTrait;
 use okx::config::Credentials;
 use okx::{Error, OkxAsset, OkxClient};
 use tracing::info;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(std::io::stdout))
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&"info")))
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     info!("Starting asset example");
-    let credentials = Credentials::from_env().unwrap(); // 初始化客户端
+    let credentials = Credentials::from_env().unwrap();
     info!("Credentials initialized {:?}", credentials);
     let client: OkxClient = OkxClient::new(credentials).unwrap();
-    //获取asset账户余额
     let balances = OkxAsset::new(client)
         .get_balances(Some(&vec!["BTC".to_string()]))
         .await?;
-    println!("账户余额: {:?}", balances);
+    info!("账户余额: {:?}", balances);
 
     Ok(())
 }

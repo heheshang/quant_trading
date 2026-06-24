@@ -3,7 +3,7 @@ use quant_common::{Error, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 /// 订单管理器
@@ -19,6 +19,7 @@ impl OrderManager {
     }
 
     /// 提交订单
+    #[instrument(skip(self), fields(order_id = %order.order_id, symbol = %order.symbol, side = ?order.side))]
     pub async fn submit_order(&self, mut order: Order) -> Result<Uuid> {
         // 验证订单
         self.validate_order(&order)?;
@@ -34,6 +35,7 @@ impl OrderManager {
     }
 
     /// 更新订单状态
+    #[instrument(skip(self), fields(order_id = %order_id, status = ?status))]
     pub async fn update_order_status(&self, order_id: Uuid, status: OrderStatus) -> Result<()> {
         let mut orders = self.orders.write().await;
 
@@ -43,17 +45,22 @@ impl OrderManager {
             info!("Order {} updated to status: {:?}", order_id, status);
             Ok(())
         } else {
+            warn!("Order not found: {}", order_id);
             Err(Error::NotFound(format!("Order not found: {}", order_id)))
         }
     }
 
     /// 获取订单
+    #[instrument(skip(self), fields(order_id = %order_id))]
     pub async fn get_order(&self, order_id: Uuid) -> Result<Order> {
         let orders = self.orders.read().await;
-        orders
-            .get(&order_id)
-            .cloned()
-            .ok_or_else(|| Error::NotFound(format!("Order not found: {}", order_id)))
+        match orders.get(&order_id) {
+            Some(order) => Ok(order.clone()),
+            None => {
+                warn!("Order not found: {}", order_id);
+                Err(Error::NotFound(format!("Order not found: {}", order_id)))
+            }
+        }
     }
 
     /// 获取所有活跃订单
@@ -72,7 +79,9 @@ impl OrderManager {
     }
 
     /// 撤销订单
+    #[instrument(skip(self), fields(order_id = %order_id))]
     pub async fn cancel_order(&self, order_id: Uuid) -> Result<()> {
+        info!("Cancelling order: {}", order_id);
         self.update_order_status(order_id, OrderStatus::Cancelled)
             .await
     }

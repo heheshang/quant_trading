@@ -466,32 +466,6 @@ impl Alert {
     }
 }
 
-// ─── Log Entry ───────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogEntry {
-    pub timestamp: DateTime<Utc>,
-    pub level: String,
-    pub message: String,
-    pub module: Option<String>,
-}
-
-impl LogEntry {
-    /// Create a new log entry.
-    pub fn new(
-        level: impl Into<String>,
-        message: impl Into<String>,
-        module: Option<String>,
-    ) -> Self {
-        Self {
-            timestamp: Utc::now(),
-            level: level.into(),
-            message: message.into(),
-            module,
-        }
-    }
-}
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1410,23 +1384,5 @@ mod tests {
         assert!(!alert.acknowledged);
         alert.acknowledge();
         assert!(alert.acknowledged);
-    }
-
-    // ── LogEntry ──────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_logentry_new_with_module() {
-        let entry = LogEntry::new("INFO", "Server started", Some("main".into()));
-        assert_eq!(entry.level, "INFO");
-        assert_eq!(entry.message, "Server started");
-        assert_eq!(entry.module, Some("main".into()));
-    }
-
-    #[test]
-    fn test_logentry_new_without_module() {
-        let entry = LogEntry::new("WARN", "Disk usage high", None);
-        assert_eq!(entry.level, "WARN");
-        assert_eq!(entry.message, "Disk usage high");
-        assert_eq!(entry.module, None);
     }
 }

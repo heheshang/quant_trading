@@ -7,9 +7,11 @@ use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use sqlx::Row;
 use std::sync::Arc;
+use std::time::Instant;
 use strategy_engine::strategy::MeanReversionStrategy;
 use strategy_engine::{BacktestEngine, Strategy};
 use tokio::sync::RwLock;
+use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 pub struct StrategyService {
@@ -28,6 +30,7 @@ impl StrategyService {
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn get_strategies(&self) -> ServiceResult<Vec<StrategyParams>> {
         let client = self
             .postgres
@@ -47,7 +50,7 @@ impl StrategyService {
         .await
         .map_err(ServiceError::from)?;
 
-        Ok(rows
+        let strategies: Vec<StrategyParams> = rows
             .iter()
             .map(|row| {
                 let ty_str: String = row.get("strategy_type");
@@ -66,9 +69,13 @@ impl StrategyService {
                     updated_at: row.get("updated_at"),
                 }
             })
-            .collect())
+            .collect();
+
+        info!(count = strategies.len(), "Strategies retrieved");
+        Ok(strategies)
     }
 
+    #[instrument(skip(self, strategy), fields(strategy_id = %strategy.strategy_id))]
     pub async fn save_strategy(&self, strategy: &StrategyParams) -> ServiceResult<String> {
         let client = self
             .postgres
@@ -107,11 +114,16 @@ impl StrategyService {
         .bind(strategy.updated_at)
         .execute(pool)
         .await
-        .map_err(ServiceError::from)?;
+        .map_err(|e| {
+            error!("Failed to save strategy {}: {}", strategy.strategy_id, e);
+            ServiceError::from(e)
+        })?;
 
+        info!(strategy_id = %strategy.strategy_id, strategy_name = %strategy.strategy_name, "Strategy saved");
         Ok(strategy.strategy_id.clone())
     }
 
+    #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn delete_strategy(&self, strategy_id: &str) -> ServiceResult<bool> {
         let client = self
             .postgres
@@ -123,11 +135,21 @@ impl StrategyService {
             .bind(strategy_id)
             .execute(pool)
             .await
-            .map_err(ServiceError::from)?;
+            .map_err(|e| {
+                error!("Failed to delete strategy {}: {}", strategy_id, e);
+                ServiceError::from(e)
+            })?;
 
-        Ok(affected.rows_affected() > 0)
+        let deleted = affected.rows_affected() > 0;
+        if deleted {
+            info!(strategy_id = %strategy_id, "Strategy deleted");
+        } else {
+            warn!(strategy_id = %strategy_id, "Strategy not found for deletion");
+        }
+        Ok(deleted)
     }
 
+    #[instrument(skip(self), fields(strategy_id = %strategy_id, enabled))]
     pub async fn toggle_strategy(&self, strategy_id: &str, enabled: bool) -> ServiceResult<bool> {
         let client = self
             .postgres
@@ -142,11 +164,17 @@ impl StrategyService {
         .bind(strategy_id)
         .execute(pool)
         .await
-        .map_err(ServiceError::from)?;
+        .map_err(|e| {
+            error!("Failed to toggle strategy {}: {}", strategy_id, e);
+            ServiceError::from(e)
+        })?;
 
-        Ok(affected.rows_affected() > 0)
+        let toggled = affected.rows_affected() > 0;
+        info!(strategy_id = %strategy_id, enabled, "Strategy toggled");
+        Ok(toggled)
     }
 
+    #[instrument(skip(self), fields(strategy_id = %strategy_id, initial_capital, symbols = ?symbols))]
     pub async fn run_backtest(
         &self,
         strategy_id: &str,
@@ -157,6 +185,7 @@ impl StrategyService {
         slippage: f64,
         symbols: &[String],
     ) -> ServiceResult<BacktestResult> {
+        let start_time = Instant::now();
         let client = self
             .postgres
             .as_ref()
@@ -172,8 +201,14 @@ impl StrategyService {
         .bind(strategy_id)
         .fetch_optional(pool)
         .await
-        .map_err(ServiceError::from)?
-        .ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        .map_err(|e| {
+            error!("Failed to fetch strategy {} for backtest: {}", strategy_id, e);
+            ServiceError::from(e)
+        })?
+        .ok_or_else(|| {
+            error!("Strategy '{}' not found for backtest", strategy_id);
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let db_type: String = row.get("strategy_type");
         let db_params: serde_json::Value = row.get("params");
@@ -193,12 +228,19 @@ impl StrategyService {
                 Some(source) => source
                     .get_historical_data(&symbol, start, end)
                     .await
-                    .map_err(|e| ServiceError::DataSource(e.to_string()))?,
-                None => return Err(ServiceError::OkxDataSourceNotInitialized),
+                    .map_err(|e| {
+                        error!("Failed to fetch market data for {}: {}", symbol, e);
+                        ServiceError::DataSource(e.to_string())
+                    })?,
+                None => {
+                    error!("OKX data source not initialized for backtest");
+                    return Err(ServiceError::OkxDataSourceNotInitialized);
+                }
             }
         };
 
         if market_data.is_empty() {
+            error!(symbol = %symbol, "No market data for backtest date range");
             return Err(ServiceError::Other(
                 "No market data returned for the specified date range".into(),
             ));
@@ -231,7 +273,10 @@ impl StrategyService {
         strategy
             .initialize(strategy_params)
             .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+            .map_err(|e| {
+                error!("Strategy initialization failed: {}", e);
+                ServiceError::Strategy(e.to_string())
+            })?;
 
         let initial_capital_dec = Decimal::from_f64(initial_capital).unwrap_or(Decimal::ZERO);
         let commission_rate_dec = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
@@ -242,7 +287,10 @@ impl StrategyService {
         let result = engine
             .run(&strategy, market_data)
             .await
-            .map_err(|e| ServiceError::Backtest(e.to_string()))?;
+            .map_err(|e| {
+                error!("Backtest execution failed: {}", e);
+                ServiceError::Backtest(e.to_string())
+            })?;
 
         let backtest_result = BacktestResult {
             strategy_id: strategy_id.to_string(),
@@ -305,8 +353,21 @@ impl StrategyService {
         .bind(slippage_dec)
         .execute(pool)
         .await
-        .map_err(ServiceError::from)?;
+        .map_err(|e| {
+            error!("Failed to persist backtest result: {}", e);
+            ServiceError::from(e)
+        })?;
 
+        let duration_ms = start_time.elapsed().as_millis();
+        info!(
+            strategy_id = %backtest_result.strategy_id,
+            total_return = %backtest_result.total_return,
+            sharpe_ratio = %backtest_result.sharpe_ratio,
+            max_drawdown = %backtest_result.max_drawdown,
+            total_trades = backtest_result.total_trades,
+            duration_ms,
+            "Backtest completed"
+        );
         Ok(backtest_result)
     }
 }

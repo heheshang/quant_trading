@@ -2,6 +2,7 @@ use quant_common::config::DatabaseConfig;
 use quant_common::{Error, Result};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::sync::Arc;
+use tracing::{error, instrument};
 
 /// PostgreSQL 数据库客户端
 pub struct PostgresClient {
@@ -10,6 +11,7 @@ pub struct PostgresClient {
 
 impl PostgresClient {
     /// 创建新的数据库连接
+    #[instrument]
     pub async fn new(config: &DatabaseConfig) -> Result<Self> {
         let connection_string = format!(
             "postgres://{}:{}@{}:{}/{}",
@@ -20,7 +22,10 @@ impl PostgresClient {
             .max_connections(config.max_connections)
             .connect(&connection_string)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to connect to database: {}", e);
+                Error::Database(e.to_string())
+            })?;
 
         Ok(Self {
             pool: Arc::new(pool),
@@ -28,6 +33,7 @@ impl PostgresClient {
     }
 
     /// 运行数据库迁移
+    #[instrument(skip(self))]
     pub async fn run_migrations(&self) -> Result<()> {
         sqlx::migrate!("./migrations")
             .run(&*self.pool)
@@ -42,6 +48,7 @@ impl PostgresClient {
     }
 
     /// 健康检查
+    #[instrument(skip(self))]
     pub async fn health_check(&self) -> Result<bool> {
         sqlx::query("SELECT 1")
             .fetch_one(&*self.pool)

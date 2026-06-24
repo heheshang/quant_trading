@@ -84,7 +84,7 @@ impl OkxWebSocket {
             .await
             .map_err(|e| Error::Network(format!("WebSocket connection failed: {}", e)))?;
 
-        info!("WebSocket connected successfully");
+        info!("WebSocket connected to {}", url);
 
         let (mut write, mut read) = ws_stream.split();
         let message_tx = self.message_tx.clone();
@@ -174,7 +174,7 @@ impl OkxWebSocket {
                         }
                     }
                     Ok(Message::Close(_)) => {
-                        warn!("WebSocket closed");
+                        warn!("WebSocket disconnected");
                         break;
                     }
                     Err(e) => {

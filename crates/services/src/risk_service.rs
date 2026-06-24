@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{error, info, instrument, warn};
 
 /// Risk management service.
 ///
@@ -22,6 +22,7 @@ impl RiskService {
         Self { postgres }
     }
 
+    #[instrument(skip_all)]
     pub async fn get_risk_metrics(&self) -> ServiceResult<HashMap<String, f64>> {
         let mut metrics = HashMap::new();
 
@@ -41,8 +42,14 @@ impl RiskService {
         )
         .fetch_optional(pool)
         .await
-        .map_err(ServiceError::from)?
-        .ok_or_else(|| ServiceError::NotFound("Risk config not found".into()))?;
+        .map_err(|e| {
+            error!("Failed to fetch risk config for metrics: {}", e);
+            ServiceError::from(e)
+        })?
+        .ok_or_else(|| {
+            error!("Risk config not found");
+            ServiceError::NotFound("Risk config not found".into())
+        })?;
 
         let var_conf: f64 = row.get("var_confidence_level");
         let max_pos: f64 = row.get("max_position_size");
@@ -61,9 +68,13 @@ impl RiskService {
         )
         .fetch_all(pool)
         .await
-        .map_err(ServiceError::from)?;
+        .map_err(|e| {
+            error!("Failed to fetch account history for VaR: {}", e);
+            ServiceError::from(e)
+        })?;
 
         if account_rows.len() < 2 {
+            error!("Insufficient account history for VaR (need >= 2, got {})", account_rows.len());
             return Err(ServiceError::Other(
                 "Insufficient account history for VaR calculation (need >= 2 data points)".into(),
             ));
@@ -91,9 +102,11 @@ impl RiskService {
         metrics.insert("max_concentration".to_string(), max_conc);
         metrics.insert("var_confidence_level".to_string(), var_conf);
 
+        info!(var_95 = metrics["var_95"], var_99 = metrics["var_99"], "Risk metrics computed");
         Ok(metrics)
     }
 
+    #[instrument(skip_all)]
     pub async fn get_risk_config(&self) -> ServiceResult<RiskConfig> {
         let client = self
             .postgres
@@ -111,9 +124,12 @@ impl RiskService {
         )
         .fetch_one(client.pool())
         .await
-        .map_err(ServiceError::Database)?;
+        .map_err(|e| {
+            error!("Failed to fetch risk config: {}", e);
+            ServiceError::Database(e)
+        })?;
 
-        Ok(RiskConfig {
+        let config = RiskConfig {
             max_position_size: row.get("max_position_size"),
             max_daily_loss: row.get("max_daily_loss"),
             max_drawdown: row.get("max_drawdown"),
@@ -121,9 +137,12 @@ impl RiskService {
             enable_pre_trade_check: row.get("enable_pre_trade_check"),
             enable_real_time_monitor: row.get("enable_real_time_monitor"),
             var_confidence_level: row.get("var_confidence_level"),
-        })
+        };
+        info!("Risk config retrieved");
+        Ok(config)
     }
 
+    #[instrument(skip(self, config))]
     pub async fn update_risk_config(&self, config: &RiskConfig) -> ServiceResult<bool> {
         let client = self
             .postgres
@@ -148,9 +167,14 @@ impl RiskService {
         .bind(config.var_confidence_level)
         .execute(client.pool())
         .await
-        .map_err(ServiceError::Database)?;
+        .map_err(|e| {
+            error!("Failed to update risk config: {}", e);
+            ServiceError::Database(e)
+        })?;
 
-        Ok(affected.rows_affected() > 0)
+        let updated = affected.rows_affected() > 0;
+        info!("Risk config updated");
+        Ok(updated)
     }
 
     /// Run pre-trade risk check. Returns (passed, RiskConfig) where passed indicates

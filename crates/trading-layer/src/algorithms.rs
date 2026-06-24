@@ -2,8 +2,10 @@ use chrono::{DateTime, Duration, Utc};
 use quant_common::types::{Order, OrderSide, OrderType};
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
+use tracing::{info, instrument};
 
 /// TWAP算法参数
+#[derive(Debug)]
 pub struct TWAPParams {
     pub total_quantity: Decimal,
     pub duration_minutes: i64,
@@ -11,6 +13,7 @@ pub struct TWAPParams {
 }
 
 /// VWAP算法参数
+#[derive(Debug)]
 pub struct VWAPParams {
     pub total_quantity: Decimal,
     pub duration_minutes: i64,
@@ -22,6 +25,7 @@ pub struct AlgorithmicOrderSlicer;
 impl AlgorithmicOrderSlicer {
     /// TWAP算法 - 时间加权平均价格
     /// 将大单均匀分割成小单，在时间上均匀分布
+    #[instrument(skip(params), fields(symbol = %symbol, slices = params.num_slices))]
     pub fn twap(
         symbol: String,
         side: OrderSide,
@@ -61,11 +65,13 @@ impl AlgorithmicOrderSlicer {
             current_time = current_time + Duration::minutes(time_interval);
         }
 
+        info!("TWAP sliced into {} orders", orders.len());
         Ok(orders)
     }
 
     /// VWAP算法 - 成交量加权平均价格
     /// 根据历史成交量分布来分配订单量
+    #[instrument(skip(volume_profile), fields(symbol = %symbol, total_quantity = %params.total_quantity))]
     pub fn vwap(
         symbol: String,
         side: OrderSide,
@@ -109,10 +115,12 @@ impl AlgorithmicOrderSlicer {
             orders.push(order);
         }
 
+        info!("VWAP sliced into {} orders", orders.len());
         Ok(orders)
     }
 
     /// 冰山订单 - 隐藏大单，分批显示
+    #[instrument(skip_all, fields(symbol = %symbol, total = %total_quantity, display = %display_quantity))]
     pub fn iceberg(
         symbol: String,
         side: OrderSide,
@@ -161,6 +169,7 @@ impl AlgorithmicOrderSlicer {
             }
         }
 
+        info!("Iceberg sliced into {} orders", orders.len());
         Ok(orders)
     }
 }

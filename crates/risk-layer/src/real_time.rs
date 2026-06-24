@@ -2,6 +2,7 @@ use chrono::Utc;
 use quant_common::config::RiskConfig;
 use quant_common::types::{Account, Alert, AlertLevel};
 use rust_decimal::Decimal;
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 const DEFAULT_MAX_DRAWDOWN: f64 = 0.15;
@@ -22,22 +23,30 @@ impl RealTimeRiskMonitor {
     }
 
     /// 监控账户风险
+    #[instrument(skip(self, account), fields(risk_check = "real_time"))]
     pub fn monitor_account(&mut self, account: &Account) -> Vec<Alert> {
         let mut new_alerts = Vec::new();
 
         // 监控回撤
         if let Some(alert) = self.check_drawdown(account) {
+            warn!("Drawdown limit breached");
             new_alerts.push(alert);
         }
 
         // 监控保证金比例
         if let Some(alert) = self.check_margin_ratio(account) {
+            warn!("Margin ratio limit breached");
             new_alerts.push(alert);
         }
 
         // 监控每日盈亏
         if let Some(alert) = self.check_daily_pnl(account) {
+            warn!("Daily PnL limit breached");
             new_alerts.push(alert);
+        }
+
+        if new_alerts.is_empty() {
+            info!("All real-time risk checks passed");
         }
 
         self.alerts.extend(new_alerts.clone());

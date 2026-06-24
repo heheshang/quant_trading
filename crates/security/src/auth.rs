@@ -2,6 +2,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use quant_common::{Error, Result};
 use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 /// JWT Claims
@@ -30,12 +31,14 @@ impl AuthService {
     }
 
     /// 生成 JWT Token
+    #[instrument(skip(self, roles))]
     pub fn generate_token(
         &self,
         user_id: &str,
         username: &str,
         roles: Vec<String>,
     ) -> Result<String> {
+        info!(user = %username, "generating JWT token");
         let now = Utc::now();
         let exp = now + Duration::hours(self.token_expiry_hours);
 
@@ -53,27 +56,41 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| Error::Auth(format!("Token generation failed: {}", e)))
+        .map_err(|e| {
+            error!(error = %e, "token generation failed");
+            Error::Auth(format!("Token generation failed: {}", e))
+        })
     }
 
     /// 验证 JWT Token
+    #[instrument(skip(self, token))]
     pub fn verify_token(&self, token: &str) -> Result<Claims> {
+        info!("verifying JWT token");
         decode::<Claims>(
             token,
             &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
             &Validation::default(),
         )
         .map(|data| data.claims)
-        .map_err(|e| Error::Auth(format!("Token verification failed: {}", e)))
+        .map_err(|e| {
+            warn!(error = %e, "token verification failed");
+            Error::Auth(format!("Token verification failed: {}", e))
+        })
     }
 
     /// 检查权限
+    #[instrument(skip(self, claims))]
     pub fn check_permission(&self, claims: &Claims, required_role: &str) -> Result<()> {
         if claims.roles.contains(&required_role.to_string())
             || claims.roles.contains(&"admin".to_string())
         {
             Ok(())
         } else {
+            warn!(
+                user = %claims.username,
+                required_role = %required_role,
+                "permission denied"
+            );
             Err(Error::Permission(format!(
                 "Required role: {}",
                 required_role
@@ -82,6 +99,7 @@ impl AuthService {
     }
 
     /// 刷新 Token
+    #[instrument(skip(self, old_token))]
     pub fn refresh_token(&self, old_token: &str) -> Result<String> {
         let claims = self.verify_token(old_token)?;
         self.generate_token(&claims.sub, &claims.username, claims.roles)

@@ -7,6 +7,7 @@ use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::instrument;
 
 /// OKX 数据源
 pub struct OkxDataSource {
@@ -53,6 +54,7 @@ impl OkxDataSource {
 
 #[async_trait::async_trait]
 impl DataSource for OkxDataSource {
+    #[instrument(skip(self), fields(symbol = %symbol))]
     async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData> {
         let client = self.client.read().await;
 
@@ -69,6 +71,7 @@ impl DataSource for OkxDataSource {
         }
     }
 
+    #[instrument(skip(self), fields(symbol = %symbol, %start, %end))]
     async fn get_historical_data(
         &self,
         symbol: &str,

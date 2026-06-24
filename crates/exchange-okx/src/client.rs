@@ -229,6 +229,7 @@ impl Client {
 mod tests {
     use super::*;
     use dotenv::dotenv;
+    use tracing::info;
 
     #[tokio::test]
     async fn test_okx_client_creation() {
@@ -238,7 +239,7 @@ mod tests {
         let api_key = match dotenv::var("OKX_API_KEY") {
             Ok(key) => key,
             Err(_) => {
-                println!("OKX_API_KEY not set, skipping test");
+                info!("OKX_API_KEY not set, skipping test");
                 return;
             }
         };
@@ -246,7 +247,7 @@ mod tests {
         let api_secret = match dotenv::var("OKX_API_SECRET") {
             Ok(secret) => secret,
             Err(_) => {
-                println!("OKX_API_SECRET not set, skipping test");
+                info!("OKX_API_SECRET not set, skipping test");
                 return;
             }
         };
@@ -254,7 +255,7 @@ mod tests {
         let passphrase = match dotenv::var("OKX_PASSPHRASE") {
             Ok(pass) => pass,
             Err(_) => {
-                println!("OKX_PASSPHRASE not set, skipping test");
+                info!("OKX_PASSPHRASE not set, skipping test");
                 return;
             }
         };
@@ -263,20 +264,18 @@ mod tests {
 
         match client {
             Ok(client) => {
-                println!("OKX client created successfully");
-                // Try to get account balance but handle errors gracefully
+                info!("OKX client created successfully");
                 match client.get_account_balance(Some("USDT")).await {
                     Ok(balances) => {
-                        println!("Account balance retrieved: {:?}", balances);
+                        info!("Account balance retrieved: {:?}", balances);
                     }
                     Err(e) => {
-                        println!("Failed to get account balance: {}", e);
-                        // This is expected if there's a network issue or invalid credentials
+                        info!("Failed to get account balance: {}", e);
                     }
                 }
             }
             Err(e) => {
-                println!("Failed to create OKX client: {}", e);
+                info!("Failed to create OKX client: {}", e);
             }
         }
     }
@@ -284,11 +283,10 @@ mod tests {
     #[tokio::test]
     async fn test_get_announcements() {
         dotenv().ok();
-        // Check if environment variables are set
         let api_key = match dotenv::var("OKX_API_KEY") {
             Ok(key) => key,
             Err(_) => {
-                println!("OKX_API_KEY not set, skipping test");
+                info!("OKX_API_KEY not set, skipping test");
                 return;
             }
         };
@@ -296,7 +294,7 @@ mod tests {
         let api_secret = match dotenv::var("OKX_API_SECRET") {
             Ok(secret) => secret,
             Err(_) => {
-                println!("OKX_API_SECRET not set, skipping test");
+                info!("OKX_API_SECRET not set, skipping test");
                 return;
             }
         };
@@ -304,7 +302,7 @@ mod tests {
         let passphrase = match dotenv::var("OKX_PASSPHRASE") {
             Ok(pass) => pass,
             Err(_) => {
-                println!("OKX_PASSPHRASE not set, skipping test");
+                info!("OKX_PASSPHRASE not set, skipping test");
                 return;
             }
         };
@@ -312,6 +310,6 @@ mod tests {
         let client = Client::new(api_key, api_secret, passphrase, OkxEnvironment::Demo);
 
         let announcements = client.unwrap().get_announcements().await.unwrap();
-        println!("{:?}", announcements);
+        info!("{:?}", announcements);
     }
 }

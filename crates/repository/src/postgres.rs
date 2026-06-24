@@ -3,6 +3,7 @@ use quant_common::error::Error;
 use quant_common::Result;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::sync::Arc;
+use tracing::{error, info, instrument};
 
 /// PostgreSQL 数据库客户端
 ///
@@ -14,6 +15,7 @@ pub struct PostgresClient {
 
 impl PostgresClient {
     /// Create a new PostgreSQL connection pool from config.
+    #[instrument(skip(config), fields(database = %config.database, host = %config.host))]
     pub async fn new(config: &DatabaseConfig) -> Result<Self> {
         let connection_string = format!(
             "postgres://{}:{}@{}:{}/{}",
@@ -24,8 +26,12 @@ impl PostgresClient {
             .max_connections(config.max_connections)
             .connect(&connection_string)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(|e| {
+                error!("Database connection failed: {}", e);
+                Error::Database(e.to_string())
+            })?;
 
+        info!("Database connected successfully");
         Ok(Self {
             pool: Arc::new(pool),
         })
@@ -53,12 +59,16 @@ impl PostgresClient {
     }
 
     /// Health check — verifies database connectivity.
+    #[instrument(skip(self))]
     pub async fn health_check(&self) -> Result<bool> {
         sqlx::query("SELECT 1")
             .fetch_one(&*self.pool)
             .await
             .map(|_| true)
-            .map_err(|e| Error::Database(e.to_string()))
+            .map_err(|e| {
+                error!("Health check failed: {}", e);
+                Error::Database(e.to_string())
+            })
     }
 }
 

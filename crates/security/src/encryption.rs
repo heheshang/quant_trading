@@ -5,6 +5,7 @@ use aes_gcm::{
 use base64::{engine::general_purpose, Engine as _};
 use quant_common::{Error, Result};
 use rand::RngCore;
+use tracing::{error, info, instrument, warn};
 
 /// 数据加密服务
 pub struct DataEncryption {
@@ -36,17 +37,21 @@ impl DataEncryption {
     }
 
     /// 加密数据
+    #[instrument(skip(self, plaintext))]
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<String> {
-        // 生成随机 nonce
+        info!("encrypting data");
+
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        // 加密
         let ciphertext = self
             .cipher
             .encrypt(nonce, plaintext)
-            .map_err(|e| Error::Internal(format!("Encryption failed: {}", e)))?;
+            .map_err(|e| {
+                error!(error = %e, "encryption failed");
+                Error::Internal(format!("Encryption failed: {}", e))
+            })?;
 
         // 将 nonce 和密文组合并 base64 编码
         let mut result = nonce_bytes.to_vec();
@@ -56,25 +61,32 @@ impl DataEncryption {
     }
 
     /// 解密数据
+    #[instrument(skip(self, encrypted))]
     pub fn decrypt(&self, encrypted: &str) -> Result<Vec<u8>> {
-        // Base64 解码
+        info!("decrypting data");
+
         let data = general_purpose::STANDARD
             .decode(encrypted)
-            .map_err(|e| Error::Internal(format!("Base64 decode failed: {}", e)))?;
+            .map_err(|e| {
+                error!(error = %e, "base64 decode failed");
+                Error::Internal(format!("Base64 decode failed: {}", e))
+            })?;
 
         if data.len() < 12 {
+            warn!("invalid encrypted data: too short");
             return Err(Error::Internal("Invalid encrypted data".to_string()));
         }
 
-        // 分离 nonce 和密文
         let nonce = Nonce::from_slice(&data[..12]);
         let ciphertext = &data[12..];
 
-        // 解密
         let plaintext = self
             .cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| Error::Internal(format!("Decryption failed: {}", e)))?;
+            .map_err(|e| {
+                error!(error = %e, "decryption failed");
+                Error::Internal(format!("Decryption failed: {}", e))
+            })?;
 
         Ok(plaintext)
     }
@@ -96,6 +108,7 @@ pub struct PasswordHasher;
 
 impl PasswordHasher {
     /// 哈希密码
+    #[instrument(skip(password))]
     pub fn hash_password(password: &str) -> Result<String> {
         use argon2::{
             password_hash::{PasswordHasher as _, SaltString},
@@ -107,25 +120,39 @@ impl PasswordHasher {
 
         let password_hash = argon2
             .hash_password(password.as_bytes(), &salt)
-            .map_err(|e| Error::Internal(format!("Password hashing failed: {}", e)))?
+            .map_err(|e| {
+                error!(error = %e, "password hashing failed");
+                Error::Internal(format!("Password hashing failed: {}", e))
+            })?
             .to_string();
 
+        info!("password hashed");
         Ok(password_hash)
     }
 
     /// 验证密码
+    #[instrument(skip(password, hash))]
     pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
         use argon2::{
             password_hash::{PasswordHash, PasswordVerifier},
             Argon2,
         };
 
-        let parsed_hash =
-            PasswordHash::new(hash).map_err(|e| Error::Internal(format!("Invalid hash: {}", e)))?;
+        let parsed_hash = PasswordHash::new(hash)
+            .map_err(|e| {
+                warn!(error = %e, "invalid password hash format");
+                Error::Internal(format!("Invalid hash: {}", e))
+            })?;
 
-        Ok(Argon2::default()
+        let valid = Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
-            .is_ok())
+            .is_ok();
+
+        if !valid {
+            warn!("password verification failed");
+        }
+
+        Ok(valid)
     }
 }
 

@@ -1,8 +1,10 @@
 use quant_common::config::AppConfig;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{info, instrument};
 
 /// Configuration management service.
+#[derive(Debug)]
 pub struct ConfigService {
     config: Arc<RwLock<AppConfig>>,
 }
@@ -12,13 +14,18 @@ impl ConfigService {
         Self { config }
     }
 
+    #[instrument(skip_all)]
     pub async fn get_config(&self) -> AppConfig {
-        self.config.read().await.clone()
+        let cfg = self.config.read().await.clone();
+        info!("Config retrieved");
+        cfg
     }
 
+    #[instrument(skip(self, new_config))]
     pub async fn update_config(&self, new_config: AppConfig) {
         let mut cfg = self.config.write().await;
         *cfg = new_config;
+        info!("Config updated");
     }
 }
 

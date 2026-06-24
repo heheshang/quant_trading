@@ -55,6 +55,11 @@ pub struct MonitoringConfig {
     pub enable_prometheus: bool,
     pub prometheus_port: u16,
     pub log_level: String,
+    pub log_dir: String,
+    pub service_name: String,
+    pub enable_json_logging: bool,
+    pub enable_file_logging: bool,
+    pub enable_stdout_logging: bool,
     pub alert_email: Option<String>,
     pub alert_webhook: Option<String>,
 }
@@ -115,6 +120,11 @@ impl Default for AppConfig {
                 enable_prometheus: true,
                 prometheus_port: 9090,
                 log_level: "info".to_string(),
+                log_dir: "./logs".to_string(),
+                service_name: "quant-trading".to_string(),
+                enable_json_logging: false,
+                enable_file_logging: true,
+                enable_stdout_logging: true,
                 alert_email: None,
                 alert_webhook: None,
             },
@@ -135,5 +145,56 @@ impl Default for AppConfig {
                     == "true",
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_config_default_monitoring_log_level() {
+        let app_config = AppConfig::default();
+        let config = &app_config.monitoring;
+        assert_eq!(config.log_level, "info");
+    }
+
+    #[test]
+    fn test_app_config_default_monitoring_log_dir() {
+        let app_config = AppConfig::default();
+        assert_eq!(app_config.monitoring.log_dir, "./logs");
+    }
+
+    #[test]
+    fn test_app_config_default_monitoring_service_name() {
+        let app_config = AppConfig::default();
+        assert_eq!(app_config.monitoring.service_name, "quant-trading");
+    }
+
+    #[test]
+    fn test_app_config_default_monitoring_json_disabled() {
+        let app_config = AppConfig::default();
+        assert!(!app_config.monitoring.enable_json_logging);
+    }
+
+    #[test]
+    fn test_app_config_default_monitoring_file_enabled() {
+        let app_config = AppConfig::default();
+        assert!(app_config.monitoring.enable_file_logging);
+    }
+
+    #[test]
+    fn test_app_config_default_monitoring_stdout_enabled() {
+        let app_config = AppConfig::default();
+        assert!(app_config.monitoring.enable_stdout_logging);
+    }
+
+    #[test]
+    fn test_app_config_default_monitoring_alert_fields() {
+        let app_config = AppConfig::default();
+        assert!(app_config.monitoring.enable_prometheus);
+        assert_eq!(app_config.monitoring.prometheus_port, 9090);
+        assert_eq!(app_config.monitoring.alert_email, None);
+        assert_eq!(app_config.monitoring.alert_webhook, None);
     }
 }

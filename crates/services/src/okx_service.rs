@@ -6,6 +6,7 @@ use exchange_okx::Client as OkxClient;
 use quant_common::types::MarketData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{error, instrument};
 
 /// Executes a block with a borrowed OKX client, handling the double-RwLock guard boilerplate.
 /// Returns `Err(ServiceError::OkxNotInitialized)` when the client is absent.
@@ -60,21 +61,29 @@ impl OkxService {
         })
     }
 
+    #[instrument(skip(self, request), fields(symbol = %request.inst_id, side = %request.side, ord_type = %request.ord_type))]
     pub async fn place_order(&self, request: OkxPlaceOrderRequest) -> ServiceResult<OkxOrder> {
         with_okx_client!(self, |client| {
             client
                 .place_order(request)
                 .await
-                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+                .map_err(|e| {
+                    error!("Place order failed: {}", e);
+                    ServiceError::OkxApi(e.to_string())
+                })
         })
     }
 
+    #[instrument(skip(self), fields(inst_id = %inst_id, order_id = %ord_id))]
     pub async fn cancel_order(&self, inst_id: &str, ord_id: &str) -> ServiceResult<()> {
         with_okx_client!(self, |client| {
             client
                 .cancel_order(inst_id, ord_id)
                 .await
-                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+                .map_err(|e| {
+                    error!("Cancel order failed: {}", e);
+                    ServiceError::OkxApi(e.to_string())
+                })
         })
     }
 

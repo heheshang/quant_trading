@@ -3,6 +3,7 @@ use quant_common::types::{Account, Order, Position};
 use quant_repository::PostgresClient;
 use sqlx::Row;
 use std::sync::Arc;
+use tracing::{error, info, instrument};
 
 /// Account and position query service.
 pub struct AccountService {
@@ -14,6 +15,7 @@ impl AccountService {
         Self { postgres }
     }
 
+    #[instrument(skip_all)]
     pub async fn get_account_info(&self) -> ServiceResult<Account> {
         let client = self
             .postgres
@@ -32,9 +34,16 @@ impl AccountService {
         )
         .fetch_optional(pool)
         .await
-        .map_err(ServiceError::from)?
-        .ok_or_else(|| ServiceError::NotFound("No account found".into()))?;
+        .map_err(|e| {
+            error!("Failed to fetch account info: {}", e);
+            ServiceError::from(e)
+        })?
+        .ok_or_else(|| {
+            error!("No account found");
+            ServiceError::NotFound("No account found".into())
+        })?;
 
+        info!(account_id = %row.get::<uuid::Uuid, _>("account_id"), "Account info retrieved");
         Ok(Account {
             account_id: row.get("account_id"),
             total_assets: row.get("total_assets"),
@@ -49,6 +58,7 @@ impl AccountService {
         })
     }
 
+    #[instrument(skip_all)]
     pub async fn get_active_orders(&self) -> ServiceResult<Vec<Order>> {
         let client = self
             .postgres
@@ -68,9 +78,13 @@ impl AccountService {
         )
         .fetch_all(pool)
         .await
-        .map_err(ServiceError::from)?;
+        .map_err(|e| {
+            error!("Failed to fetch active orders: {}", e);
+            ServiceError::from(e)
+        })?;
 
-        rows.iter()
+        let orders = rows
+            .iter()
             .map(|row| -> ServiceResult<Order> {
                 let status_str: String = row.get("status");
                 let otype_str: String = row.get("order_type");
@@ -110,7 +124,10 @@ impl AccountService {
                     updated_at: row.get("updated_at"),
                 })
             })
-            .collect::<ServiceResult<Vec<_>>>()
+            .collect::<ServiceResult<Vec<_>>>()?;
+
+        info!(count = orders.len(), "Active orders retrieved");
+        Ok(orders)
     }
 
     pub async fn persist_order(&self, order: &Order, account_id: &uuid::Uuid) -> ServiceResult<()> {
@@ -163,6 +180,7 @@ impl AccountService {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub async fn get_positions(&self) -> ServiceResult<Vec<Position>> {
         let client = self
             .postgres
@@ -180,9 +198,12 @@ impl AccountService {
         )
         .fetch_all(pool)
         .await
-        .map_err(ServiceError::from)?;
+        .map_err(|e| {
+            error!("Failed to fetch positions: {}", e);
+            ServiceError::from(e)
+        })?;
 
-        Ok(rows
+        let positions: Vec<Position> = rows
             .iter()
             .map(|row| Position {
                 symbol: row.get("symbol"),
@@ -194,7 +215,10 @@ impl AccountService {
                 realized_pnl: row.get("realized_pnl"),
                 updated_at: row.get("updated_at"),
             })
-            .collect())
+            .collect();
+
+        info!(count = positions.len(), "Positions retrieved");
+        Ok(positions)
     }
 }
 

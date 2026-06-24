@@ -4,6 +4,7 @@ use chrono::Utc;
 use hmac::{Hmac, Mac};
 use quant_common::{Error, Result};
 use sha2::Sha256;
+use tracing::{error, info, instrument};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -13,22 +14,29 @@ pub struct ApiKeyManager {
 }
 
 impl ApiKeyManager {
+    #[instrument(skip(encryption_key))]
     pub fn new(encryption_key: &str) -> Result<Self> {
         let encryptor = DataEncryption::from_key_string(encryption_key)?;
+        info!("ApiKeyManager initialized");
         Ok(Self { encryptor })
     }
 
     /// 加密存储 API Key
+    #[instrument(skip(self, api_key))]
     pub fn encrypt_api_key(&self, api_key: &str) -> Result<String> {
+        info!("encrypting API key");
         self.encryptor.encrypt_string(api_key)
     }
 
     /// 解密 API Key
+    #[instrument(skip(self, encrypted))]
     pub fn decrypt_api_key(&self, encrypted: &str) -> Result<String> {
+        info!("decrypting API key");
         self.encryptor.decrypt_string(encrypted)
     }
 
     /// 生成 API 签名（用于交易所 API 调用）
+    #[instrument(skip(self, secret))]
     pub fn generate_signature(
         &self,
         secret: &str,
@@ -37,11 +45,14 @@ impl ApiKeyManager {
         request_path: &str,
         body: &str,
     ) -> Result<String> {
-        // OKX 签名格式: timestamp + method + requestPath + body
+        info!(method = %method, path = %request_path, "generating API signature");
         let prehash = format!("{}{}{}{}", timestamp, method, request_path, body);
 
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .map_err(|e| Error::Internal(format!("HMAC init failed: {}", e)))?;
+            .map_err(|e| {
+                error!(error = %e, "HMAC initialization failed");
+                Error::Internal(format!("HMAC init failed: {}", e))
+            })?;
 
         mac.update(prehash.as_bytes());
         let result = mac.finalize();

@@ -7,6 +7,7 @@ use quant_common::utils::{
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
+use tracing::{error, info, instrument};
 
 /// 回测引擎
 pub struct BacktestEngine {
@@ -41,20 +42,32 @@ impl BacktestEngine {
         }
     }
 
-    /// 运行回测
+    #[instrument(skip(self, strategy, market_data), fields(strategy = %strategy.name(), data_points = market_data.len()))]
     pub async fn run<S: Strategy>(
         &mut self,
         strategy: &S,
         market_data: Vec<MarketData>,
     ) -> Result<BacktestResult> {
+        info!(
+            strategy = %strategy.name(),
+            data_points = market_data.len(),
+            initial_capital = %self.initial_capital,
+            "Starting backtest"
+        );
         let start_date = market_data
             .first()
-            .ok_or_else(|| Error::Validation("Empty market data".to_string()))?
+            .ok_or_else(|| {
+                error!("Empty market data provided for backtest");
+                Error::Validation("Empty market data".to_string())
+            })?
             .timestamp;
 
         let end_date = market_data
             .last()
-            .ok_or_else(|| Error::Validation("Empty market data".to_string()))?
+            .ok_or_else(|| {
+                error!("Empty market data provided for backtest");
+                Error::Validation("Empty market data".to_string())
+            })?
             .timestamp;
 
         // 按时间戳分组数据
@@ -68,6 +81,7 @@ impl BacktestEngine {
 
         let mut timestamps: Vec<DateTime<Utc>> = data_by_time.keys().cloned().collect();
         timestamps.sort();
+        let processed_timestamps = timestamps.len();
 
         let mut total_trades = 0;
         let winning_trades = 0;
@@ -100,6 +114,13 @@ impl BacktestEngine {
                 .push((timestamp, self.account.total_assets));
         }
 
+        info!(
+            strategy = %strategy.name(),
+            processed_timestamps,
+            total_trades,
+            "Backtest main loop complete"
+        );
+
         // 计算回测结果
         let total_return =
             (self.account.total_assets - self.initial_capital) / self.initial_capital;
@@ -128,6 +149,17 @@ impl BacktestEngine {
             Decimal::ZERO
         };
 
+        info!(
+            strategy = %strategy.name(),
+            total_return = %total_return,
+            annual_return = %annual_return,
+            sharpe_ratio = %sharpe_ratio,
+            max_drawdown = %max_drawdown,
+            win_rate = %win_rate,
+            total_trades,
+            "Backtest complete"
+        );
+
         Ok(BacktestResult {
             strategy_id: strategy.name().to_string(),
             start_date,
@@ -147,12 +179,16 @@ impl BacktestEngine {
         })
     }
 
+    #[instrument(skip(self, market_data), fields(order_id = %order.order_id, symbol = %order.symbol))]
     fn execute_order(&mut self, order: Order, market_data: &[MarketData]) -> Result<()> {
         // 查找订单对应的市场数据
         let data = market_data
             .iter()
             .find(|d| d.symbol == order.symbol)
-            .ok_or_else(|| Error::NotFound("Market data not found".to_string()))?;
+            .ok_or_else(|| {
+                error!(symbol = %order.symbol, order_id = %order.order_id, "Market data not found for order execution");
+                Error::NotFound("Market data not found".to_string())
+            })?;
 
         let price = order.price.unwrap_or(data.close);
         let total_cost = price * order.quantity;
@@ -205,6 +241,7 @@ impl BacktestEngine {
         Ok(())
     }
 
+    #[instrument(skip(self, market_data), fields(positions = self.positions.len()))]
     fn update_account(
         &mut self,
         market_data: &[MarketData],

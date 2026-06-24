@@ -5,7 +5,7 @@ use quant_common::{Error, Result};
 use rust_decimal::prelude::ToPrimitive;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 /// OKX 订单执行器
 pub struct OkxExecutor {
@@ -19,6 +19,7 @@ impl OkxExecutor {
     }
 
     /// 执行订单到 OKX
+    #[instrument(skip(self), fields(order_id = %order.order_id, symbol = %order.symbol, side = ?order.side))]
     pub async fn execute_order(&self, order: &Order) -> Result<String> {
         let client = self.client.read().await;
 
@@ -39,6 +40,7 @@ impl OkxExecutor {
     }
 
     /// 取消 OKX 订单
+    #[instrument(skip(self), fields(inst_id = %inst_id, ord_id = %ord_id))]
     pub async fn cancel_order(&self, inst_id: &str, ord_id: &str) -> Result<()> {
         let client = self.client.read().await;
         client.cancel_order(inst_id, ord_id).await?;
@@ -100,6 +102,7 @@ impl OkxExecutor {
     }
 
     /// 查询订单状态（可用于订单跟踪）
+    #[instrument(skip(self), fields(inst_id = %_inst_id, ord_id = %_ord_id))]
     pub async fn get_order_status(&self, _inst_id: &str, _ord_id: &str) -> Result<OrderStatus> {
         // This would require implementing get_order in the OKX client
         // For now, return a placeholder

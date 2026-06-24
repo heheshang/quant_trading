@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
+use tracing::instrument;
 
 /// A single K-line record as stored in the market_data partitioned table
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -30,6 +31,7 @@ impl MarketDataRepository {
     }
 
     /// Insert a batch of K-line records in a single transaction
+    #[instrument(skip(self, items), fields(count = items.len()))]
     pub async fn insert_batch(&self, items: &[NewMarketDataRecord]) -> Result<u64> {
         if items.is_empty() {
             return Ok(0);
@@ -73,6 +75,7 @@ impl MarketDataRepository {
     }
 
     /// Query market data by instrument, timeframe, and time range
+    #[instrument(skip(self), fields(instrument_id = %instrument_id, timeframe = %timeframe, %from, %to))]
     pub async fn query_by_range(
         &self,
         instrument_id: &str,

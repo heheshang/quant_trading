@@ -63,14 +63,13 @@ impl AuditLogger {
             error_message,
         };
 
-        // 记录到日志系统
         info!(
-            audit_log = ?log,
-            "Audit: {} by {} on {} - {}",
-            format!("{:?}", log.action),
-            log.username,
-            log.resource,
-            if log.success { "SUCCESS" } else { "FAILED" }
+            action = ?log.action,
+            user = %log.username,
+            resource = %log.resource,
+            result = if log.success { "success" } else { "failed" },
+            audit_id = %log.id,
+            "audit event recorded"
         );
 
         // TODO: 存储到数据库

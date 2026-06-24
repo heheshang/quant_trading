@@ -2,6 +2,7 @@ use super::Migration;
 use quant_common::{Error, Result};
 use sqlx::PgPool;
 use std::sync::Arc;
+use tracing::instrument;
 
 /// Migration 001: Create core tables
 pub struct Migration001;
@@ -16,6 +17,7 @@ impl Migration for Migration001 {
         "create_core_tables"
     }
 
+    #[instrument(skip(self, pool))]
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Create accounts table
         sqlx::query(
@@ -113,6 +115,7 @@ impl Migration for Migration001 {
         Ok(())
     }
 
+    #[instrument(skip(self, pool))]
     async fn down(&self, pool: &PgPool) -> Result<()> {
         // Drop tables in reverse order (respecting foreign keys)
         sqlx::query("DROP TABLE IF EXISTS trades")
@@ -152,6 +155,7 @@ impl Migration for Migration002 {
         "create_indices"
     }
 
+    #[instrument(skip(self, pool))]
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Indices for accounts table
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_accounts_type ON accounts(account_type)")
@@ -220,6 +224,7 @@ impl Migration for Migration002 {
         Ok(())
     }
 
+    #[instrument(skip(self, pool))]
     async fn down(&self, pool: &PgPool) -> Result<()> {
         // Drop all indices
         let indices = vec![
@@ -261,6 +266,7 @@ impl Migration for Migration003 {
         "create_alerts_and_risk_tables"
     }
 
+    #[instrument(skip(self, pool))]
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Create alerts table
         sqlx::query(
@@ -325,6 +331,7 @@ impl Migration for Migration003 {
         Ok(())
     }
 
+    #[instrument(skip(self, pool))]
     async fn down(&self, pool: &PgPool) -> Result<()> {
         sqlx::query("DROP INDEX IF EXISTS idx_risk_metrics_recorded")
             .execute(pool)
@@ -373,6 +380,7 @@ impl Migration for Migration004 {
         "create_market_data_table"
     }
 
+    #[instrument(skip(self, pool))]
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Create parent partitioned table
         sqlx::query(
@@ -442,6 +450,7 @@ impl Migration for Migration004 {
         Ok(())
     }
 
+    #[instrument(skip(self, pool))]
     async fn down(&self, pool: &PgPool) -> Result<()> {
         sqlx::query("DROP TABLE IF EXISTS market_data CASCADE")
             .execute(pool)
@@ -465,6 +474,7 @@ impl Migration for Migration005 {
         "add_json_fields_to_backtest_and_strategies"
     }
 
+    #[instrument(skip(self, pool))]
     async fn up(&self, pool: &PgPool) -> Result<()> {
         sqlx::query(
             r#"
@@ -499,6 +509,7 @@ impl Migration for Migration005 {
         Ok(())
     }
 
+    #[instrument(skip(self, pool))]
     async fn down(&self, pool: &PgPool) -> Result<()> {
         sqlx::query("ALTER TABLE backtest_results DROP COLUMN IF EXISTS parameters_json")
             .execute(pool)

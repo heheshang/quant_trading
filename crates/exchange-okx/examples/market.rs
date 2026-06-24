@@ -1,16 +1,20 @@
 use okx::api::api_trait::OkxApiTrait;
 use okx::config::Credentials;
 use okx::{Error, OkxClient, OkxMarket};
+use tracing::info;
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     let credentials = Credentials::from_env().unwrap();
 
     let client: OkxClient = OkxClient::new(credentials).unwrap();
 
     let market = OkxMarket::new(client.clone());
-    // 获取BTC-USDT的产品行情
     let ticker = market.get_ticker("BTC-USDT-SWAP").await?;
-    println!("BTC-USDT 行情: {:?}", ticker);
+    info!("BTC-USDT 行情: {:?}", ticker);
     Ok(())
 }

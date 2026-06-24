@@ -1,5 +1,4 @@
 use thiserror::Error;
-
 pub type ServiceResult<T> = Result<T, ServiceError>;
 
 #[derive(Debug, Error)]

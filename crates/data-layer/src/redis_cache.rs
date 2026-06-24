@@ -4,6 +4,7 @@ use quant_common::{Error, Result};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tracing::{error, instrument};
 
 /// Redis 缓存客户端
 pub struct RedisCache {
@@ -12,6 +13,7 @@ pub struct RedisCache {
 
 impl RedisCache {
     /// 创建新的 Redis 缓存客户端
+    #[instrument]
     pub fn new(config: &RedisConfig) -> Result<Self> {
         let redis_url = if let Some(password) = &config.password {
             format!(
@@ -25,12 +27,16 @@ impl RedisCache {
         let cfg = Config::from_url(redis_url);
         let pool = cfg
             .create_pool(Some(Runtime::Tokio1))
-            .map_err(|e| Error::Redis(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to create Redis pool: {}", e);
+                Error::Redis(e.to_string())
+            })?;
 
         Ok(Self { pool })
     }
 
     /// 设置键值对
+    #[instrument(skip(self, value), fields(key = %key))]
     pub async fn set<T: Serialize>(
         &self,
         key: &str,
@@ -62,6 +68,7 @@ impl RedisCache {
     }
 
     /// 获取键值
+    #[instrument(skip(self), fields(key = %key))]
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>> {
         let mut conn = self
             .pool
@@ -85,6 +92,7 @@ impl RedisCache {
     }
 
     /// 删除键
+    #[instrument(skip(self), fields(key = %key))]
     pub async fn delete(&self, key: &str) -> Result<()> {
         let mut conn = self
             .pool
@@ -101,6 +109,7 @@ impl RedisCache {
     }
 
     /// 检查键是否存在
+    #[instrument(skip(self), fields(key = %key))]
     pub async fn exists(&self, key: &str) -> Result<bool> {
         let mut conn = self
             .pool
@@ -117,6 +126,7 @@ impl RedisCache {
     }
 
     /// 设置带过期时间的键值对（秒）
+    #[instrument(skip(self, value), fields(key = %key, seconds))]
     pub async fn set_with_expiry(&self, key: &str, value: &str, seconds: u64) -> Result<()> {
         let mut conn = self
             .pool
@@ -133,6 +143,7 @@ impl RedisCache {
     }
 
     /// 增加计数器
+    #[instrument(skip(self), fields(key = %key))]
     pub async fn increment(&self, key: &str) -> Result<i64> {
         let mut conn = self
             .pool
@@ -149,6 +160,7 @@ impl RedisCache {
     }
 
     /// 健康检查
+    #[instrument(skip(self))]
     pub async fn health_check(&self) -> Result<bool> {
         let mut conn = self
             .pool

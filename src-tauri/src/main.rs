@@ -10,7 +10,7 @@ use tracing::{info, warn};
 mod commands;
 mod state;
 
-use data_layer::OkxDataSource;
+use data_layer::{OkxDataSource, PostgresClient, RedisCache};
 use exchange_okx::{types::OkxEnvironment, Client as OkxClient};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
 use state::AppState;
@@ -18,21 +18,23 @@ use trading_layer::OkxExecutor;
 
 #[tokio::main]
 async fn main() {
-    // 初始化日志
+    // 加载配置
+    let config = AppConfig::default();
+
+    // 初始化日志（从 AppConfig 读取，LOG_LEVEL 环境变量可覆写）
+    let log_level = std::env::var("LOG_LEVEL")
+        .unwrap_or_else(|_| config.monitoring.log_level.clone());
     monitor_layer::logging::init_logging(monitor_layer::logging::LoggingConfig {
-        log_level: "info".to_string(),
-        log_dir: "./logs".to_string(),
-        service_name: "quant-trading".to_string(),
-        enable_json_logging: false,
-        enable_file_logging: true,
-        enable_stdout_logging: true,
+        log_level,
+        log_dir: config.monitoring.log_dir.clone(),
+        service_name: config.monitoring.service_name.clone(),
+        enable_json_logging: config.monitoring.enable_json_logging,
+        enable_file_logging: config.monitoring.enable_file_logging,
+        enable_stdout_logging: config.monitoring.enable_stdout_logging,
     })
     .expect("Failed to initialize logging");
 
     info!("Starting Quant Trading System...");
-
-    // 加载配置
-    let config = AppConfig::default();
 
     // 初始化 OKX 客户端
     let (okx_client, okx_executor, okx_data_source) =

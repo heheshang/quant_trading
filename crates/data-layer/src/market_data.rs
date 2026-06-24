@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use quant_common::types::MarketData;
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
+use tracing::instrument;
 
 /// 数据源接口
 #[async_trait::async_trait]
@@ -43,6 +44,7 @@ impl MarketDataManager {
     }
 
     /// 获取实时行情（从第一个可用的数据源）
+    #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData> {
         for source in &self.sources {
             match source.get_realtime_data(symbol).await {
@@ -57,6 +59,7 @@ impl MarketDataManager {
     }
 
     /// 获取历史数据
+    #[instrument(skip(self), fields(symbol = %symbol, %start, %end))]
     pub async fn get_historical_data(
         &self,
         symbol: &str,

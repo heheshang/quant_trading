@@ -1,13 +1,16 @@
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use tracing::{info, instrument, warn};
 
 /// VaR计算器 (Value at Risk)
 pub struct VaRCalculator;
 
 impl VaRCalculator {
     /// 历史模拟法计算VaR
+    #[instrument(skip(returns), fields(risk_check = "var_historical"))]
     pub fn historical_simulation(returns: &[Decimal], confidence_level: f64) -> Decimal {
         if returns.is_empty() {
+            warn!("Historical VaR called with empty returns");
             return Decimal::ZERO;
         }
 
@@ -17,12 +20,16 @@ impl VaRCalculator {
         let index = ((1.0 - confidence_level) * returns.len() as f64) as usize;
         let index = index.min(returns.len() - 1);
 
-        -sorted_returns[index]
+        let var = -sorted_returns[index];
+        info!("Historical VaR computed: confidence={}, result={}", confidence_level, var);
+        var
     }
 
     /// 参数法计算VaR（假设正态分布）
+    #[instrument(skip(returns), fields(risk_check = "var_parametric"))]
     pub fn parametric(returns: &[Decimal], confidence_level: f64) -> Decimal {
         if returns.is_empty() {
+            warn!("Parametric VaR called with empty returns");
             return Decimal::ZERO;
         }
 
@@ -45,6 +52,8 @@ impl VaRCalculator {
             _ => Decimal::from_f64_retain(1.28).unwrap(),
         };
 
-        mean + z_score * std_dev
+        let var = mean + z_score * std_dev;
+        info!("Parametric VaR computed: confidence={}, result={}", confidence_level, var);
+        var
     }
 }
