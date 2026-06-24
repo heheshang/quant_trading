@@ -12,6 +12,7 @@ const MARGIN_RATIO_CRITICAL: f64 = 0.9;
 pub struct RealTimeRiskMonitor {
     config: RiskConfig,
     alerts: Vec<Alert>,
+    peak_equity: Decimal,
 }
 
 impl RealTimeRiskMonitor {
@@ -19,6 +20,7 @@ impl RealTimeRiskMonitor {
         Self {
             config,
             alerts: Vec::new(),
+            peak_equity: Decimal::ZERO,
         }
     }
 
@@ -53,16 +55,21 @@ impl RealTimeRiskMonitor {
         new_alerts
     }
 
-    fn check_drawdown(&self, account: &Account) -> Option<Alert> {
+    fn check_drawdown(&mut self, account: &Account) -> Option<Alert> {
         let max_drawdown = Decimal::from_f64_retain(self.config.max_drawdown)
             .unwrap_or(Decimal::from_f64_retain(DEFAULT_MAX_DRAWDOWN).unwrap());
 
-        // 简化：实际需要基于历史最高净值计算
-        let current_drawdown = if account.total_assets > Decimal::ZERO {
-            Decimal::ZERO // 实际应该计算真实回撤
-        } else {
-            Decimal::ZERO
-        };
+        // 跟踪历史最高净值
+        self.peak_equity = self.peak_equity.max(account.total_assets);
+
+        // 如果初始净值尚未更新，跳过检查
+        if self.peak_equity == Decimal::ZERO {
+            return None;
+        }
+
+        // 计算当前回撤 = (峰值 - 当前) / 峰值
+        let current_drawdown =
+            (self.peak_equity - account.total_assets) / self.peak_equity;
 
         if current_drawdown > max_drawdown {
             Some(Alert {
