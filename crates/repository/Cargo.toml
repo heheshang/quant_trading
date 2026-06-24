@@ -1,0 +1,29 @@
+[package]
+name = "quant-repository"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Repository layer — database access (PostgreSQL)
+# Should NOT depend on external service clients or domain-adjacent logic.
+[dependencies]
+quant-domain = { path = "../domain" }
+quant-common = { path = "../common" }
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true, features = ["maths"] }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = "0.1"
+
+# Database
+sqlx = { workspace = true }
+
+[dev-dependencies]
+dotenv = "0.15"

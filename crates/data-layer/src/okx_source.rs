@@ -1,8 +1,8 @@
-use quant_common::{Error, Result};
-use quant_common::types::MarketData;
 use crate::market_data::DataSource;
-use exchange_okx::Client as OkxClient;
 use chrono::{DateTime, Utc};
+use exchange_okx::Client as OkxClient;
+use quant_common::types::MarketData;
+use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -27,20 +27,19 @@ impl OkxDataSource {
         Ok(MarketData {
             symbol: symbol.to_string(),
             timestamp: DateTime::from_timestamp(
-                candle.ts.parse::<i64>().map_err(|e| Error::Internal(e.to_string()))? / 1000,
+                candle
+                    .ts
+                    .parse::<i64>()
+                    .map_err(|e| Error::Internal(e.to_string()))?
+                    / 1000,
                 0,
             )
             .unwrap_or_else(Utc::now),
-            open: Decimal::from_str(&candle.open)
-                .map_err(|e| Error::Internal(e.to_string()))?,
-            high: Decimal::from_str(&candle.high)
-                .map_err(|e| Error::Internal(e.to_string()))?,
-            low: Decimal::from_str(&candle.low)
-                .map_err(|e| Error::Internal(e.to_string()))?,
-            close: Decimal::from_str(&candle.close)
-                .map_err(|e| Error::Internal(e.to_string()))?,
-            volume: Decimal::from_str(&candle.vol)
-                .map_err(|e| Error::Internal(e.to_string()))?,
+            open: Decimal::from_str(&candle.open).map_err(|e| Error::Internal(e.to_string()))?,
+            high: Decimal::from_str(&candle.high).map_err(|e| Error::Internal(e.to_string()))?,
+            low: Decimal::from_str(&candle.low).map_err(|e| Error::Internal(e.to_string()))?,
+            close: Decimal::from_str(&candle.close).map_err(|e| Error::Internal(e.to_string()))?,
+            volume: Decimal::from_str(&candle.vol).map_err(|e| Error::Internal(e.to_string()))?,
             turnover: Decimal::from_str(&candle.vol_ccy)
                 .map_err(|e| Error::Internal(e.to_string()))?,
             open_interest: None,
@@ -56,12 +55,10 @@ impl OkxDataSource {
 impl DataSource for OkxDataSource {
     async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData> {
         let client = self.client.read().await;
-        
+
         // Get the latest candle (1m)
-        let candles = client
-            .get_candles(symbol, "1m", Some(1))
-            .await?;
-        
+        let candles = client.get_candles(symbol, "1m", Some(1)).await?;
+
         if let Some(candle) = candles.first() {
             Self::candle_to_market_data(symbol, candle)
         } else {
@@ -79,16 +76,14 @@ impl DataSource for OkxDataSource {
         end: DateTime<Utc>,
     ) -> Result<Vec<MarketData>> {
         let client = self.client.read().await;
-        
+
         // Calculate the number of candles needed (using 1H intervals)
         let duration = end.signed_duration_since(start);
         let hours = duration.num_hours();
         let limit = hours.min(300) as u32; // OKX has a limit
-        
-        let candles = client
-            .get_candles(symbol, "1H", Some(limit))
-            .await?;
-        
+
+        let candles = client.get_candles(symbol, "1H", Some(limit)).await?;
+
         let mut market_data = Vec::new();
         for candle in candles {
             match Self::candle_to_market_data(symbol, &candle) {
@@ -104,7 +99,7 @@ impl DataSource for OkxDataSource {
                 }
             }
         }
-        
+
         Ok(market_data)
     }
 

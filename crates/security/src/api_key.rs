@@ -1,9 +1,9 @@
-use quant_common::{Error, Result};
 use crate::encryption::DataEncryption;
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
+use hmac::{Hmac, Mac};
+use quant_common::{Error, Result};
+use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -39,14 +39,14 @@ impl ApiKeyManager {
     ) -> Result<String> {
         // OKX 签名格式: timestamp + method + requestPath + body
         let prehash = format!("{}{}{}{}", timestamp, method, request_path, body);
-        
+
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
             .map_err(|e| Error::Internal(format!("HMAC init failed: {}", e)))?;
-        
+
         mac.update(prehash.as_bytes());
         let result = mac.finalize();
         let signature = general_purpose::STANDARD.encode(result.into_bytes());
-        
+
         Ok(signature)
     }
 
@@ -61,7 +61,7 @@ impl ApiKeyManager {
 pub struct ApiCredentials {
     pub api_key: String,
     pub encrypted_secret: String,
-    pub passphrase: Option<String>,  // OKX 需要
+    pub passphrase: Option<String>, // OKX 需要
     pub exchange: String,
     pub created_at: chrono::DateTime<Utc>,
 }
@@ -75,7 +75,7 @@ impl ApiCredentials {
         encryptor: &DataEncryption,
     ) -> Result<Self> {
         let encrypted_secret = encryptor.encrypt_string(&secret)?;
-        
+
         Ok(Self {
             api_key,
             encrypted_secret,
@@ -97,26 +97,28 @@ mod tests {
     #[test]
     fn test_api_key_encryption() {
         let manager = ApiKeyManager::new("test_encryption_key").unwrap();
-        
+
         let api_key = "my_secret_api_key";
         let encrypted = manager.encrypt_api_key(api_key).unwrap();
         let decrypted = manager.decrypt_api_key(&encrypted).unwrap();
-        
+
         assert_eq!(api_key, decrypted);
     }
 
     #[test]
     fn test_signature_generation() {
         let manager = ApiKeyManager::new("test_key").unwrap();
-        
-        let signature = manager.generate_signature(
-            "secret",
-            "2024-01-01T00:00:00.000Z",
-            "GET",
-            "/api/v5/account/balance",
-            "",
-        ).unwrap();
-        
+
+        let signature = manager
+            .generate_signature(
+                "secret",
+                "2024-01-01T00:00:00.000Z",
+                "GET",
+                "/api/v5/account/balance",
+                "",
+            )
+            .unwrap();
+
         assert!(!signature.is_empty());
     }
 }

@@ -1,9 +1,9 @@
-use data_layer::MigrationManager;
 use data_layer::migrations::migrations::get_all_migrations;
+use data_layer::MigrationManager;
 use quant_common::config::DatabaseConfig;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::{error, info};
 
 #[tokio::main]
 async fn main() {
@@ -15,10 +15,11 @@ async fn main() {
         enable_json_logging: false,
         enable_file_logging: true,
         enable_stdout_logging: true,
-    }).expect("Failed to initialize logging");
+    })
+    .expect("Failed to initialize logging");
 
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.len() < 2 {
         print_usage();
         std::process::exit(1);
@@ -45,8 +46,10 @@ async fn main() {
         db_config.username, db_config.password, db_config.host, db_config.port, db_config.database
     );
 
-    info!("Connecting to database: {}@{}:{}/{}", 
-          db_config.username, db_config.host, db_config.port, db_config.database);
+    info!(
+        "Connecting to database: {}@{}:{}/{}",
+        db_config.username, db_config.host, db_config.port, db_config.database
+    );
 
     let pool = match PgPoolOptions::new()
         .max_connections(db_config.max_connections)
@@ -66,7 +69,7 @@ async fn main() {
 
     // Create migration manager
     let mut manager = MigrationManager::new(pool);
-    
+
     // Add all migrations
     for migration in get_all_migrations() {
         manager.add_migration(migration);
@@ -136,8 +139,12 @@ async fn main() {
                     } else {
                         println!("\nApplied migrations:");
                         for m in migrations {
-                            println!("  [v{}] {} - applied at {}", 
-                                   m.version, m.name, m.applied_at.format("%Y-%m-%d %H:%M:%S"));
+                            println!(
+                                "  [v{}] {} - applied at {}",
+                                m.version,
+                                m.name,
+                                m.applied_at.format("%Y-%m-%d %H:%M:%S")
+                            );
                         }
                     }
                 }

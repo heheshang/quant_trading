@@ -1,7 +1,7 @@
+use chrono::{DateTime, Duration, Utc};
+use quant_common::types::{Order, OrderSide, OrderType};
 use quant_common::{Error, Result};
-use quant_common::types::{Order, OrderType, OrderSide};
 use rust_decimal::Decimal;
-use chrono::{DateTime, Utc, Duration};
 
 /// TWAP算法参数
 pub struct TWAPParams {
@@ -29,7 +29,9 @@ impl AlgorithmicOrderSlicer {
         start_time: DateTime<Utc>,
     ) -> Result<Vec<Order>> {
         if params.num_slices == 0 {
-            return Err(Error::Validation("Number of slices must be > 0".to_string()));
+            return Err(Error::Validation(
+                "Number of slices must be > 0".to_string(),
+            ));
         }
 
         let slice_quantity = params.total_quantity / Decimal::from(params.num_slices);
@@ -71,11 +73,13 @@ impl AlgorithmicOrderSlicer {
         volume_profile: Vec<(DateTime<Utc>, Decimal)>,
     ) -> Result<Vec<Order>> {
         if volume_profile.is_empty() {
-            return Err(Error::Validation("Volume profile cannot be empty".to_string()));
+            return Err(Error::Validation(
+                "Volume profile cannot be empty".to_string(),
+            ));
         }
 
         let total_volume: Decimal = volume_profile.iter().map(|(_, v)| v).sum();
-        
+
         if total_volume == Decimal::ZERO {
             return Err(Error::Validation("Total volume cannot be zero".to_string()));
         }
@@ -118,7 +122,7 @@ impl AlgorithmicOrderSlicer {
     ) -> Result<Vec<Order>> {
         if display_quantity >= total_quantity {
             return Err(Error::Validation(
-                "Display quantity must be less than total quantity".to_string()
+                "Display quantity must be less than total quantity".to_string(),
             ));
         }
 
@@ -174,12 +178,9 @@ mod tests {
             num_slices: 10,
         };
 
-        let orders = AlgorithmicOrderSlicer::twap(
-            "TEST".to_string(),
-            OrderSide::Buy,
-            params,
-            Utc::now(),
-        ).unwrap();
+        let orders =
+            AlgorithmicOrderSlicer::twap("TEST".to_string(), OrderSide::Buy, params, Utc::now())
+                .unwrap();
 
         assert_eq!(orders.len(), 10);
         assert_eq!(orders[0].quantity, dec!(100));
@@ -193,7 +194,8 @@ mod tests {
             dec!(1000),
             dec!(100),
             Some(dec!(50)),
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(orders.len(), 10);
         assert!(orders.iter().all(|o| o.quantity == dec!(100)));

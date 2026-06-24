@@ -1,10 +1,10 @@
+use data_layer::OkxDataSource;
+use exchange_okx::Client as OkxClient;
+use monitor_layer::{AlertManager, LogBuffer};
 use quant_common::config::AppConfig;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use monitor_layer::{AlertManager, LogBuffer};
-use exchange_okx::Client as OkxClient;
 use trading_layer::OkxExecutor;
-use data_layer::OkxDataSource;
 
 pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,

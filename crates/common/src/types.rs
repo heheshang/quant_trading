@@ -17,24 +17,24 @@ pub struct Instrument {
 /// 交易所枚举
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Exchange {
-    SSE,  // 上交所
-    SZSE, // 深交所
+    SSE,   // 上交所
+    SZSE,  // 深交所
     CFFEX, // 中金所
-    SHFE, // 上期所
-    DCE,  // 大商所
-    CZCE, // 郑商所
-    INE,  // 上海国际能源交易中心
+    SHFE,  // 上期所
+    DCE,   // 大商所
+    CZCE,  // 郑商所
+    INE,   // 上海国际能源交易中心
 }
 
 /// 标的类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum InstrumentType {
-    Stock,      // 股票
-    Future,     // 期货
-    Option,     // 期权
-    ETF,        // ETF
-    Index,      // 指数
-    Bond,       // 债券
+    Stock,  // 股票
+    Future, // 期货
+    Option, // 期权
+    ETF,    // ETF
+    Index,  // 指数
+    Bond,   // 债券
 }
 
 /// 市场行情数据
@@ -49,7 +49,7 @@ pub struct MarketData {
     pub volume: Decimal,
     pub turnover: Decimal,
     pub open_interest: Option<Decimal>,
-    
+
     // Level 2 数据
     pub bid_prices: Vec<Decimal>,
     pub bid_volumes: Vec<Decimal>,
@@ -60,13 +60,13 @@ pub struct MarketData {
 /// 订单类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OrderType {
-    Market,        // 市价单
-    Limit,         // 限价单
-    StopLoss,      // 止损单
-    StopLimit,     // 止损限价单
-    TWAP,          // 时间加权平均
-    VWAP,          // 成交量加权平均
-    Iceberg,       // 冰山单
+    Market,    // 市价单
+    Limit,     // 限价单
+    StopLoss,  // 止损单
+    StopLimit, // 止损限价单
+    TWAP,      // 时间加权平均
+    VWAP,      // 成交量加权平均
+    Iceberg,   // 冰山单
 }
 
 /// 订单方向
@@ -79,13 +79,13 @@ pub enum OrderSide {
 /// 订单状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OrderStatus {
-    Pending,          // 待提交
-    Submitted,        // 已提交
-    PartiallyFilled,  // 部分成交
-    Filled,           // 完全成交
-    Cancelled,        // 已撤单
-    Rejected,         // 已拒绝
-    Expired,          // 已过期
+    Pending,         // 待提交
+    Submitted,       // 已提交
+    PartiallyFilled, // 部分成交
+    Filled,          // 完全成交
+    Cancelled,       // 已撤单
+    Rejected,        // 已拒绝
+    Expired,         // 已过期
 }
 
 /// 订单信息
@@ -151,13 +151,13 @@ pub struct StrategyParams {
 /// 策略类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StrategyType {
-    TrendFollowing,     // 趋势跟踪
-    MeanReversion,      // 均值回归
-    Arbitrage,          // 套利
-    MarketMaking,       // 做市
-    Statistical,        // 统计套利
-    MachineLearning,    // 机器学习
-    Custom,             // 自定义
+    TrendFollowing,  // 趋势跟踪
+    MeanReversion,   // 均值回归
+    Arbitrage,       // 套利
+    MarketMaking,    // 做市
+    Statistical,     // 统计套利
+    MachineLearning, // 机器学习
+    Custom,          // 自定义
 }
 
 /// 回测结果
@@ -184,8 +184,8 @@ pub struct BacktestResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskMetrics {
     pub timestamp: DateTime<Utc>,
-    pub var_95: Decimal,        // 95% VaR
-    pub var_99: Decimal,        // 99% VaR
+    pub var_95: Decimal, // 95% VaR
+    pub var_99: Decimal, // 99% VaR
     pub portfolio_volatility: Decimal,
     pub beta: Decimal,
     pub concentration_risk: Decimal,

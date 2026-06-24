@@ -1,6 +1,6 @@
-use quant_common::{Error, Result};
-use quant_common::config::RedisConfig;
 use deadpool_redis::{Config, Pool, Runtime};
+use quant_common::config::RedisConfig;
+use quant_common::{Error, Result};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -14,7 +14,10 @@ impl RedisCache {
     /// 创建新的 Redis 缓存客户端
     pub fn new(config: &RedisConfig) -> Result<Self> {
         let redis_url = if let Some(password) = &config.password {
-            format!("redis://:{}@{}:{}/{}", password, config.host, config.port, config.db)
+            format!(
+                "redis://:{}@{}:{}/{}",
+                password, config.host, config.port, config.db
+            )
         } else {
             format!("redis://{}:{}/{}", config.host, config.port, config.db)
         };
@@ -28,18 +31,29 @@ impl RedisCache {
     }
 
     /// 设置键值对
-    pub async fn set<T: Serialize>(&self, key: &str, value: &T, ttl: Option<Duration>) -> Result<()> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
-        let serialized = serde_json::to_string(value)
-            .map_err(|e| Error::Internal(e.to_string()))?;
+    pub async fn set<T: Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+        ttl: Option<Duration>,
+    ) -> Result<()> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
+        let serialized =
+            serde_json::to_string(value).map_err(|e| Error::Internal(e.to_string()))?;
 
         if let Some(ttl) = ttl {
-            let _: () = conn.set_ex(key, serialized, ttl.as_secs())
+            let _: () = conn
+                .set_ex(key, serialized, ttl.as_secs())
                 .await
                 .map_err(|e| Error::Redis(e.to_string()))?;
         } else {
-            let _: () = conn.set(key, serialized)
+            let _: () = conn
+                .set(key, serialized)
                 .await
                 .map_err(|e| Error::Redis(e.to_string()))?;
         }
@@ -49,16 +63,21 @@ impl RedisCache {
 
     /// 获取键值
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
-        let value: Option<String> = conn.get(key)
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
+        let value: Option<String> = conn
+            .get(key)
             .await
             .map_err(|e| Error::Redis(e.to_string()))?;
 
         match value {
             Some(v) => {
-                let deserialized = serde_json::from_str(&v)
-                    .map_err(|e| Error::Internal(e.to_string()))?;
+                let deserialized =
+                    serde_json::from_str(&v).map_err(|e| Error::Internal(e.to_string()))?;
                 Ok(Some(deserialized))
             }
             None => Ok(None),
@@ -67,9 +86,14 @@ impl RedisCache {
 
     /// 删除键
     pub async fn delete(&self, key: &str) -> Result<()> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
-        let _: () = conn.del(key)
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
+        let _: () = conn
+            .del(key)
             .await
             .map_err(|e| Error::Redis(e.to_string()))?;
 
@@ -78,9 +102,14 @@ impl RedisCache {
 
     /// 检查键是否存在
     pub async fn exists(&self, key: &str) -> Result<bool> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
-        let exists: bool = conn.exists(key)
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
+        let exists: bool = conn
+            .exists(key)
             .await
             .map_err(|e| Error::Redis(e.to_string()))?;
 
@@ -89,9 +118,14 @@ impl RedisCache {
 
     /// 设置带过期时间的键值对（秒）
     pub async fn set_with_expiry(&self, key: &str, value: &str, seconds: u64) -> Result<()> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
-        let _: () = conn.set_ex(key, value, seconds)
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
+        let _: () = conn
+            .set_ex(key, value, seconds)
             .await
             .map_err(|e| Error::Redis(e.to_string()))?;
 
@@ -100,9 +134,14 @@ impl RedisCache {
 
     /// 增加计数器
     pub async fn increment(&self, key: &str) -> Result<i64> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
-        let value: i64 = conn.incr(key, 1)
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
+        let value: i64 = conn
+            .incr(key, 1)
             .await
             .map_err(|e| Error::Redis(e.to_string()))?;
 
@@ -111,8 +150,12 @@ impl RedisCache {
 
     /// 健康检查
     pub async fn health_check(&self) -> Result<bool> {
-        let mut conn = self.pool.get().await.map_err(|e| Error::Redis(e.to_string()))?;
-        
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| Error::Redis(e.to_string()))?;
+
         let pong: String = redis::cmd("PING")
             .query_async(&mut conn)
             .await

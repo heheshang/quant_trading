@@ -2,8 +2,8 @@ use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
-use quant_common::{Error, Result};
 use base64::{engine::general_purpose, Engine as _};
+use quant_common::{Error, Result};
 use rand::RngCore;
 
 /// 数据加密服务
@@ -22,16 +22,16 @@ impl DataEncryption {
     pub fn from_key_string(key_str: &str) -> Result<Self> {
         let mut key = [0u8; 32];
         let key_bytes = key_str.as_bytes();
-        
+
         if key_bytes.len() < 32 {
             // 如果密钥太短，用 SHA256 哈希扩展
-            use sha2::{Sha256, Digest};
+            use sha2::{Digest, Sha256};
             let hash = Sha256::digest(key_bytes);
             key.copy_from_slice(&hash);
         } else {
             key.copy_from_slice(&key_bytes[..32]);
         }
-        
+
         Ok(Self::new(&key))
     }
 
@@ -43,14 +43,15 @@ impl DataEncryption {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // 加密
-        let ciphertext = self.cipher
+        let ciphertext = self
+            .cipher
             .encrypt(nonce, plaintext)
             .map_err(|e| Error::Internal(format!("Encryption failed: {}", e)))?;
 
         // 将 nonce 和密文组合并 base64 编码
         let mut result = nonce_bytes.to_vec();
         result.extend_from_slice(&ciphertext);
-        
+
         Ok(general_purpose::STANDARD.encode(&result))
     }
 
@@ -70,7 +71,8 @@ impl DataEncryption {
         let ciphertext = &data[12..];
 
         // 解密
-        let plaintext = self.cipher
+        let plaintext = self
+            .cipher
             .decrypt(nonce, ciphertext)
             .map_err(|e| Error::Internal(format!("Decryption failed: {}", e)))?;
 
@@ -85,8 +87,7 @@ impl DataEncryption {
     /// 解密字符串
     pub fn decrypt_string(&self, encrypted: &str) -> Result<String> {
         let bytes = self.decrypt(encrypted)?;
-        String::from_utf8(bytes)
-            .map_err(|e| Error::Internal(format!("UTF8 decode failed: {}", e)))
+        String::from_utf8(bytes).map_err(|e| Error::Internal(format!("UTF8 decode failed: {}", e)))
     }
 }
 
@@ -103,7 +104,7 @@ impl PasswordHasher {
 
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
-        
+
         let password_hash = argon2
             .hash_password(password.as_bytes(), &salt)
             .map_err(|e| Error::Internal(format!("Password hashing failed: {}", e)))?
@@ -119,8 +120,8 @@ impl PasswordHasher {
             Argon2,
         };
 
-        let parsed_hash = PasswordHash::new(hash)
-            .map_err(|e| Error::Internal(format!("Invalid hash: {}", e)))?;
+        let parsed_hash =
+            PasswordHash::new(hash).map_err(|e| Error::Internal(format!("Invalid hash: {}", e)))?;
 
         Ok(Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
@@ -148,7 +149,7 @@ mod tests {
     fn test_password_hashing() {
         let password = "my_secure_password";
         let hash = PasswordHasher::hash_password(password).unwrap();
-        
+
         assert!(PasswordHasher::verify_password(password, &hash).unwrap());
         assert!(!PasswordHasher::verify_password("wrong_password", &hash).unwrap());
     }

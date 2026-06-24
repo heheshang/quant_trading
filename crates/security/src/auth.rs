@@ -1,18 +1,18 @@
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
-use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use quant_common::{Error, Result};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// JWT Claims
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,          // 用户 ID
-    pub username: String,     // 用户名
-    pub exp: i64,             // 过期时间
-    pub iat: i64,             // 签发时间
-    pub jti: String,          // JWT ID
-    pub roles: Vec<String>,   // 用户角色
+    pub sub: String,        // 用户 ID
+    pub username: String,   // 用户名
+    pub exp: i64,           // 过期时间
+    pub iat: i64,           // 签发时间
+    pub jti: String,        // JWT ID
+    pub roles: Vec<String>, // 用户角色
 }
 
 /// 认证服务
@@ -69,10 +69,15 @@ impl AuthService {
 
     /// 检查权限
     pub fn check_permission(&self, claims: &Claims, required_role: &str) -> Result<()> {
-        if claims.roles.contains(&required_role.to_string()) || claims.roles.contains(&"admin".to_string()) {
+        if claims.roles.contains(&required_role.to_string())
+            || claims.roles.contains(&"admin".to_string())
+        {
             Ok(())
         } else {
-            Err(Error::Permission(format!("Required role: {}", required_role)))
+            Err(Error::Permission(format!(
+                "Required role: {}",
+                required_role
+            )))
         }
     }
 
@@ -90,12 +95,10 @@ mod tests {
     #[test]
     fn test_jwt_auth() {
         let auth = AuthService::new("test_secret".to_string(), 24);
-        
-        let token = auth.generate_token(
-            "user123",
-            "testuser",
-            vec!["trader".to_string()],
-        ).unwrap();
+
+        let token = auth
+            .generate_token("user123", "testuser", vec!["trader".to_string()])
+            .unwrap();
 
         let claims = auth.verify_token(&token).unwrap();
         assert_eq!(claims.username, "testuser");
@@ -105,7 +108,7 @@ mod tests {
     #[test]
     fn test_permission_check() {
         let auth = AuthService::new("test_secret".to_string(), 24);
-        
+
         let claims = Claims {
             sub: "user123".to_string(),
             username: "testuser".to_string(),

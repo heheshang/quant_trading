@@ -1,0 +1,18 @@
+[package]
+name = "quant-domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Domain layer — zero IO dependencies (no sqlx, reqwest, redis, tauri)
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true, features = ["maths"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rust_decimal_macros = "1.36"

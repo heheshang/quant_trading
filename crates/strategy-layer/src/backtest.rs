@@ -1,8 +1,10 @@
-use quant_common::{Error, Result};
-use quant_common::types::{BacktestResult, MarketData, Order, Position, Account};
-use quant_common::utils::{calculate_annual_return, calculate_sharpe_ratio, calculate_max_drawdown};
 use crate::strategy::Strategy;
 use chrono::{DateTime, Utc};
+use quant_common::types::{Account, BacktestResult, MarketData, Order, Position};
+use quant_common::utils::{
+    calculate_annual_return, calculate_max_drawdown, calculate_sharpe_ratio,
+};
+use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 
@@ -45,18 +47,21 @@ impl BacktestEngine {
         strategy: &S,
         market_data: Vec<MarketData>,
     ) -> Result<BacktestResult> {
-        let start_date = market_data.first()
+        let start_date = market_data
+            .first()
             .ok_or_else(|| Error::Validation("Empty market data".to_string()))?
             .timestamp;
-        
-        let end_date = market_data.last()
+
+        let end_date = market_data
+            .last()
             .ok_or_else(|| Error::Validation("Empty market data".to_string()))?
             .timestamp;
 
         // 按时间戳分组数据
         let mut data_by_time: HashMap<DateTime<Utc>, Vec<MarketData>> = HashMap::new();
         for data in market_data {
-            data_by_time.entry(data.timestamp)
+            data_by_time
+                .entry(data.timestamp)
                 .or_insert_with(Vec::new)
                 .push(data);
         }
@@ -71,7 +76,7 @@ impl BacktestEngine {
         // 回测主循环
         for timestamp in timestamps {
             let current_data = data_by_time.get(&timestamp).unwrap();
-            
+
             // 生成交易信号
             let context = crate::strategy::StrategyContext {
                 current_time: timestamp,
@@ -80,7 +85,7 @@ impl BacktestEngine {
             };
 
             let orders = strategy.generate_signals(&context).await?;
-            
+
             // 执行订单
             for order in orders {
                 self.execute_order(order, current_data)?;
@@ -89,19 +94,18 @@ impl BacktestEngine {
 
             // 更新账户
             self.update_account(current_data, timestamp)?;
-            
+
             // 记录权益曲线
-            self.equity_curve.push((timestamp, self.account.total_assets));
+            self.equity_curve
+                .push((timestamp, self.account.total_assets));
         }
 
         // 计算回测结果
-        let total_return = (self.account.total_assets - self.initial_capital) / self.initial_capital;
+        let total_return =
+            (self.account.total_assets - self.initial_capital) / self.initial_capital;
         let days = (end_date - start_date).num_days();
-        let annual_return = calculate_annual_return(
-            self.initial_capital,
-            self.account.total_assets,
-            days,
-        );
+        let annual_return =
+            calculate_annual_return(self.initial_capital, self.account.total_assets, days);
 
         // 计算每日收益率
         let mut daily_returns = Vec::new();
@@ -145,7 +149,8 @@ impl BacktestEngine {
 
     fn execute_order(&mut self, order: Order, market_data: &[MarketData]) -> Result<()> {
         // 查找订单对应的市场数据
-        let data = market_data.iter()
+        let data = market_data
+            .iter()
             .find(|d| d.symbol == order.symbol)
             .ok_or_else(|| Error::NotFound("Market data not found".to_string()))?;
 
@@ -159,20 +164,22 @@ impl BacktestEngine {
             quant_common::types::OrderSide::Buy => {
                 if self.account.available_cash >= total_expense {
                     self.account.available_cash -= total_expense;
-                    
+
                     // 更新持仓
-                    let position = self.positions.entry(order.symbol.clone())
-                        .or_insert_with(|| Position {
-                            symbol: order.symbol.clone(),
-                            quantity: Decimal::ZERO,
-                            available_quantity: Decimal::ZERO,
-                            avg_price: Decimal::ZERO,
-                            market_value: Decimal::ZERO,
-                            unrealized_pnl: Decimal::ZERO,
-                            realized_pnl: Decimal::ZERO,
-                            updated_at: Utc::now(),
-                        });
-                    
+                    let position =
+                        self.positions
+                            .entry(order.symbol.clone())
+                            .or_insert_with(|| Position {
+                                symbol: order.symbol.clone(),
+                                quantity: Decimal::ZERO,
+                                available_quantity: Decimal::ZERO,
+                                avg_price: Decimal::ZERO,
+                                market_value: Decimal::ZERO,
+                                unrealized_pnl: Decimal::ZERO,
+                                realized_pnl: Decimal::ZERO,
+                                updated_at: Utc::now(),
+                            });
+
                     position.quantity += order.quantity;
                     position.available_quantity += order.quantity;
                     position.avg_price = price;
@@ -183,10 +190,10 @@ impl BacktestEngine {
                     if position.available_quantity >= order.quantity {
                         position.quantity -= order.quantity;
                         position.available_quantity -= order.quantity;
-                        
+
                         let proceeds = total_cost - commission - slippage_cost;
                         self.account.available_cash += proceeds;
-                        
+
                         // 计算实现盈亏
                         let pnl = (price - position.avg_price) * order.quantity;
                         position.realized_pnl += pnl;
@@ -198,7 +205,11 @@ impl BacktestEngine {
         Ok(())
     }
 
-    fn update_account(&mut self, market_data: &[MarketData], timestamp: DateTime<Utc>) -> Result<()> {
+    fn update_account(
+        &mut self,
+        market_data: &[MarketData],
+        timestamp: DateTime<Utc>,
+    ) -> Result<()> {
         let mut total_market_value = Decimal::ZERO;
         let mut total_unrealized_pnl = Decimal::ZERO;
 
@@ -206,18 +217,20 @@ impl BacktestEngine {
             if let Some(data) = market_data.iter().find(|d| d.symbol == *symbol) {
                 position.market_value = data.close * position.quantity;
                 position.unrealized_pnl = (data.close - position.avg_price) * position.quantity;
-                
+
                 total_market_value += position.market_value;
                 total_unrealized_pnl += position.unrealized_pnl;
-                
+
                 position.updated_at = timestamp;
             }
         }
 
         self.account.market_value = total_market_value;
         self.account.total_assets = self.account.available_cash + total_market_value;
-        self.account.total_pnl = total_unrealized_pnl 
-            + self.positions.values()
+        self.account.total_pnl = total_unrealized_pnl
+            + self
+                .positions
+                .values()
                 .map(|p| p.realized_pnl)
                 .sum::<Decimal>();
         self.account.updated_at = timestamp;

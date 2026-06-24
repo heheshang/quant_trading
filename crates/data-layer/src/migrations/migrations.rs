@@ -1,5 +1,5 @@
-use quant_common::{Error, Result};
 use super::Migration;
+use quant_common::{Error, Result};
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -11,11 +11,11 @@ impl Migration for Migration001 {
     fn version(&self) -> i32 {
         1
     }
-    
+
     fn name(&self) -> &str {
         "create_core_tables"
     }
-    
+
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Create accounts table
         sqlx::query(
@@ -33,12 +33,12 @@ impl Migration for Migration001 {
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             )
-            "#
+            "#,
         )
         .execute(pool)
         .await
         .map_err(|e| Error::Database(format!("Failed to create accounts table: {}", e)))?;
-        
+
         // Create orders table
         sqlx::query(
             r#"
@@ -57,12 +57,12 @@ impl Migration for Migration001 {
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                 FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
             )
-            "#
+            "#,
         )
         .execute(pool)
         .await
         .map_err(|e| Error::Database(format!("Failed to create orders table: {}", e)))?;
-        
+
         // Create positions table
         sqlx::query(
             r#"
@@ -81,12 +81,12 @@ impl Migration for Migration001 {
                 FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE,
                 UNIQUE (account_id, symbol, side)
             )
-            "#
+            "#,
         )
         .execute(pool)
         .await
         .map_err(|e| Error::Database(format!("Failed to create positions table: {}", e)))?;
-        
+
         // Create trades table
         sqlx::query(
             r#"
@@ -104,37 +104,37 @@ impl Migration for Migration001 {
                 FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
                 FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
             )
-            "#
+            "#,
         )
         .execute(pool)
         .await
         .map_err(|e| Error::Database(format!("Failed to create trades table: {}", e)))?;
-        
+
         Ok(())
     }
-    
+
     async fn down(&self, pool: &PgPool) -> Result<()> {
         // Drop tables in reverse order (respecting foreign keys)
         sqlx::query("DROP TABLE IF EXISTS trades")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop trades table: {}", e)))?;
-        
+
         sqlx::query("DROP TABLE IF EXISTS positions")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop positions table: {}", e)))?;
-        
+
         sqlx::query("DROP TABLE IF EXISTS orders")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop orders table: {}", e)))?;
-        
+
         sqlx::query("DROP TABLE IF EXISTS accounts")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop accounts table: {}", e)))?;
-        
+
         Ok(())
     }
 }
@@ -147,79 +147,79 @@ impl Migration for Migration002 {
     fn version(&self) -> i32 {
         2
     }
-    
+
     fn name(&self) -> &str {
         "create_indices"
     }
-    
+
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Indices for accounts table
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_accounts_type ON accounts(account_type)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_accounts_updated ON accounts(updated_at)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         // Indices for orders table
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_orders_account ON orders(account_id)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_orders_symbol ON orders(symbol)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         // Indices for positions table
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_positions_account ON positions(account_id)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         // Indices for trades table
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_trades_order ON trades(order_id)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_trades_account ON trades(account_id)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_trades_executed ON trades(executed_at)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         Ok(())
     }
-    
+
     async fn down(&self, pool: &PgPool) -> Result<()> {
         // Drop all indices
         let indices = vec![
@@ -236,14 +236,14 @@ impl Migration for Migration002 {
             "idx_trades_symbol",
             "idx_trades_executed",
         ];
-        
+
         for index in indices {
             sqlx::query(&format!("DROP INDEX IF EXISTS {}", index))
                 .execute(pool)
                 .await
                 .map_err(|e| Error::Database(format!("Failed to drop index {}: {}", index, e)))?;
         }
-        
+
         Ok(())
     }
 }
@@ -256,11 +256,11 @@ impl Migration for Migration003 {
     fn version(&self) -> i32 {
         3
     }
-    
+
     fn name(&self) -> &str {
         "create_alerts_and_risk_tables"
     }
-    
+
     async fn up(&self, pool: &PgPool) -> Result<()> {
         // Create alerts table
         sqlx::query(
@@ -274,12 +274,12 @@ impl Migration for Migration003 {
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                 acknowledged_at TIMESTAMP WITH TIME ZONE
             )
-            "#
+            "#,
         )
         .execute(pool)
         .await
         .map_err(|e| Error::Database(format!("Failed to create alerts table: {}", e)))?;
-        
+
         // Create risk_metrics table
         sqlx::query(
             r#"
@@ -291,67 +291,71 @@ impl Migration for Migration003 {
                 recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                 FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
             )
-            "#
+            "#,
         )
         .execute(pool)
         .await
         .map_err(|e| Error::Database(format!("Failed to create risk_metrics table: {}", e)))?;
-        
+
         // Create indices
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_alerts_level ON alerts(level)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_risk_metrics_account ON risk_metrics(account_id)")
-            .execute(pool)
-            .await
-            .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_risk_metrics_recorded ON risk_metrics(recorded_at)")
-            .execute(pool)
-            .await
-            .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
-        
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_risk_metrics_account ON risk_metrics(account_id)",
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_risk_metrics_recorded ON risk_metrics(recorded_at)",
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to create index: {}", e)))?;
+
         Ok(())
     }
-    
+
     async fn down(&self, pool: &PgPool) -> Result<()> {
         sqlx::query("DROP INDEX IF EXISTS idx_risk_metrics_recorded")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop index: {}", e)))?;
-        
+
         sqlx::query("DROP INDEX IF EXISTS idx_risk_metrics_account")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop index: {}", e)))?;
-        
+
         sqlx::query("DROP INDEX IF EXISTS idx_alerts_created")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop index: {}", e)))?;
-        
+
         sqlx::query("DROP INDEX IF EXISTS idx_alerts_level")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop index: {}", e)))?;
-        
+
         sqlx::query("DROP TABLE IF EXISTS risk_metrics")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop risk_metrics table: {}", e)))?;
-        
+
         sqlx::query("DROP TABLE IF EXISTS alerts")
             .execute(pool)
             .await
             .map_err(|e| Error::Database(format!("Failed to drop alerts table: {}", e)))?;
-        
+
         Ok(())
     }
 }
@@ -368,28 +372,28 @@ pub fn get_all_migrations() -> Vec<Arc<dyn Migration>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_migration001_metadata() {
         let migration = Migration001;
         assert_eq!(migration.version(), 1);
         assert_eq!(migration.name(), "create_core_tables");
     }
-    
+
     #[test]
     fn test_migration002_metadata() {
         let migration = Migration002;
         assert_eq!(migration.version(), 2);
         assert_eq!(migration.name(), "create_indices");
     }
-    
+
     #[test]
     fn test_migration003_metadata() {
         let migration = Migration003;
         assert_eq!(migration.version(), 3);
         assert_eq!(migration.name(), "create_alerts_and_risk_tables");
     }
-    
+
     #[test]
     fn test_get_all_migrations() {
         let migrations = get_all_migrations();
@@ -398,7 +402,7 @@ mod tests {
         assert_eq!(migrations[1].version(), 2);
         assert_eq!(migrations[2].version(), 3);
     }
-    
+
     #[test]
     fn test_migrations_ordered() {
         let migrations = get_all_migrations();

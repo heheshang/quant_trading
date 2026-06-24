@@ -1,5 +1,5 @@
-use quant_common::{Error, Result};
 use quant_common::config::DatabaseConfig;
+use quant_common::{Error, Result};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::sync::Arc;
 
@@ -59,7 +59,10 @@ mod tests {
     async fn test_connection() {
         let config = DatabaseConfig {
             host: dotenv::var("DATABASE_HOST").unwrap(),
-            port: dotenv::var("DATABASE_PORT").unwrap().parse::<u16>().unwrap(),
+            port: dotenv::var("DATABASE_PORT")
+                .unwrap()
+                .parse::<u16>()
+                .unwrap(),
             username: dotenv::var("DATABASE_USERNAME").unwrap(),
             password: dotenv::var("DATABASE_PASSWORD").unwrap(),
             database: dotenv::var("DATABASE_NAME").unwrap(),

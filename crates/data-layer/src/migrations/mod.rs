@@ -10,13 +10,13 @@ use quant_common::Result;
 pub trait Migration: Send + Sync {
     /// Migration version number (e.g., 1, 2, 3)
     fn version(&self) -> i32;
-    
+
     /// Migration name/description
     fn name(&self) -> &str;
-    
+
     /// Execute the migration (upgrade)
     async fn up(&self, pool: &sqlx::PgPool) -> Result<()>;
-    
+
     /// Rollback the migration (downgrade)
     async fn down(&self, pool: &sqlx::PgPool) -> Result<()>;
 }
@@ -34,23 +34,27 @@ pub struct MigrationRecord {
 mod tests {
     use super::*;
     use quant_common::Error;
-    
+
     struct TestMigration;
-    
+
     #[async_trait::async_trait]
     impl Migration for TestMigration {
-        fn version(&self) -> i32 { 1 }
-        fn name(&self) -> &str { "test_migration" }
-        
+        fn version(&self) -> i32 {
+            1
+        }
+        fn name(&self) -> &str {
+            "test_migration"
+        }
+
         async fn up(&self, _pool: &sqlx::PgPool) -> Result<()> {
             Ok(())
         }
-        
+
         async fn down(&self, _pool: &sqlx::PgPool) -> Result<()> {
             Ok(())
         }
     }
-    
+
     #[test]
     fn test_migration_trait_implementation() {
         let migration = TestMigration;

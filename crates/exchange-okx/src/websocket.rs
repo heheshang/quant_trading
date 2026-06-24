@@ -1,10 +1,10 @@
-use quant_common::{Error, Result};
 use crate::types::*;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-use futures::{StreamExt, SinkExt};
-use tracing::{debug, error, info, warn};
+use futures::{SinkExt, StreamExt};
+use quant_common::{Error, Result};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tracing::{debug, error, info, warn};
 
 /// WebSocket 消息类型
 #[derive(Debug, Clone)]
@@ -31,7 +31,7 @@ impl OkxWebSocket {
     /// 创建新的 WebSocket 客户端
     pub fn new(environment: OkxEnvironment) -> Self {
         let (message_tx, message_rx) = mpsc::unbounded_channel();
-        
+
         Self {
             environment,
             subscriptions: Arc::new(RwLock::new(Vec::new())),
@@ -41,11 +41,7 @@ impl OkxWebSocket {
     }
 
     /// 订阅公共频道
-    pub async fn subscribe_public(
-        &self,
-        channel: &str,
-        inst_id: &str,
-    ) -> Result<()> {
+    pub async fn subscribe_public(&self, channel: &str, inst_id: &str) -> Result<()> {
         let subscription = OkxWsSubscription {
             channel: channel.to_string(),
             inst_id: inst_id.to_string(),
@@ -84,7 +80,8 @@ impl OkxWebSocket {
         let url = self.environment.ws_public_url();
         info!("Connecting to OKX WebSocket: {}", url);
 
-        let (ws_stream, _) = connect_async(url).await
+        let (ws_stream, _) = connect_async(url)
+            .await
             .map_err(|e| Error::Network(format!("WebSocket connection failed: {}", e)))?;
 
         info!("WebSocket connected successfully");
@@ -106,7 +103,9 @@ impl OkxWebSocket {
 
             debug!("Sending subscription: {}", msg_str);
 
-            write.send(Message::Text(msg_str)).await
+            write
+                .send(Message::Text(msg_str))
+                .await
                 .map_err(|e| Error::Network(format!("Send subscribe failed: {}", e)))?;
         }
 
@@ -145,7 +144,7 @@ impl OkxWebSocket {
                                             let msg_clone = format!("{:?}", msg);
                                             error!("Subscription error: {}", msg_clone);
                                             let _ = message_tx.send(WsMessage::Error(
-                                                msg.msg.unwrap_or_default()
+                                                msg.msg.unwrap_or_default(),
                                             ));
                                         }
                                         _ => {}
@@ -201,10 +200,10 @@ impl OkxWebSocket {
     pub async fn get_receiver(&self) -> mpsc::UnboundedReceiver<WsMessage> {
         let mut rx = self.message_rx.write().await;
         let (_new_tx, new_rx) = mpsc::unbounded_channel();
-        
+
         // 替换旧的接收器
         let old_rx = std::mem::replace(&mut *rx, new_rx);
-        
+
         old_rx
     }
 }

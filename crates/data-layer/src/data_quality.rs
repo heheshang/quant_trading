@@ -1,8 +1,8 @@
-use quant_common::{Error, Result};
 use quant_common::types::MarketData;
-use rust_decimal::Decimal;
+use quant_common::{Error, Result};
 use rust_decimal::prelude::*;
-use tracing::{warn, info};
+use rust_decimal::Decimal;
+use tracing::{info, warn};
 
 /// 数据质量检查器
 pub struct DataQualityChecker;
@@ -11,14 +11,19 @@ impl DataQualityChecker {
     /// 检查市场数据质量
     pub fn check_market_data(&self, data: &MarketData) -> Result<()> {
         // 检查价格合理性
-        if data.open <= Decimal::ZERO || data.high <= Decimal::ZERO 
-            || data.low <= Decimal::ZERO || data.close <= Decimal::ZERO {
+        if data.open <= Decimal::ZERO
+            || data.high <= Decimal::ZERO
+            || data.low <= Decimal::ZERO
+            || data.close <= Decimal::ZERO
+        {
             return Err(Error::Validation("Price must be positive".to_string()));
         }
 
         // 检查高低价关系
         if data.high < data.low {
-            return Err(Error::Validation("High price must be >= low price".to_string()));
+            return Err(Error::Validation(
+                "High price must be >= low price".to_string(),
+            ));
         }
 
         // 检查开盘价和收盘价在高低价范围内
@@ -54,7 +59,7 @@ impl DataQualityChecker {
             .map(|&x| (x - mean) * (x - mean))
             .sum::<Decimal>()
             / Decimal::from(data.len());
-        
+
         let std_dev = variance.sqrt().unwrap_or(Decimal::ZERO);
         let threshold_decimal = Decimal::from_f64_retain(threshold).unwrap_or(Decimal::from(3));
 
@@ -69,7 +74,10 @@ impl DataQualityChecker {
 
             if z_score > threshold_decimal {
                 outliers.push(i);
-                warn!("Outlier detected at index {}: value={}, z_score={}", i, value, z_score);
+                warn!(
+                    "Outlier detected at index {}: value={}, z_score={}",
+                    i, value, z_score
+                );
             }
         }
 
@@ -81,7 +89,7 @@ impl DataQualityChecker {
         let original_len = data.len();
         data.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
         data.dedup_by(|a, b| a.symbol == b.symbol && a.timestamp == b.timestamp);
-        
+
         let removed = original_len - data.len();
         if removed > 0 {
             info!("Removed {} duplicate records", removed);
@@ -96,11 +104,11 @@ impl DataQualityChecker {
 
         for i in 1..data.len() {
             // 如果当前数据的价格为零，使用前一个数据
-            if data[i].close == Decimal::ZERO && data[i-1].close != Decimal::ZERO {
-                data[i].open = data[i-1].close;
-                data[i].high = data[i-1].close;
-                data[i].low = data[i-1].close;
-                data[i].close = data[i-1].close;
+            if data[i].close == Decimal::ZERO && data[i - 1].close != Decimal::ZERO {
+                data[i].open = data[i - 1].close;
+                data[i].high = data[i - 1].close;
+                data[i].low = data[i - 1].close;
+                data[i].close = data[i - 1].close;
                 warn!("Forward filled data at index {}", i);
             }
         }
@@ -115,7 +123,7 @@ mod tests {
     #[test]
     fn test_price_validation() {
         let checker = DataQualityChecker;
-        
+
         let valid_data = MarketData {
             symbol: "TEST".to_string(),
             timestamp: chrono::Utc::now(),
@@ -139,13 +147,14 @@ mod tests {
     fn test_outlier_detection() {
         let checker = DataQualityChecker;
         // Test with clear outlier - mean ~8, stddev ~394, outlier at index 4 with z-score > 2
-        let data = vec![
-            dec!(10), dec!(10), dec!(10), dec!(10), dec!(1000),
-        ];
+        let data = vec![dec!(10), dec!(10), dec!(10), dec!(10), dec!(1000)];
 
         let outliers = checker.detect_outliers(&data, 2.0);
         // The function should work even if it doesn't find outliers due to precision
         // Just verify it doesn't panic
-        assert!(outliers.len() <= data.len(), "Outliers list should not exceed data length");
+        assert!(
+            outliers.len() <= data.len(),
+            "Outliers list should not exceed data length"
+        );
     }
 }

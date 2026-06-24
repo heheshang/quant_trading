@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     pub database: DatabaseConfig,
     pub redis: RedisConfig,
-    pub influxdb: InfluxDBConfig,
     pub trading: TradingConfig,
     pub risk: RiskConfig,
     pub monitoring: MonitoringConfig,
@@ -32,13 +31,6 @@ pub struct RedisConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InfluxDBConfig {
-    pub url: String,
-    pub token: String,
-    pub database: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingConfig {
     pub enable_paper_trading: bool,
     pub max_orders_per_second: u32,
@@ -52,6 +44,7 @@ pub struct RiskConfig {
     pub max_position_size: f64,
     pub max_daily_loss: f64,
     pub max_drawdown: f64,
+    pub max_concentration: f64,
     pub enable_pre_trade_check: bool,
     pub enable_real_time_monitor: bool,
     pub var_confidence_level: f64,
@@ -102,11 +95,6 @@ impl Default for AppConfig {
                 db: 0,
                 pool_size: 20,
             },
-            influxdb: InfluxDBConfig {
-                url: "http://localhost:8086".to_string(),
-                token: "".to_string(),
-                database: "market-data".to_string(),
-            },
             trading: TradingConfig {
                 enable_paper_trading: true,
                 max_orders_per_second: 100,
@@ -118,6 +106,7 @@ impl Default for AppConfig {
                 max_position_size: 0.2,
                 max_daily_loss: 0.05,
                 max_drawdown: 0.15,
+                max_concentration: 0.2,
                 enable_pre_trade_check: true,
                 enable_real_time_monitor: true,
                 var_confidence_level: 0.95,
@@ -140,8 +129,10 @@ impl Default for AppConfig {
                 api_key: std::env::var("OKX_API_KEY").unwrap_or_default(),
                 api_secret: std::env::var("OKX_API_SECRET").unwrap_or_default(),
                 passphrase: std::env::var("OKX_PASSPHRASE").unwrap_or_default(),
-                environment: std::env::var("OKX_ENVIRONMENT").unwrap_or_else(|_| "demo".to_string()),
-                enable: std::env::var("OKX_ENABLE").unwrap_or_else(|_| "false".to_string()) == "true",
+                environment: std::env::var("OKX_ENVIRONMENT")
+                    .unwrap_or_else(|_| "demo".to_string()),
+                enable: std::env::var("OKX_ENABLE").unwrap_or_else(|_| "false".to_string())
+                    == "true",
             },
         }
     }

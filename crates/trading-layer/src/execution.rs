@@ -1,10 +1,10 @@
-use quant_common::{Error, Result};
-use quant_common::types::{Order, OrderStatus, MarketData};
-use quant_common::config::TradingConfig;
 use crate::order_manager::OrderManager;
-use std::sync::Arc;
-use tracing::{info, error};
+use quant_common::config::TradingConfig;
+use quant_common::types::{MarketData, Order, OrderStatus};
+use quant_common::{Error, Result};
 use rust_decimal::Decimal;
+use std::sync::Arc;
+use tracing::{error, info};
 
 /// 执行引擎
 pub struct ExecutionEngine {
@@ -36,20 +36,26 @@ impl ExecutionEngine {
     async fn simulate_execution(&self, mut order: Order, market_data: &MarketData) -> Result<()> {
         // 计算成交价格（考虑滑点）
         let execution_price = self.calculate_execution_price(&order, market_data)?;
-        
+
         // 计算手续费
         let total_value = execution_price * order.quantity;
-        let commission = total_value * Decimal::from_f64_retain(self.config.default_commission_rate)
-            .unwrap_or(Decimal::ZERO);
+        let commission = total_value
+            * Decimal::from_f64_retain(self.config.default_commission_rate)
+                .unwrap_or(Decimal::ZERO);
 
         order.filled_quantity = order.quantity;
         order.commission = commission;
         order.status = OrderStatus::Filled;
         order.updated_at = chrono::Utc::now();
 
-        self.order_manager.update_order_status(order.order_id, OrderStatus::Filled).await?;
-        
-        info!("Order {} filled at price {}", order.order_id, execution_price);
+        self.order_manager
+            .update_order_status(order.order_id, OrderStatus::Filled)
+            .await?;
+
+        info!(
+            "Order {} filled at price {}",
+            order.order_id, execution_price
+        );
         Ok(())
     }
 
@@ -60,16 +66,20 @@ impl ExecutionEngine {
         // 2. 提交订单
         // 3. 监控订单状态
         // 4. 处理成交回报
-        
+
         error!("Real trading not implemented yet");
         Err(Error::Internal("Real trading not implemented".to_string()))
     }
 
     /// 计算执行价格（含滑点）
-    fn calculate_execution_price(&self, order: &Order, market_data: &MarketData) -> Result<Decimal> {
+    fn calculate_execution_price(
+        &self,
+        order: &Order,
+        market_data: &MarketData,
+    ) -> Result<Decimal> {
         let base_price = order.price.unwrap_or(market_data.close);
-        let slippage_factor = Decimal::from_f64_retain(self.config.default_slippage)
-            .unwrap_or(Decimal::ZERO);
+        let slippage_factor =
+            Decimal::from_f64_retain(self.config.default_slippage).unwrap_or(Decimal::ZERO);
 
         let slippage_amount = base_price * slippage_factor;
 

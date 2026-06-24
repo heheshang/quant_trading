@@ -1,11 +1,11 @@
-use quant_common::{Error, Result};
-use quant_common::types::{Order, OrderStatus, OrderSide, OrderType};
-use exchange_okx::Client as OkxClient;
 use exchange_okx::types::OkxPlaceOrderRequest;
+use exchange_okx::Client as OkxClient;
+use quant_common::types::{Order, OrderSide, OrderStatus, OrderType};
+use quant_common::{Error, Result};
+use rust_decimal::prelude::ToPrimitive;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
-use rust_decimal::prelude::ToPrimitive;
 
 /// OKX 订单执行器
 pub struct OkxExecutor {
@@ -21,18 +21,20 @@ impl OkxExecutor {
     /// 执行订单到 OKX
     pub async fn execute_order(&self, order: &Order) -> Result<String> {
         let client = self.client.read().await;
-        
+
         // 将内部订单类型转换为 OKX 订单请求
         let okx_request = self.convert_order_to_okx(order)?;
-        
-        info!("Placing order on OKX: {} {} {} @ {:?}", 
-            okx_request.side, okx_request.sz, okx_request.inst_id, okx_request.px);
-        
+
+        info!(
+            "Placing order on OKX: {} {} {} @ {:?}",
+            okx_request.side, okx_request.sz, okx_request.inst_id, okx_request.px
+        );
+
         // 提交订单到 OKX
         let okx_order = client.place_order(okx_request).await?;
-        
+
         info!("OKX order placed successfully: {}", okx_order.ord_id);
-        
+
         Ok(okx_order.ord_id)
     }
 
@@ -57,7 +59,10 @@ impl OkxExecutor {
             OrderType::Market => "market".to_string(),
             OrderType::Limit => "limit".to_string(),
             _ => {
-                warn!("Unsupported order type {:?}, defaulting to limit", order.order_type);
+                warn!(
+                    "Unsupported order type {:?}, defaulting to limit",
+                    order.order_type
+                );
                 "limit".to_string()
             }
         };

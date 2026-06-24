@@ -1,5 +1,5 @@
-use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 
 /// VaR计算器 (Value at Risk)
 pub struct VaRCalculator;
@@ -35,7 +35,7 @@ impl VaRCalculator {
             .map(|r| (*r - mean) * (*r - mean))
             .sum::<Decimal>()
             / Decimal::from(returns.len());
-        
+
         let std_dev = variance.sqrt().unwrap_or(Decimal::ZERO);
 
         // Z-score for different confidence levels

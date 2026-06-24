@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use quant_common::Result;
+use serde::{Deserialize, Serialize};
 use tracing::info;
+use uuid::Uuid;
 
 /// 审计日志类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +80,12 @@ impl AuditLogger {
     }
 
     /// 记录登录
-    pub async fn log_login(user_id: &str, username: &str, ip: Option<String>, success: bool) -> Result<AuditLog> {
+    pub async fn log_login(
+        user_id: &str,
+        username: &str,
+        ip: Option<String>,
+        success: bool,
+    ) -> Result<AuditLog> {
         Self::log(
             user_id,
             username,
@@ -90,7 +95,8 @@ impl AuditLogger {
             ip,
             success,
             None,
-        ).await
+        )
+        .await
     }
 
     /// 记录订单提交
@@ -115,7 +121,8 @@ impl AuditLogger {
             None,
             true,
             None,
-        ).await
+        )
+        .await
     }
 
     /// 记录配置变更
@@ -138,7 +145,8 @@ impl AuditLogger {
             None,
             true,
             None,
-        ).await
+        )
+        .await
     }
 }
 
@@ -148,12 +156,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_logging() {
-        let log = AuditLogger::log_login(
-            "user123",
-            "testuser",
-            Some("127.0.0.1".to_string()),
-            true,
-        ).await.unwrap();
+        let log =
+            AuditLogger::log_login("user123", "testuser", Some("127.0.0.1".to_string()), true)
+                .await
+                .unwrap();
 
         assert_eq!(log.user_id, "user123");
         assert_eq!(log.username, "testuser");

@@ -24,7 +24,6 @@ tracing = { workspace = true }
 sqlx = { workspace = true }
 redis = { workspace = true }
 deadpool-redis = { workspace = true }
-influxdb = { workspace = true }
 
 # Data processing
 csv = { workspace = true }

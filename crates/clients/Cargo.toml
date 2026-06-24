@@ -1,0 +1,34 @@
+[package]
+name = "quant-clients"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Clients layer — external service calls (cache, time-series, exchange APIs)
+[dependencies]
+quant-domain = { path = "../domain" }
+quant-common = { path = "../common" }
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true, features = ["maths"] }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = "0.1"
+
+# Cache
+redis = { workspace = true }
+deadpool-redis = { workspace = true }
+
+# Data processing
+csv = { workspace = true }
+
+[dev-dependencies]
+rust_decimal_macros = "1.36"
+dotenv = "0.15"

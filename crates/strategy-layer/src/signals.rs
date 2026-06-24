@@ -1,7 +1,7 @@
-use quant_common::types::{Order, OrderType, OrderSide};
+use chrono::Utc;
+use quant_common::types::{Order, OrderSide, OrderType};
 use rust_decimal::Decimal;
 use uuid::Uuid;
-use chrono::Utc;
 
 /// 交易信号类型
 #[derive(Debug, Clone, PartialEq)]
@@ -16,7 +16,7 @@ pub enum SignalType {
 pub struct Signal {
     pub signal_type: SignalType,
     pub symbol: String,
-    pub strength: f64,  // 信号强度 0.0-1.0
+    pub strength: f64, // 信号强度 0.0-1.0
     pub price: Option<Decimal>,
     pub quantity: Option<Decimal>,
 }
@@ -29,7 +29,7 @@ impl Signal {
             SignalType::Sell => (OrderSide::Sell, OrderType::Limit),
             SignalType::Hold => return None,
         };
-        
+
         Some(Order {
             order_id: Uuid::new_v4(),
             strategy_id: strategy_id.to_string(),
@@ -55,25 +55,29 @@ impl SignalGenerator {
     /// 基于RSI生成信号
     pub fn from_rsi(rsi_value: Decimal, symbol: String, price: Decimal) -> Signal {
         let signal_type = if rsi_value < Decimal::from(30) {
-            SignalType::Buy  // 超卖
+            SignalType::Buy // 超卖
         } else if rsi_value > Decimal::from(70) {
-            SignalType::Sell  // 超买
+            SignalType::Sell // 超买
         } else {
             SignalType::Hold
         };
-        
+
         let strength = if signal_type != SignalType::Hold {
             if rsi_value < Decimal::from(30) {
                 ((Decimal::from(30) - rsi_value) / Decimal::from(30))
-                    .to_string().parse().unwrap_or(0.5)
+                    .to_string()
+                    .parse()
+                    .unwrap_or(0.5)
             } else {
                 ((rsi_value - Decimal::from(70)) / Decimal::from(30))
-                    .to_string().parse().unwrap_or(0.5)
+                    .to_string()
+                    .parse()
+                    .unwrap_or(0.5)
             }
         } else {
             0.0
         };
-        
+
         Signal {
             signal_type,
             symbol,
@@ -82,23 +86,22 @@ impl SignalGenerator {
             quantity: None,
         }
     }
-    
+
     /// 基于MACD生成信号
     pub fn from_macd(macd: Decimal, signal: Decimal, symbol: String, price: Decimal) -> Signal {
         let histogram = macd - signal;
-        
+
         let signal_type = if histogram > Decimal::ZERO {
-            SignalType::Buy  // 金叉
+            SignalType::Buy // 金叉
         } else if histogram < Decimal::ZERO {
-            SignalType::Sell  // 死叉
+            SignalType::Sell // 死叉
         } else {
             SignalType::Hold
         };
-        
-        let strength: f64 = (histogram.abs() / price)
-            .to_string().parse().unwrap_or(0.5);
+
+        let strength: f64 = (histogram.abs() / price).to_string().parse().unwrap_or(0.5);
         let strength = strength.min(1.0);
-        
+
         Signal {
             signal_type,
             symbol,

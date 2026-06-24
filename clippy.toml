@@ -1,0 +1,8 @@
+# Clippy configuration for the quant trading workspace.
+# These thresholds relax pedantic lints that conflict with the existing codebase style.
+
+# Allow up to 8 arguments (Tauri commands legitimately need many params).
+too-many-arguments-threshold = 8
+
+# Allow a module named the same as its containing module (data-layer/migrations/migrations.rs is idiomatic).
+# This is enforced via #[allow] where needed rather than a global suppression.

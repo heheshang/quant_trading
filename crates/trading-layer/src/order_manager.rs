@@ -1,24 +1,20 @@
-use quant_common::{Error, Result};
 use quant_common::types::{Order, OrderStatus};
+use quant_common::{Error, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 use tracing::info;
-
+use uuid::Uuid;
 
 /// 订单管理器
 pub struct OrderManager {
     orders: Arc<RwLock<HashMap<Uuid, Order>>>,
-    #[allow(dead_code)]
-    max_orders_per_second: u32,
 }
 
 impl OrderManager {
-    pub fn new(max_orders_per_second: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             orders: Arc::new(RwLock::new(HashMap::new())),
-            max_orders_per_second,
         }
     }
 
@@ -26,13 +22,13 @@ impl OrderManager {
     pub async fn submit_order(&self, mut order: Order) -> Result<Uuid> {
         // 验证订单
         self.validate_order(&order)?;
-        
+
         order.status = OrderStatus::Submitted;
         let order_id = order.order_id;
-        
+
         let mut orders = self.orders.write().await;
         orders.insert(order_id, order);
-        
+
         info!("Order submitted: {}", order_id);
         Ok(order_id)
     }
@@ -40,7 +36,7 @@ impl OrderManager {
     /// 更新订单状态
     pub async fn update_order_status(&self, order_id: Uuid, status: OrderStatus) -> Result<()> {
         let mut orders = self.orders.write().await;
-        
+
         if let Some(order) = orders.get_mut(&order_id) {
             order.status = status.clone();
             order.updated_at = chrono::Utc::now();
@@ -54,7 +50,8 @@ impl OrderManager {
     /// 获取订单
     pub async fn get_order(&self, order_id: Uuid) -> Result<Order> {
         let orders = self.orders.read().await;
-        orders.get(&order_id)
+        orders
+            .get(&order_id)
             .cloned()
             .ok_or_else(|| Error::NotFound(format!("Order not found: {}", order_id)))
     }
@@ -62,15 +59,22 @@ impl OrderManager {
     /// 获取所有活跃订单
     pub async fn get_active_orders(&self) -> Vec<Order> {
         let orders = self.orders.read().await;
-        orders.values()
-            .filter(|o| matches!(o.status, OrderStatus::Submitted | OrderStatus::PartiallyFilled))
+        orders
+            .values()
+            .filter(|o| {
+                matches!(
+                    o.status,
+                    OrderStatus::Submitted | OrderStatus::PartiallyFilled
+                )
+            })
             .cloned()
             .collect()
     }
 
     /// 撤销订单
     pub async fn cancel_order(&self, order_id: Uuid) -> Result<()> {
-        self.update_order_status(order_id, OrderStatus::Cancelled).await
+        self.update_order_status(order_id, OrderStatus::Cancelled)
+            .await
     }
 
     /// 批量撤销订单
@@ -85,7 +89,10 @@ impl OrderManager {
                 }
             }
 
-            if matches!(order.status, OrderStatus::Submitted | OrderStatus::PartiallyFilled) {
+            if matches!(
+                order.status,
+                OrderStatus::Submitted | OrderStatus::PartiallyFilled
+            ) {
                 order.status = OrderStatus::Cancelled;
                 order.updated_at = chrono::Utc::now();
                 cancelled_count += 1;
@@ -101,12 +108,16 @@ impl OrderManager {
         use rust_decimal::Decimal;
 
         if order.quantity <= Decimal::ZERO {
-            return Err(Error::Validation("Order quantity must be positive".to_string()));
+            return Err(Error::Validation(
+                "Order quantity must be positive".to_string(),
+            ));
         }
 
         if let Some(price) = order.price {
             if price <= Decimal::ZERO {
-                return Err(Error::Validation("Order price must be positive".to_string()));
+                return Err(Error::Validation(
+                    "Order price must be positive".to_string(),
+                ));
             }
         }
 
@@ -117,13 +128,13 @@ impl OrderManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quant_common::types::{OrderType, OrderSide};
-    use rust_decimal_macros::dec;
+    use quant_common::types::{OrderSide, OrderType};
     use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
     #[tokio::test]
     async fn test_order_manager() {
-        let manager = OrderManager::new(100);
-        
+        let manager = OrderManager::new();
+
         let order = Order {
             order_id: Uuid::new_v4(),
             strategy_id: "test_strategy".to_string(),
@@ -142,7 +153,7 @@ mod tests {
 
         let order_id = manager.submit_order(order).await.unwrap();
         let retrieved_order = manager.get_order(order_id).await.unwrap();
-        
+
         assert_eq!(retrieved_order.status, OrderStatus::Submitted);
     }
 }

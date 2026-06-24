@@ -1,8 +1,11 @@
-use quant_common::types::{Account, Alert, AlertLevel};
-use quant_common::config::RiskConfig;
-use rust_decimal::Decimal;
 use chrono::Utc;
+use quant_common::config::RiskConfig;
+use quant_common::types::{Account, Alert, AlertLevel};
+use rust_decimal::Decimal;
 use uuid::Uuid;
+
+const DEFAULT_MAX_DRAWDOWN: f64 = 0.15;
+const MARGIN_RATIO_CRITICAL: f64 = 0.9;
 
 /// 实时风险监控器
 pub struct RealTimeRiskMonitor {
@@ -43,11 +46,11 @@ impl RealTimeRiskMonitor {
 
     fn check_drawdown(&self, account: &Account) -> Option<Alert> {
         let max_drawdown = Decimal::from_f64_retain(self.config.max_drawdown)
-            .unwrap_or(Decimal::from_f64_retain(0.15).unwrap());
-        
+            .unwrap_or(Decimal::from_f64_retain(DEFAULT_MAX_DRAWDOWN).unwrap());
+
         // 简化：实际需要基于历史最高净值计算
         let current_drawdown = if account.total_assets > Decimal::ZERO {
-            Decimal::ZERO  // 实际应该计算真实回撤
+            Decimal::ZERO // 实际应该计算真实回撤
         } else {
             Decimal::ZERO
         };
@@ -67,7 +70,7 @@ impl RealTimeRiskMonitor {
     }
 
     fn check_margin_ratio(&self, account: &Account) -> Option<Alert> {
-        if account.margin_ratio > Decimal::from_f64_retain(0.9).unwrap() {
+        if account.margin_ratio > Decimal::from_f64_retain(MARGIN_RATIO_CRITICAL).unwrap() {
             Some(Alert {
                 alert_id: Uuid::new_v4(),
                 level: AlertLevel::Warning,
@@ -82,8 +85,8 @@ impl RealTimeRiskMonitor {
     }
 
     fn check_daily_pnl(&self, account: &Account) -> Option<Alert> {
-        let max_daily_loss = Decimal::from_f64_retain(self.config.max_daily_loss)
-            .unwrap_or(Decimal::ZERO);
+        let max_daily_loss =
+            Decimal::from_f64_retain(self.config.max_daily_loss).unwrap_or(Decimal::ZERO);
 
         if account.daily_pnl < -max_daily_loss {
             Some(Alert {

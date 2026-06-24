@@ -1,14 +1,14 @@
-use quant_common::{Error, Result};
-use quant_common::types::MarketData;
-use rust_decimal::Decimal;
 use chrono::{DateTime, Utc};
+use quant_common::types::MarketData;
+use quant_common::{Error, Result};
+use rust_decimal::Decimal;
 
 /// 数据源接口
 #[async_trait::async_trait]
 pub trait DataSource: Send + Sync {
     /// 获取实时行情
     async fn get_realtime_data(&self, symbol: &str) -> Result<MarketData>;
-    
+
     /// 获取历史数据
     async fn get_historical_data(
         &self,
@@ -16,10 +16,10 @@ pub trait DataSource: Send + Sync {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<MarketData>>;
-    
+
     /// 订阅实时行情
     async fn subscribe(&self, symbols: Vec<String>) -> Result<()>;
-    
+
     /// 取消订阅
     async fn unsubscribe(&self, symbols: Vec<String>) -> Result<()>;
 }
@@ -50,7 +50,10 @@ impl MarketDataManager {
                 Err(_) => continue,
             }
         }
-        Err(Error::NotFound(format!("No data found for symbol: {}", symbol)))
+        Err(Error::NotFound(format!(
+            "No data found for symbol: {}",
+            symbol
+        )))
     }
 
     /// 获取历史数据
@@ -66,7 +69,10 @@ impl MarketDataManager {
                 Err(_) => continue,
             }
         }
-        Err(Error::NotFound(format!("No historical data found for symbol: {}", symbol)))
+        Err(Error::NotFound(format!(
+            "No historical data found for symbol: {}",
+            symbol
+        )))
     }
 }
 

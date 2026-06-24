@@ -8,8 +8,8 @@ impl PostTradeAnalyzer {
     /// 归因分析
     pub fn attribution_analysis(result: &BacktestResult) -> AttributionResult {
         AttributionResult {
-            market_return: Decimal::ZERO,  // 简化
-            alpha: result.total_return,     // 超额收益
+            market_return: Decimal::ZERO, // 简化
+            alpha: result.total_return,   // 超额收益
             strategy_specific: result.total_return,
         }
     }
@@ -38,7 +38,7 @@ pub struct AttributionResult {
 
 pub struct StressScenario {
     pub name: String,
-    pub shock: Decimal,  // 价格冲击百分比
+    pub shock: Decimal, // 价格冲击百分比
 }
 
 pub struct StressTestResult {

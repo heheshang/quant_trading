@@ -1,7 +1,9 @@
-use quant_common::Result;
-use quant_common::types::{MarketData, Order, Position, StrategyParams};
-use chrono::{DateTime, Utc};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use quant_common::types::{MarketData, Order, Position, StrategyParams};
+use quant_common::Result;
+
+const DEFAULT_ENTRY_THRESHOLD: f64 = 2.0;
 
 /// 策略上下文
 pub struct StrategyContext {
@@ -15,16 +17,16 @@ pub struct StrategyContext {
 pub trait Strategy: Send + Sync {
     /// 初始化策略
     async fn initialize(&mut self, params: StrategyParams) -> Result<()>;
-    
+
     /// 生成交易信号
     async fn generate_signals(&self, context: &StrategyContext) -> Result<Vec<Order>>;
-    
+
     /// 策略名称
     fn name(&self) -> &str;
-    
+
     /// 策略参数
     fn params(&self) -> &StrategyParams;
-    
+
     /// 更新策略参数
     async fn update_params(&mut self, params: StrategyParams) -> Result<()>;
 }
@@ -56,7 +58,7 @@ impl MeanReversionStrategy {
                 updated_at: Utc::now(),
             },
             lookback_period: 20,
-            entry_threshold: 2.0,
+            entry_threshold: DEFAULT_ENTRY_THRESHOLD,
             exit_threshold: 0.5,
         }
     }
@@ -66,43 +68,43 @@ impl MeanReversionStrategy {
 impl Strategy for MeanReversionStrategy {
     async fn initialize(&mut self, params: StrategyParams) -> Result<()> {
         self.params = params.clone();
-        
+
         // 从参数中提取配置
         if let Some(lookback) = params.params.get("lookback_period") {
             self.lookback_period = lookback.as_u64().unwrap_or(20) as usize;
         }
         if let Some(entry) = params.params.get("entry_threshold") {
-            self.entry_threshold = entry.as_f64().unwrap_or(2.0);
+            self.entry_threshold = entry.as_f64().unwrap_or(DEFAULT_ENTRY_THRESHOLD);
         }
         if let Some(exit) = params.params.get("exit_threshold") {
             self.exit_threshold = exit.as_f64().unwrap_or(0.5);
         }
-        
+
         Ok(())
     }
-    
+
     async fn generate_signals(&self, context: &StrategyContext) -> Result<Vec<Order>> {
         let orders = Vec::new();
-        
+
         // 示例逻辑：计算价格偏离均值的程度
         if context.market_data.len() < self.lookback_period {
             return Ok(orders);
         }
-        
+
         // 实际策略实现会更复杂
         // 这里仅作演示
-        
+
         Ok(orders)
     }
-    
+
     fn name(&self) -> &str {
         &self.params.strategy_name
     }
-    
+
     fn params(&self) -> &StrategyParams {
         &self.params
     }
-    
+
     async fn update_params(&mut self, params: StrategyParams) -> Result<()> {
         self.initialize(params).await
     }

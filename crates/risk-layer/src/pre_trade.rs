@@ -1,8 +1,10 @@
-use quant_common::{Error, Result};
-use quant_common::types::{Order, Account, Position};
 use quant_common::config::RiskConfig;
+use quant_common::types::{Account, Order, Position};
+use quant_common::{Error, Result};
 use rust_decimal::Decimal;
-use tracing::{warn, info};
+use tracing::{info, warn};
+
+const DEFAULT_MAX_CONCENTRATION: f64 = 0.2;
 
 /// 事前风控检查器
 pub struct PreTradeRiskChecker {
@@ -23,13 +25,13 @@ impl PreTradeRiskChecker {
     ) -> Result<()> {
         // 1. 资金检查
         self.check_available_cash(order, account)?;
-        
+
         // 2. 持仓限制检查
         self.check_position_limit(order, positions)?;
-        
+
         // 3. 单日亏损限制
         self.check_daily_loss_limit(account)?;
-        
+
         // 4. 集中度检查
         self.check_concentration_risk(order, positions, account)?;
 
@@ -74,8 +76,8 @@ impl PreTradeRiskChecker {
             quant_common::types::OrderSide::Sell => current_position - order.quantity,
         };
 
-        let max_position = Decimal::from_f64_retain(self.config.max_position_size)
-            .unwrap_or(Decimal::ZERO);
+        let max_position =
+            Decimal::from_f64_retain(self.config.max_position_size).unwrap_or(Decimal::ZERO);
 
         if new_position.abs() > max_position {
             warn!(
@@ -93,17 +95,15 @@ impl PreTradeRiskChecker {
 
     /// 检查当日亏损限制
     fn check_daily_loss_limit(&self, account: &Account) -> Result<()> {
-        let max_daily_loss = Decimal::from_f64_retain(self.config.max_daily_loss)
-            .unwrap_or(Decimal::ZERO);
+        let max_daily_loss =
+            Decimal::from_f64_retain(self.config.max_daily_loss).unwrap_or(Decimal::ZERO);
 
         if account.daily_pnl < -max_daily_loss {
             warn!(
                 "Daily loss limit exceeded. Current loss: {}, Max: {}",
                 account.daily_pnl, max_daily_loss
             );
-            return Err(Error::RiskControl(
-                "Daily loss limit exceeded".to_string()
-            ));
+            return Err(Error::RiskControl("Daily loss limit exceeded".to_string()));
         }
 
         Ok(())
@@ -118,7 +118,7 @@ impl PreTradeRiskChecker {
     ) -> Result<()> {
         let price = order.price.unwrap_or(Decimal::ZERO);
         let order_value = price * order.quantity;
-        
+
         let current_position_value = positions
             .iter()
             .find(|p| p.symbol == order.symbol)
@@ -132,7 +132,7 @@ impl PreTradeRiskChecker {
 
         let concentration_ratio = new_position_value / account.total_assets;
         let max_concentration = Decimal::from_f64_retain(self.config.max_position_size)
-            .unwrap_or(Decimal::from_f64_retain(0.2).unwrap());
+            .unwrap_or(Decimal::from_f64_retain(DEFAULT_MAX_CONCENTRATION).unwrap());
 
         if concentration_ratio > max_concentration {
             warn!(
@@ -152,10 +152,10 @@ impl PreTradeRiskChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quant_common::types::{OrderType, OrderSide};
+    use chrono::Utc;
+    use quant_common::types::{OrderSide, OrderType};
     use rust_decimal_macros::dec;
     use uuid::Uuid;
-    use chrono::Utc;
 
     #[test]
     fn test_cash_check() {
@@ -163,6 +163,7 @@ mod tests {
             max_position_size: 0.2,
             max_daily_loss: 0.05,
             max_drawdown: 0.15,
+            max_concentration: 0.2,
             enable_pre_trade_check: true,
             enable_real_time_monitor: true,
             var_confidence_level: 0.95,
@@ -189,7 +190,7 @@ mod tests {
         let account = Account {
             account_id: Uuid::new_v4(),
             total_assets: dec!(10000),
-            available_cash: dec!(500),  // Insufficient
+            available_cash: dec!(500), // Insufficient
             frozen_cash: dec!(0),
             market_value: dec!(0),
             total_pnl: dec!(0),
