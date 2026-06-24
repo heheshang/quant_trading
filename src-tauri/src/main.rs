@@ -74,8 +74,19 @@ async fn main() {
         };
 
     // 初始化数据库连接（可选，需要数据库运行）
-    // let pg_client = PostgresClient::new(&config.database).await.ok();
-    // let redis_cache = RedisCache::new(&config.redis).ok();
+    let pg_client = PostgresClient::new(&config.database).await.ok();
+    if pg_client.is_some() {
+        info!("PostgreSQL connection established successfully");
+    } else {
+        warn!("PostgreSQL connection failed, running without database");
+    }
+
+    let redis_cache = RedisCache::new(&config.redis).ok();
+    if redis_cache.is_some() {
+        info!("Redis connection established successfully");
+    } else {
+        warn!("Redis connection failed, running without cache");
+    }
 
     // 初始化应用状态
     let alert_manager = Arc::new(AlertManager::new(false, vec![]));
@@ -95,6 +106,8 @@ async fn main() {
         config: Arc::new(RwLock::new(config)),
         alert_manager,
         log_buffer,
+        pg_client,
+        redis_cache,
         okx_client: Arc::new(RwLock::new(okx_client)),
         okx_executor: Arc::new(RwLock::new(okx_executor)),
         okx_data_source: Arc::new(RwLock::new(okx_data_source)),
