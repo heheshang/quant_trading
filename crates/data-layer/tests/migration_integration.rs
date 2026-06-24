@@ -29,6 +29,9 @@ async fn get_test_pool() -> Result<Arc<PgPool>> {
 
 async fn cleanup_test_db(pool: &PgPool) -> Result<()> {
     // Drop all tables to ensure clean state
+    let _ = sqlx::query("DROP TABLE IF EXISTS market_data CASCADE")
+        .execute(pool)
+        .await;
     let _ = sqlx::query("DROP TABLE IF EXISTS risk_metrics CASCADE")
         .execute(pool)
         .await;
@@ -94,7 +97,7 @@ async fn test_full_migration_cycle() {
         .get_pending_migrations()
         .await
         .expect("Failed to get pending");
-    assert_eq!(pending.len(), 3, "Should have 3 pending migrations");
+    assert_eq!(pending.len(), 5, "Should have 5 pending migrations");
 
     // Test 4: Run all migrations
     manager.migrate().await.expect("Failed to run migrations");
@@ -107,6 +110,7 @@ async fn test_full_migration_cycle() {
         "trades",
         "alerts",
         "risk_metrics",
+        "market_data",
     ];
     for table in tables {
         let exists: bool = sqlx::query_scalar(
@@ -124,7 +128,7 @@ async fn test_full_migration_cycle() {
         .get_current_version()
         .await
         .expect("Failed to get version");
-    assert_eq!(new_version, 3, "Version should be 3 after all migrations");
+    assert_eq!(new_version, 5, "Version should be 5 after all migrations");
 
     // Test 6: Verify no pending migrations
     let pending = manager
@@ -138,10 +142,12 @@ async fn test_full_migration_cycle() {
         .get_applied_migrations()
         .await
         .expect("Failed to get records");
-    assert_eq!(records.len(), 3, "Should have 3 migration records");
+    assert_eq!(records.len(), 5, "Should have 5 migration records");
     assert_eq!(records[0].version, 1);
     assert_eq!(records[1].version, 2);
     assert_eq!(records[2].version, 3);
+    assert_eq!(records[3].version, 4);
+    assert_eq!(records[4].version, 5);
 
     // Test 8: Verify indices exist (from migration 002)
     let indices = vec![
@@ -160,7 +166,27 @@ async fn test_full_migration_cycle() {
         assert!(exists, "Index {} should exist after migration", index);
     }
 
-    // Test 9: Rollback to version 1
+    // Test 9: Rollback to version 3 (undo v4 and v5)
+    manager.rollback_to(3).await.expect("Failed to rollback");
+    let version = manager
+        .get_current_version()
+        .await
+        .expect("Failed to get version");
+    assert_eq!(version, 3, "Version should be 3 after rollback");
+
+    // Verify market_data table is gone
+    let md_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'market_data')",
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to check market_data table");
+    assert!(
+        !md_exists,
+        "market_data table should not exist after rollback"
+    );
+
+    // Test 10: Rollback to version 1
     manager.rollback_to(1).await.expect("Failed to rollback");
     let version = manager
         .get_current_version()
@@ -180,7 +206,7 @@ async fn test_full_migration_cycle() {
         "Alerts table should not exist after rollback"
     );
 
-    // Test 10: Rollback to version 0
+    // Test 11: Rollback to version 0
     manager
         .rollback_to(0)
         .await
@@ -383,6 +409,104 @@ async fn test_data_insertion_after_migration() {
         .await
         .expect("Failed to count orders");
     assert_eq!(order_count, 0, "Order should be deleted via CASCADE");
+
+    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_market_data_partitions() {
+    let pool = get_test_pool().await.expect("Failed to get test pool");
+    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+
+    let mut manager = MigrationManager::new(pool.clone());
+    for migration in get_all_migrations() {
+        manager.add_migration(migration);
+    }
+    manager.migrate().await.expect("Migration should succeed");
+
+    let parent_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'market_data')",
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to check market_data table");
+    assert!(parent_exists, "market_data parent table should exist");
+
+    let partition_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*) FROM pg_class
+        WHERE oid IN (
+            SELECT inhrelid FROM pg_inherits
+            WHERE inhparent = 'market_data'::regclass
+        )
+        "#,
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to count partitions");
+    assert!(
+        partition_count >= 24,
+        "Should have at least 24 monthly partitions, got {}",
+        partition_count
+    );
+
+    let uniq_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT FROM pg_indexes WHERE indexname = 'idx_market_data_uniq')",
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to check unique index");
+    assert!(uniq_exists, "Unique index idx_market_data_uniq should exist");
+
+    let query_idx_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT FROM pg_indexes WHERE indexname = 'idx_market_data_query')",
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to check query index");
+    assert!(query_idx_exists, "Query index idx_market_data_query should exist");
+
+    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_alter_table_json_fields() {
+    let pool = get_test_pool().await.expect("Failed to get test pool");
+    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+
+    let mut manager = MigrationManager::new(pool.clone());
+    for migration in get_all_migrations() {
+        manager.add_migration(migration);
+    }
+    manager.migrate().await.expect("Migration should succeed");
+
+    let param_col_exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT FROM information_schema.columns
+            WHERE table_name = 'backtest_results' AND column_name = 'parameters_json'
+        )
+        "#,
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to check column");
+    assert!(param_col_exists, "backtest_results.parameters_json should exist");
+
+    let config_col_exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT FROM information_schema.columns
+            WHERE table_name = 'strategies' AND column_name = 'indicator_config_json'
+        )
+        "#,
+    )
+    .fetch_one(&*pool)
+    .await
+    .expect("Failed to check column");
+    assert!(config_col_exists, "strategies.indicator_config_json should exist");
 
     cleanup_test_db(&*pool).await.expect("Failed to cleanup");
 }
