@@ -1,3 +1,4 @@
+use crate::okx_executor::OkxExecutor;
 use crate::order_manager::OrderManager;
 use quant_common::config::TradingConfig;
 use quant_common::types::{MarketData, Order, OrderStatus};
@@ -10,13 +11,19 @@ use tracing::{error, info, instrument};
 pub struct ExecutionEngine {
     order_manager: Arc<OrderManager>,
     config: TradingConfig,
+    okx_executor: Option<Arc<OkxExecutor>>,
 }
 
 impl ExecutionEngine {
-    pub fn new(order_manager: Arc<OrderManager>, config: TradingConfig) -> Self {
+    pub fn new(
+        order_manager: Arc<OrderManager>,
+        config: TradingConfig,
+        okx_executor: Option<Arc<OkxExecutor>>,
+    ) -> Self {
         Self {
             order_manager,
             config,
+            okx_executor,
         }
     }
 
@@ -61,15 +68,31 @@ impl ExecutionEngine {
     }
 
     /// 实盘执行
-    async fn real_execution(&self, _order: Order, _market_data: &MarketData) -> Result<()> {
-        // TODO: 实现真实交易所API对接
-        // 1. 连接交易所API
-        // 2. 提交订单
-        // 3. 监控订单状态
-        // 4. 处理成交回报
+    async fn real_execution(&self, order: Order, _market_data: &MarketData) -> Result<()> {
+        match &self.okx_executor {
+            Some(executor) => {
+                let order_id = executor.execute_order(&order).await.map_err(|e| {
+                    error!(order_id = %order.order_id, error = %e, "OKX real execution failed");
+                    Error::Internal(format!("OKX execution failed: {}", e))
+                })?;
 
-        error!("Real trading not implemented yet");
-        Err(Error::Internal("Real trading not implemented".to_string()))
+                info!(
+                    order_id = %order.order_id,
+                    okx_order_id = %order_id,
+                    "Order executed on OKX"
+                );
+
+                self.order_manager
+                    .update_order_status(order.order_id, OrderStatus::Filled)
+                    .await?;
+
+                Ok(())
+            }
+            None => {
+                error!("No OKX executor configured for real execution");
+                Err(Error::Internal("No OKX executor configured".to_string()))
+            }
+        }
     }
 
     /// 计算执行价格（含滑点）
