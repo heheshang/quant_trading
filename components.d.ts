@@ -7,6 +7,8 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    CandleChart: typeof import('./src/components/MarketData/CandleChart.vue')['default']
+    ConnectionStatus: typeof import('./src/components/ws/ConnectionStatus.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -16,6 +18,7 @@ declare module 'vue' {
     ElContainer: typeof import('element-plus/es')['ElContainer']
     ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDialog: typeof import('element-plus/es')['ElDialog']
+    ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElHeader: typeof import('element-plus/es')['ElHeader']
@@ -26,6 +29,8 @@ declare module 'vue' {
     ElMenu: typeof import('element-plus/es')['ElMenu']
     ElMenuItem: typeof import('element-plus/es')['ElMenuItem']
     ElOption: typeof import('element-plus/es')['ElOption']
+    ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
+    ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElRow: typeof import('element-plus/es')['ElRow']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
@@ -38,9 +43,16 @@ declare module 'vue' {
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
     MetricCard: typeof import('./src/components/MetricCard.vue')['default']
+    OrderBookDepth: typeof import('./src/components/MarketData/OrderBookDepth.vue')['default']
+    RealtimeCandleChart: typeof import('./src/components/dashboard/RealtimeCandleChart.vue')['default']
+    RealtimeTicker: typeof import('./src/components/MarketData/RealtimeTicker.vue')['default']
+    RealtimeTickerPanel: typeof import('./src/components/dashboard/RealtimeTickerPanel.vue')['default']
+    RealtimeTrades: typeof import('./src/components/MarketData/RealtimeTrades.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     StatsCard: typeof import('./src/components/StatsCard.vue')['default']
+    SubscriptionManager: typeof import('./src/components/ws/SubscriptionManager.vue')['default']
+    TradeStream: typeof import('./src/components/dashboard/TradeStream.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
