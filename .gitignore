@@ -47,3 +47,6 @@ lerna-debug.log*
 data/
 backtest_results/
 logs/
+
+# Worktrees
+.worktrees/
