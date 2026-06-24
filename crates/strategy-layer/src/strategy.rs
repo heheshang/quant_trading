@@ -1,10 +1,16 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use quant_common::types::{MarketData, Order, Position, StrategyParams};
+use quant_common::types::{MarketData, Order, OrderSide, OrderType, Position, StrategyParams};
 use quant_common::Result;
+use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
+use rust_decimal::MathematicalOps;
 use tracing::{info, instrument, warn};
+use uuid::Uuid;
 
 const DEFAULT_ENTRY_THRESHOLD: f64 = 2.0;
+const RSI_OVERSOLD: u32 = 30;
+const RSI_OVERBOUGHT: u32 = 70;
 
 /// 策略上下文
 pub struct StrategyContext {
@@ -95,7 +101,6 @@ impl Strategy for MeanReversionStrategy {
             positions = context.positions.len(),
             "Generating signals"
         );
-        let orders = Vec::new();
 
         if context.market_data.len() < self.lookback_period {
             warn!(
@@ -104,10 +109,107 @@ impl Strategy for MeanReversionStrategy {
                 required = self.lookback_period,
                 "Insufficient market data for signal generation"
             );
-            return Ok(orders);
+            return Ok(Vec::new());
         }
 
-        info!(strategy_id = %self.params.strategy_id, orders = orders.len(), "Signal generation complete");
+        let closes: Vec<Decimal> = context.market_data.iter().map(|d| d.close).collect();
+
+        // Compute SMA
+        let sma_values = crate::indicators::sma(&closes, self.lookback_period);
+        if sma_values.is_empty() {
+            return Ok(Vec::new());
+        }
+        let last_sma = sma_values[sma_values.len() - 1];
+
+        // Compute RSI (period 14, standard)
+        let rsi_values = crate::indicators::rsi(&closes, 14);
+        if rsi_values.is_empty() {
+            return Ok(Vec::new());
+        }
+        let last_rsi = rsi_values[rsi_values.len() - 1];
+
+        // Compute standard deviation over the last lookback_period window
+        let window_start = closes.len() - self.lookback_period;
+        let window = &closes[window_start..];
+        let variance: Decimal = window
+            .iter()
+            .map(|&x| (x - last_sma) * (x - last_sma))
+            .sum::<Decimal>()
+            / Decimal::from(self.lookback_period);
+        let std_dev = variance.sqrt().unwrap_or(Decimal::ZERO);
+
+        if std_dev == Decimal::ZERO {
+            info!(strategy_id = %self.params.strategy_id, "Std dev is zero, no signals generated");
+            return Ok(Vec::new());
+        }
+
+        let last_close = closes[closes.len() - 1];
+        let entry_threshold_dec = Decimal::from_f64(self.entry_threshold)
+            .unwrap_or(Decimal::from_f64(DEFAULT_ENTRY_THRESHOLD).unwrap());
+
+        let mut orders = Vec::new();
+
+        // Buy signal: price below SMA by > entry_threshold stddev AND RSI oversold
+        if (last_sma - last_close) / std_dev > entry_threshold_dec
+            && last_rsi < Decimal::from(RSI_OVERSOLD)
+        {
+            info!(
+                strategy_id = %self.params.strategy_id,
+                last_close = %last_close,
+                last_sma = %last_sma,
+                last_rsi = %last_rsi,
+                "Buy signal triggered: mean reversion entry"
+            );
+            orders.push(Order {
+                order_id: Uuid::new_v4(),
+                strategy_id: self.params.strategy_id.clone(),
+                symbol: context.market_data[0].symbol.clone(),
+                order_type: OrderType::Limit,
+                side: OrderSide::Buy,
+                price: Some(last_close),
+                quantity: self.params.max_position / last_close,
+                filled_quantity: Decimal::ZERO,
+                status: quant_common::types::OrderStatus::Pending,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                commission: Decimal::ZERO,
+                slippage: Decimal::ZERO,
+            });
+        }
+
+        // Sell signal: price above SMA by > entry_threshold stddev AND RSI overbought
+        if (last_close - last_sma) / std_dev > entry_threshold_dec
+            && last_rsi > Decimal::from(RSI_OVERBOUGHT)
+        {
+            info!(
+                strategy_id = %self.params.strategy_id,
+                last_close = %last_close,
+                last_sma = %last_sma,
+                last_rsi = %last_rsi,
+                "Sell signal triggered: mean reversion entry"
+            );
+            orders.push(Order {
+                order_id: Uuid::new_v4(),
+                strategy_id: self.params.strategy_id.clone(),
+                symbol: context.market_data[0].symbol.clone(),
+                order_type: OrderType::Limit,
+                side: OrderSide::Sell,
+                price: Some(last_close),
+                quantity: self.params.max_position / last_close,
+                filled_quantity: Decimal::ZERO,
+                status: quant_common::types::OrderStatus::Pending,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                commission: Decimal::ZERO,
+                slippage: Decimal::ZERO,
+            });
+        }
+
+        info!(
+            strategy_id = %self.params.strategy_id,
+            orders = orders.len(),
+            "Signal generation complete"
+        );
         Ok(orders)
     }
 

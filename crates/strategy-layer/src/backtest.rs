@@ -17,6 +17,8 @@ pub struct BacktestEngine {
     positions: HashMap<String, Position>,
     account: Account,
     equity_curve: Vec<(DateTime<Utc>, Decimal)>,
+    winning_trades: i32,
+    losing_trades: i32,
 }
 
 impl BacktestEngine {
@@ -39,6 +41,8 @@ impl BacktestEngine {
                 updated_at: Utc::now(),
             },
             equity_curve: Vec::new(),
+            winning_trades: 0,
+            losing_trades: 0,
         }
     }
 
@@ -84,8 +88,8 @@ impl BacktestEngine {
         let processed_timestamps = timestamps.len();
 
         let mut total_trades = 0;
-        let winning_trades = 0;
-        let losing_trades = 0;
+        self.winning_trades = 0;
+        self.losing_trades = 0;
 
         // 回测主循环
         for timestamp in timestamps {
@@ -144,7 +148,7 @@ impl BacktestEngine {
 
         // 计算胜率
         let win_rate = if total_trades > 0 {
-            Decimal::from(winning_trades) / Decimal::from(total_trades)
+            Decimal::from(self.winning_trades) / Decimal::from(total_trades)
         } else {
             Decimal::ZERO
         };
@@ -173,8 +177,8 @@ impl BacktestEngine {
             win_rate,
             profit_loss_ratio: Decimal::ONE, // 简化处理
             total_trades,
-            winning_trades,
-            losing_trades,
+            winning_trades: self.winning_trades,
+            losing_trades: self.losing_trades,
             equity_curve: self.equity_curve.clone(),
         })
     }
@@ -233,6 +237,13 @@ impl BacktestEngine {
                         // 计算实现盈亏
                         let pnl = (price - position.avg_price) * order.quantity;
                         position.realized_pnl += pnl;
+
+                        // 统计胜/负交易
+                        if pnl > Decimal::ZERO {
+                            self.winning_trades += 1;
+                        } else if pnl < Decimal::ZERO {
+                            self.losing_trades += 1;
+                        }
                     }
                 }
             }
