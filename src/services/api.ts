@@ -220,3 +220,15 @@ export function subscribeMarketData(channel: string, symbol: string): Promise<vo
 export function stopMarketData(): Promise<void> {
   return invoke<void>('stop_market_data')
 }
+
+export function subscribeChannel(symbol: string, channel: string): Promise<void> {
+  return invoke<void>('subscribe_market_data', { channel, symbol })
+}
+
+export function unsubscribeChannel(_symbol: string, _channel: string): Promise<void> {
+  return invoke<void>('stop_market_data')
+}
+
+export function getSubscriptions(): Promise<string[]> {
+  return invoke<string[]>('get_subscriptions')
+}

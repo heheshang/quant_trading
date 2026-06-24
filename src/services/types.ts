@@ -146,7 +146,6 @@ export interface AppConfig {
   debug: boolean
   database: DatabaseConfig
   redis: RedisConfig
-  influxdb: InfluxDBConfig
   trading: TradingConfig
   risk: RiskConfig
   monitoring: MonitoringConfig
@@ -169,12 +168,6 @@ export interface RedisConfig {
   password: string | null
   db: number
   pool_size: number
-}
-
-export interface InfluxDBConfig {
-  url: string
-  token: string
-  database: string
 }
 
 export interface TradingConfig {
@@ -302,6 +295,7 @@ export interface WsTrade {
 }
 
 export interface WsOrderBook {
+  inst_id: string
   asks: [string, string][]
   bids: [string, string][]
   ts: string
@@ -315,4 +309,11 @@ export interface WsCandle {
   c: string
   vol: string
   ts: string
+}
+
+export type WsConnectionStatus = 'connected' | 'reconnecting' | 'disconnected'
+
+export interface ConnectionStatusEvent {
+  status: WsConnectionStatus
+  retry_in?: number
 }
