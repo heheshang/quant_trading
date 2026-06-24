@@ -398,7 +398,7 @@ async function submitOrder() {
 }
 
 // Cancel order
-async function cancelOrder(orderId: string) {
+async function cancelOrder(_orderId: string) {
   try {
     await ElMessageBox.confirm('确定要撤销此订单吗？', '确认撤单', {
       confirmButtonText: '确定',

@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory, RouteLocationNormalized } from 'vue-router';
 
 // Authentication guard
-const requireAuth = (to: RouteLocationNormalized, from: RouteLocationNormalized, next: any) => {
+const requireAuth = (to: RouteLocationNormalized, _from: RouteLocationNormalized, next: any) => {
   const isAuthenticated = localStorage.getItem('isAuthenticated');
   
   // Only allow access to login page when not authenticated
