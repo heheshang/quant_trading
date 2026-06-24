@@ -1,0 +1,19 @@
+# Harness 变更目录 — 这些是动态生成的变更记录，按需追踪
+changes/*/
+!changes/template/
+
+# Dry Run 产物 — 验证后可清理
+changes/dry-run-*/
+
+# 质量门禁脚本运行时产物
+scripts/*.pyc
+scripts/__pycache__/
+
+# 截图验证产物
+**/screenshot*.png
+**/verify-*.png
+**/verify-*.jpg
+
+# CI 报告缓存
+**/ci-report-*.json
+**/qg-result-*.md
