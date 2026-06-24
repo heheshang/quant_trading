@@ -14,10 +14,10 @@
         </div>
       </template>
       
-      <el-form :model="backtestConfig" label-width="120px">
+      <el-form :model="backtestConfig" :rules="backtestRules" ref="backtestFormRef" label-width="120px">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="选择策略">
+            <el-form-item label="选择策略" prop="strategyId">
               <el-select v-model="backtestConfig.strategyId" placeholder="请选择策略" @change="onStrategyChange">
                 <el-option 
                   v-for="strategy in strategies" 
@@ -38,7 +38,7 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="开始日期">
+            <el-form-item label="开始日期" prop="startDate">
               <el-date-picker
                 v-model="backtestConfig.startDate"
                 type="date"
@@ -51,7 +51,7 @@
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="结束日期">
+            <el-form-item label="结束日期" prop="endDate">
               <el-date-picker
                 v-model="backtestConfig.endDate"
                 type="date"
@@ -66,13 +66,13 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="初始资金">
+            <el-form-item label="初始资金" prop="initialCapital">
               <el-input-number v-model="backtestConfig.initialCapital" :min="10000" :step="100000" style="width: 100%" />
             </el-form-item>
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="手续费率">
+            <el-form-item label="手续费率" prop="commissionRate">
               <el-input-number v-model="backtestConfig.commissionRate" :min="0" :max="0.1" :step="0.001" style="width: 100%" />
             </el-form-item>
           </el-col>
@@ -80,13 +80,13 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="滑点">
+            <el-form-item label="滑点" prop="slippage">
               <el-input-number v-model="backtestConfig.slippage" :min="0" :max="0.1" :step="0.001" style="width: 100%" />
             </el-form-item>
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="标的代码">
+            <el-form-item label="标的代码" prop="symbols">
               <el-input v-model="backtestConfig.symbols" placeholder="多个标的用逗号分隔" />
             </el-form-item>
           </el-col>
@@ -246,7 +246,38 @@
 import { ref, onMounted, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import * as echarts from 'echarts';
-import { ElMessage } from 'element-plus';
+import { ElMessage, FormInstance } from 'element-plus';
+
+// Form reference
+const backtestFormRef = ref<FormInstance>();
+
+// Validation rules
+const backtestRules = {
+  strategyId: [
+    { required: true, message: '请选择策略', trigger: 'change' }
+  ],
+  startDate: [
+    { required: true, message: '请选择开始日期', trigger: 'change' }
+  ],
+  endDate: [
+    { required: true, message: '请选择结束日期', trigger: 'change' }
+  ],
+  initialCapital: [
+    { required: true, message: '请输入初始资金', trigger: 'blur' },
+    { type: 'number', min: 10000, message: '初始资金不能少于10,000', trigger: 'blur' }
+  ],
+  commissionRate: [
+    { required: true, message: '请输入手续费率', trigger: 'blur' },
+    { type: 'number', min: 0, max: 0.1, message: '手续费率应在0-0.1之间', trigger: 'blur' }
+  ],
+  slippage: [
+    { required: true, message: '请输入滑点', trigger: 'blur' },
+    { type: 'number', min: 0, max: 0.1, message: '滑点应在0-0.1之间', trigger: 'blur' }
+  ],
+  symbols: [
+    { required: true, message: '请输入标的代码', trigger: 'blur' }
+  ]
+};
 
 // Reactive data
 const strategies = ref<any[]>([]);
@@ -317,6 +348,16 @@ function resetConfig() {
 
 // Run backtest
 async function runBacktest() {
+  // Element Plus form validation first
+  if (!backtestFormRef.value) return;
+  try {
+    await backtestFormRef.value.validate();
+  } catch {
+    // Validation failed — Element Plus already shows error messages on fields
+    return;
+  }
+
+  // Manual validation checks (extra safety)
   if (!backtestConfig.value.strategyId) {
     ElMessage.warning('请选择策略');
     return;

@@ -62,12 +62,12 @@
 
     <!-- 策略编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
-      <el-form :model="currentStrategy" label-width="120px">
-        <el-form-item label="策略名称">
+      <el-form :model="currentStrategy" label-width="120px" :rules="strategyRules" ref="strategyFormRef">
+        <el-form-item label="策略名称" prop="strategy_name">
           <el-input v-model="currentStrategy.strategy_name" />
         </el-form-item>
         
-        <el-form-item label="策略类型">
+        <el-form-item label="策略类型" prop="strategy_type">
           <el-select v-model="currentStrategy.strategy_type" placeholder="请选择策略类型">
             <el-option label="趋势跟踪" value="TrendFollowing" />
             <el-option label="均值回归" value="MeanReversion" />
@@ -79,11 +79,11 @@
           </el-select>
         </el-form-item>
         
-        <el-form-item label="最大持仓">
+        <el-form-item label="最大持仓" prop="max_position">
           <el-input-number v-model="currentStrategy.max_position" :min="0" :step="10000" />
         </el-form-item>
         
-        <el-form-item label="最大日亏损">
+        <el-form-item label="最大日亏损" prop="max_daily_loss">
           <el-input-number v-model="currentStrategy.max_daily_loss" :min="0" :step="1000" />
         </el-form-item>
         
@@ -94,7 +94,7 @@
         <!-- 策略参数配置 -->
         <el-form-item label="策略参数">
           <div class="strategy-params">
-            <div v-for="(value, key) in strategyParams" :key="key" class="param-item">
+            <div v-for="(_value, key) in strategyParams" :key="key" class="param-item">
               <el-input v-model="strategyParams[key]" :placeholder="key">
                 <template #prepend>{{ key }}</template>
               </el-input>
@@ -171,7 +171,28 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import * as echarts from 'echarts';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
+
+// Form validation
+const strategyFormRef = ref<FormInstance>();
+
+const strategyRules = {
+  strategy_name: [
+    { required: true, message: '请输入策略名称', trigger: 'blur' },
+    { min: 2, max: 50, message: '策略名称长度应在2-50个字符之间', trigger: 'blur' }
+  ],
+  strategy_type: [
+    { required: true, message: '请选择策略类型', trigger: 'change' }
+  ],
+  max_position: [
+    { required: true, message: '请输入最大持仓', trigger: 'blur' },
+    { type: 'number', min: 0, message: '最大持仓不能小于0', trigger: 'blur' }
+  ],
+  max_daily_loss: [
+    { required: true, message: '请输入最大日亏损', trigger: 'blur' },
+    { type: 'number', min: 0, message: '最大日亏损不能小于0', trigger: 'blur' }
+  ]
+};
 
 // Reactive data
 const loading = ref(false);
@@ -269,18 +290,24 @@ function addParam() {
 
 // Save strategy
 async function saveStrategy() {
-  try {
-    // Merge strategy params
-    currentStrategy.value.params = strategyParams.value;
+  if (!strategyFormRef.value) return;
+  
+  await strategyFormRef.value.validate(async (valid) => {
+    if (!valid) return;
     
-    await invoke<string>('save_strategy', { strategy: currentStrategy.value });
-    ElMessage.success('策略保存成功');
-    dialogVisible.value = false;
-    fetchStrategies();
-  } catch (error) {
-    console.error('Failed to save strategy:', error);
-    ElMessage.error('保存策略失败');
-  }
+    try {
+      // Merge strategy params
+      currentStrategy.value.params = strategyParams.value;
+      
+      await invoke<string>('save_strategy', { strategy: currentStrategy.value });
+      ElMessage.success('策略保存成功');
+      dialogVisible.value = false;
+      fetchStrategies();
+    } catch (error) {
+      console.error('Failed to save strategy:', error);
+      ElMessage.error('保存策略失败');
+    }
+  });
 }
 
 // Delete strategy

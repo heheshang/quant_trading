@@ -63,10 +63,10 @@
         </div>
       </template>
       
-      <el-form :model="riskConfig" label-width="150px">
+      <el-form ref="riskConfigFormRef" :model="riskConfig" :rules="riskConfigRules" label-width="150px">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="最大持仓比例">
+            <el-form-item label="最大持仓比例" prop="max_position_size">
               <el-slider 
                 v-model="riskConfig.max_position_size" 
                 :min="0" 
@@ -79,7 +79,7 @@
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="单日最大亏损比例">
+            <el-form-item label="单日最大亏损比例" prop="max_daily_loss">
               <el-slider 
                 v-model="riskConfig.max_daily_loss" 
                 :min="0" 
@@ -94,7 +94,7 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="最大回撤限制">
+            <el-form-item label="最大回撤限制" prop="max_drawdown">
               <el-slider 
                 v-model="riskConfig.max_drawdown" 
                 :min="0" 
@@ -107,7 +107,7 @@
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="VaR置信水平">
+            <el-form-item label="VaR置信水平" prop="var_confidence_level">
               <el-slider 
                 v-model="riskConfig.var_confidence_level" 
                 :min="0.9" 
@@ -122,13 +122,13 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="启用事前检查">
+            <el-form-item label="启用事前检查" prop="enable_pre_trade_check">
               <el-switch v-model="riskConfig.enable_pre_trade_check" />
             </el-form-item>
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="启用实时监控">
+            <el-form-item label="启用实时监控" prop="enable_real_time_monitor">
               <el-switch v-model="riskConfig.enable_real_time_monitor" />
             </el-form-item>
           </el-col>
@@ -144,16 +144,16 @@
         </div>
       </template>
       
-      <el-form :model="testOrder" label-width="100px">
+      <el-form ref="testOrderFormRef" :model="testOrder" :rules="testOrderRules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="标的代码">
+            <el-form-item label="标的代码" prop="symbol">
               <el-input v-model="testOrder.symbol" placeholder="输入标的代码" />
             </el-form-item>
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="买卖方向">
+            <el-form-item label="买卖方向" prop="side">
               <el-select v-model="testOrder.side" placeholder="选择方向" style="width: 100%">
                 <el-option label="买入" value="Buy" />
                 <el-option label="卖出" value="Sell" />
@@ -164,7 +164,7 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="价格">
+            <el-form-item label="价格" prop="price">
               <el-input-number 
                 v-model="testOrder.price" 
                 :min="0" 
@@ -176,7 +176,7 @@
           </el-col>
           
           <el-col :span="12">
-            <el-form-item label="数量">
+            <el-form-item label="数量" prop="quantity">
               <el-input-number 
                 v-model="testOrder.quantity" 
                 :min="0" 
@@ -247,7 +247,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { ElMessage } from 'element-plus';
+import { ElMessage, FormInstance } from 'element-plus';
 
 // Reactive data
 const riskMetrics = ref({
@@ -285,9 +285,48 @@ const testOrder = ref({
   slippage: 0
 });
 
+const riskConfigFormRef = ref<FormInstance>();
+const testOrderFormRef = ref<FormInstance>();
 const checkResult = ref<boolean | null>(null);
 const saving = ref(false);
 const checking = ref(false);
+
+// Validation rules
+const riskConfigRules = {
+  max_position_size: [
+    { required: true, message: '请设置最大持仓比例', trigger: 'change' },
+    { type: 'number', min: 0, max: 1, message: '最大持仓比例应在0-1之间', trigger: 'change' }
+  ],
+  max_daily_loss: [
+    { required: true, message: '请设置单日最大亏损比例', trigger: 'change' },
+    { type: 'number', min: 0, max: 0.2, message: '单日最大亏损比例应在0-0.2之间', trigger: 'change' }
+  ],
+  max_drawdown: [
+    { required: true, message: '请设置最大回撤限制', trigger: 'change' },
+    { type: 'number', min: 0, max: 0.3, message: '最大回撤限制应在0-0.3之间', trigger: 'change' }
+  ],
+  var_confidence_level: [
+    { required: true, message: '请设置VaR置信水平', trigger: 'change' },
+    { type: 'number', min: 0.9, max: 0.999, message: 'VaR置信水平应在0.9-0.999之间', trigger: 'change' }
+  ]
+};
+
+const testOrderRules = {
+  symbol: [
+    { required: true, message: '请输入标的代码', trigger: 'blur' }
+  ],
+  side: [
+    { required: true, message: '请选择买卖方向', trigger: 'change' }
+  ],
+  price: [
+    { required: true, message: '请输入价格', trigger: 'blur' },
+    { type: 'number', min: 0, message: '价格不能为负数', trigger: 'blur' }
+  ],
+  quantity: [
+    { required: true, message: '请输入数量', trigger: 'blur' },
+    { type: 'number', min: 0, message: '数量不能为负数', trigger: 'blur' }
+  ]
+};
 
 // Format currency
 function formatCurrency(value: number): string {
@@ -374,66 +413,78 @@ async function fetchRiskAlerts() {
 
 // Save config
 async function saveConfig() {
-  saving.value = true;
-  try {
-    await invoke<boolean>('update_risk_config', { config: riskConfig.value });
-    ElMessage.success('风险配置保存成功');
-  } catch (error) {
-    console.error('Failed to save risk config:', error);
-    ElMessage.error('保存风险配置失败: ' + (error as Error).message);
-  } finally {
-    saving.value = false;
-  }
+  if (!riskConfigFormRef.value) return;
+
+  await riskConfigFormRef.value.validate(async (valid) => {
+    if (!valid) return;
+
+    saving.value = true;
+    try {
+      await invoke<boolean>('update_risk_config', { config: riskConfig.value });
+      ElMessage.success('风险配置保存成功');
+    } catch (error) {
+      console.error('Failed to save risk config:', error);
+      ElMessage.error('保存风险配置失败: ' + (error as Error).message);
+    } finally {
+      saving.value = false;
+    }
+  });
 }
 
 // Run pre-trade check
 async function runPreTradeCheck() {
-  checking.value = true;
-  try {
-    // Generate a new order ID
-    testOrder.value.order_id = generateId();
-    
-    // Mock account and positions data for testing
-    const account = {
-      account_id: generateId(),
-      total_assets: 1000000,
-      available_cash: 500000,
-      frozen_cash: 0,
-      market_value: 500000,
-      total_pnl: 10000,
-      daily_pnl: 5000,
-      margin: 0,
-      margin_ratio: 0,
-      updated_at: new Date().toISOString()
-    };
-    
-    const positions = [
-      {
-        symbol: "600519.SH",
-        quantity: 1000,
-        available_quantity: 1000,
-        avg_price: 1650.00,
-        market_value: 1685000,
-        unrealized_pnl: 35000,
-        realized_pnl: 0,
+  if (!testOrderFormRef.value) return;
+
+  await testOrderFormRef.value.validate(async (valid) => {
+    if (!valid) return;
+
+    checking.value = true;
+    try {
+      // Generate a new order ID
+      testOrder.value.order_id = generateId();
+      
+      // Mock account and positions data for testing
+      const account = {
+        account_id: generateId(),
+        total_assets: 1000000,
+        available_cash: 500000,
+        frozen_cash: 0,
+        market_value: 500000,
+        total_pnl: 10000,
+        daily_pnl: 5000,
+        margin: 0,
+        margin_ratio: 0,
         updated_at: new Date().toISOString()
-      }
-    ];
-    
-    const result = await invoke<boolean>('pre_trade_check', {
-      order: testOrder.value,
-      account,
-      positions
-    });
-    
-    checkResult.value = result;
-    ElMessage.success(result ? '风控检查通过' : '风控检查未通过');
-  } catch (error) {
-    console.error('Failed to run pre-trade check:', error);
-    ElMessage.error('风控检查失败: ' + (error as Error).message);
-  } finally {
-    checking.value = false;
-  }
+      };
+      
+      const positions = [
+        {
+          symbol: "600519.SH",
+          quantity: 1000,
+          available_quantity: 1000,
+          avg_price: 1650.00,
+          market_value: 1685000,
+          unrealized_pnl: 35000,
+          realized_pnl: 0,
+          updated_at: new Date().toISOString()
+        }
+      ];
+      
+      const result = await invoke<boolean>('pre_trade_check', {
+        order: testOrder.value,
+        account,
+        positions
+      });
+      
+      checkResult.value = result;
+      ElMessage.success(result ? '风控检查通过' : '风控检查未通过');
+    } catch (error) {
+      console.error('Failed to run pre-trade check:', error);
+      ElMessage.error('风控检查失败: ' + (error as Error).message);
+    } finally {
+      checking.value = false;
+    }
+  });
 }
 
 // Acknowledge alert
