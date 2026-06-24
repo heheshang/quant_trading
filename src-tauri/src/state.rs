@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use trading_layer::OkxExecutor;
 
+#[expect(dead_code)]
 pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
     pub alert_manager: Arc<AlertManager>,

@@ -60,7 +60,7 @@ pub async fn submit_order(state: State<'_, AppState>, order: Order) -> Result<St
     };
 
     // 创建执行引擎
-    let execution_engine = ExecutionEngine::new(order_manager.clone(), config);
+    let execution_engine = ExecutionEngine::new(order_manager.clone(), config, None);
 
     // 提交订单到订单管理器
     let order_id = order_manager
@@ -265,27 +265,27 @@ pub async fn get_metrics() -> Result<HashMap<String, f64>, String> {
     // 模拟指标数据
     metrics.insert(
         "orders_total".to_string(),
-        monitor_layer::ORDERS_TOTAL.get() as f64,
+        monitor_layer::ORDERS_TOTAL.get(),
     );
     metrics.insert(
         "orders_filled".to_string(),
-        monitor_layer::ORDERS_FILLED.get() as f64,
+        monitor_layer::ORDERS_FILLED.get(),
     );
     metrics.insert(
         "orders_cancelled".to_string(),
-        monitor_layer::ORDERS_CANCELLED.get() as f64,
+        monitor_layer::ORDERS_CANCELLED.get(),
     );
     metrics.insert(
         "account_balance".to_string(),
-        monitor_layer::ACCOUNT_BALANCE.get() as f64,
+        monitor_layer::ACCOUNT_BALANCE.get(),
     );
     metrics.insert(
         "position_value".to_string(),
-        monitor_layer::POSITION_VALUE.get() as f64,
+        monitor_layer::POSITION_VALUE.get(),
     );
     metrics.insert(
         "daily_pnl".to_string(),
-        monitor_layer::DAILY_PNL.get() as f64,
+        monitor_layer::DAILY_PNL.get(),
     );
 
     Ok(metrics)

@@ -7,6 +7,8 @@ use tracing::warn;
 
 use crate::state::AppState;
 
+use serde_json;
+
 #[tauri::command]
 pub async fn start_market_data(
     app: AppHandle,
@@ -31,6 +33,11 @@ pub async fn start_market_data(
             .map_err(|e| format!("Failed to subscribe trades {}: {}", symbol, e))?;
     }
 
+    let _ = app.emit(
+        "ws:connection_status",
+        serde_json::json!({ "status": "connecting" }),
+    );
+
     ws.start()
         .await
         .map_err(|e| format!("Failed to start WebSocket: {}", e))?;
@@ -39,12 +46,24 @@ pub async fn start_market_data(
     let running = state.ws_state.running.clone();
     running.store(true, Ordering::SeqCst);
 
+    let _ = app_clone.emit(
+        "ws:connection_status",
+        serde_json::json!({ "status": "connected" }),
+    );
+
     tokio::spawn(async move {
         loop {
             let msg = match receiver.recv().await {
                 Ok(msg) => Some(msg),
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     warn!("Broadcast receiver lagged by {} messages", n);
+                    let _ = app_clone.emit(
+                        "ws:connection_status",
+                        serde_json::json!({
+                            "status": "reconnecting",
+                            "retry_in": 1,
+                        }),
+                    );
                     continue;
                 }
                 Err(broadcast::error::RecvError::Closed) => None,
@@ -79,6 +98,10 @@ pub async fn start_market_data(
                 _ => {}
             }
         }
+        let _ = app_clone.emit(
+            "ws:connection_status",
+            serde_json::json!({ "status": "disconnected" }),
+        );
         running.store(false, Ordering::SeqCst);
     });
 
