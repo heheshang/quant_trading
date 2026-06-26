@@ -101,8 +101,8 @@ export function getLogs(
   return invoke<LogEntry[]>('get_logs', { level, limit })
 }
 
-export function getStrategies(): Promise<StrategyParams[]> {
-  return invoke<StrategyParams[]>('get_strategies')
+export function getStrategies(page?: number, pageSize?: number): Promise<StrategyParams[]> {
+  return invoke<StrategyParams[]>('get_strategies', { page, pageSize })
 }
 
 export function saveStrategy(strategy: StrategyParams): Promise<string> {
@@ -111,6 +111,30 @@ export function saveStrategy(strategy: StrategyParams): Promise<string> {
 
 export function deleteStrategy(strategyId: string): Promise<boolean> {
   return invoke<boolean>('delete_strategy', { strategyId })
+}
+
+export function deployStrategy(strategyId: string): Promise<string> {
+  return invoke<string>('deploy_strategy', { strategyId })
+}
+
+export function startStrategy(strategyId: string): Promise<string> {
+  return invoke<string>('start_strategy', { strategyId })
+}
+
+export function stopStrategy(strategyId: string): Promise<string> {
+  return invoke<string>('stop_strategy', { strategyId })
+}
+
+export function pauseStrategy(strategyId: string): Promise<string> {
+  return invoke<string>('pause_strategy', { strategyId })
+}
+
+export function resumeStrategy(strategyId: string): Promise<string> {
+  return invoke<string>('resume_strategy', { strategyId })
+}
+
+export function archiveStrategy(strategyId: string): Promise<string> {
+  return invoke<string>('archive_strategy', { strategyId })
 }
 
 export function toggleStrategy(
@@ -241,6 +265,9 @@ export function subscribeChannel(symbol: string, channel: string): Promise<void>
   return invoke<void>('subscribe_market_data', { channel, symbol })
 }
 
+// NOTE: Backend has no independent "unsubscribe" command yet,
+// so this calls stop_market_data (stops ALL subscriptions).
+// TODO: Replace with a dedicated backend command when available.
 export function unsubscribeChannel(_symbol: string, _channel: string): Promise<void> {
   return invoke<void>('stop_market_data')
 }

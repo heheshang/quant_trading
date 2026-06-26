@@ -10,6 +10,7 @@ use crate::error::RepoError;
 
 /// Database row type — maps 1:1 to `backtest_results` table columns.
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 struct BacktestResultRow {
     id: i64,
     strategy_id: String,

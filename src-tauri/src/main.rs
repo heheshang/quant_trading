@@ -9,6 +9,7 @@ use tracing::{info, warn};
 
 mod commands;
 mod state;
+mod ws_commands;
 
 use data_layer::{market_data_repo::MarketDataRepository, OkxDataSource, RedisCache};
 use data_puller::DataPuller;
@@ -177,6 +178,7 @@ async fn main() {
         okx_data_source: okx_data_source_shared,
         order_manager,
         app_services: Some(app_services),
+        ws_state: state::WsState::new(),
     };
 
     // 初始化指标收集
@@ -211,6 +213,12 @@ async fn main() {
             commands::save_strategy,
             commands::delete_strategy,
             commands::toggle_strategy,
+            commands::deploy_strategy,
+            commands::start_strategy,
+            commands::stop_strategy,
+            commands::pause_strategy,
+            commands::resume_strategy,
+            commands::archive_strategy,
             commands::get_risk_metrics,
             commands::get_risk_config,
             commands::update_risk_config,
@@ -232,6 +240,11 @@ async fn main() {
             commands::execute_okx_order,
             commands::get_okx_realtime_data,
             commands::get_okx_historical_data,
+            // WebSocket commands
+            ws_commands::start_market_data,
+            ws_commands::subscribe_market_data,
+            ws_commands::stop_market_data,
+            ws_commands::get_subscriptions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

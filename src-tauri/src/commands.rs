@@ -460,18 +460,26 @@ pub async fn get_alerts(state: State<'_, AppState>) -> Result<Vec<Alert>, String
 /// 确认告警
 #[tauri::command]
 pub async fn acknowledge_alert(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     alert_id: String,
 ) -> Result<bool, String> {
     let alert_id_num: i64 = alert_id.parse().map_err(|e| format!("Invalid alert ID: {}", e))?;
 
     let acknowledged = state.alert_manager.acknowledge_alert(alert_id_num).await;
+    if acknowledged {
+        let _ = app.emit("ws:alerts", serde_json::json!({
+            "type": "acknowledged",
+            "alert_id": alert_id_num,
+        }));
+    }
     Ok(acknowledged)
 }
 
 /// 获取日志信息
 #[tauri::command]
 pub async fn get_logs(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     level: Option<String>,
     _limit: Option<u32>,
@@ -482,6 +490,7 @@ pub async fn get_logs(
         state.log_buffer.get_entries().await
     };
 
+    let _ = app.emit("ws:logs", &logs);
     Ok(logs)
 }
 
@@ -547,6 +556,114 @@ pub async fn toggle_strategy(strategy_id: String, enabled: bool) -> Result<bool,
     // 模拟切换策略状态
     println!("Toggling strategy {} to {}", strategy_id, enabled);
     Ok(true)
+}
+
+/// 部署策略
+#[tauri::command]
+pub async fn deploy_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .deploy_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 启动策略
+#[tauri::command]
+pub async fn start_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .start_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 停止策略
+#[tauri::command]
+pub async fn stop_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .stop_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 暂停策略
+#[tauri::command]
+pub async fn pause_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .pause_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 恢复策略
+#[tauri::command]
+pub async fn resume_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .resume_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 归档策略
+#[tauri::command]
+pub async fn archive_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .archive_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
 }
 
 /// 获取风险指标
@@ -945,7 +1062,7 @@ pub async fn cancel_okx_order(
 pub async fn get_okx_candles(
     state: State<'_, AppState>,
     inst_id: String,
-    bar: String,
+    bar: Option<String>,
     limit: Option<u32>,
 ) -> Result<Vec<OkxCandle>, String> {
     let okx_client_opt = state.okx_client.read().await;
@@ -953,8 +1070,9 @@ pub async fn get_okx_candles(
     match okx_client_opt.as_ref() {
         Some(client_arc) => {
             let client = client_arc.read().await;
+            let bar = bar.as_deref().unwrap_or("1H");
             let candles = client
-                .get_candles(&inst_id, &bar, limit)
+                .get_candles(&inst_id, bar, limit)
                 .await
                 .map_err(|e| format!("Failed to get OKX candles: {}", e))?;
 
@@ -968,15 +1086,16 @@ pub async fn get_okx_candles(
 #[tauri::command]
 pub async fn get_okx_instruments(
     state: State<'_, AppState>,
-    inst_type: String,
+    inst_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let okx_client_opt = state.okx_client.read().await;
 
     match okx_client_opt.as_ref() {
         Some(client_arc) => {
             let client = client_arc.read().await;
+            let inst_type = inst_type.as_deref().unwrap_or("SPOT");
             let instruments = client
-                .get_instruments(&inst_type)
+                .get_instruments(inst_type)
                 .await
                 .map_err(|e| format!("Failed to get OKX instruments: {}", e))?;
 
@@ -1169,6 +1288,7 @@ mod tests {
     use tokio::sync::RwLock;
 
     fn make_test_state() -> AppState {
+        use crate::state::WsState;
         use trading_layer::OrderManager;
 
         let alert_manager = Arc::new(AlertManager::new(false, vec![]));
@@ -1184,6 +1304,7 @@ mod tests {
             okx_data_source: Arc::new(RwLock::new(None)),
             order_manager: OrderManager::new(),
             app_services: None,
+            ws_state: WsState::new(),
         }
     }
 

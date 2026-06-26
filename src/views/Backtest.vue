@@ -94,6 +94,17 @@
         
         <el-form-item>
           <el-button type="primary" @click="runBacktest" :loading="running">开始回测</el-button>
+          <el-button @click="saveTemplate">保存模板</el-button>
+          <el-dropdown @command="loadTemplate" v-if="templates.length > 0">
+            <el-button>加载模板<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-for="(tpl, i) in templates" :key="i" :command="i">
+                  {{ tpl.name }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button @click="resetConfig">重置</el-button>
         </el-form-item>
       </el-form>
@@ -201,7 +212,7 @@
         
         <!-- 交易记录 -->
         <el-tab-pane label="交易记录" name="trades">
-          <el-table :data="tradeRecords" style="width: 100%">
+          <el-table v-if="tradeRecords.length > 0" :data="tradeRecords" style="width: 100%">
             <el-table-column prop="date" label="日期" width="180" />
             <el-table-column prop="symbol" label="标的" width="120" />
             <el-table-column prop="type" label="类型" width="100" />
@@ -222,6 +233,7 @@
               </template>
             </el-table-column>
           </el-table>
+          <EmptyState v-else title="暂无交易记录" description="回测完成后将在此处显示交易明细" />
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -231,11 +243,18 @@
       <template #header>
         <div class="card-header">
           <span>回测历史记录</span>
-          <el-button @click="fetchHistory" :loading="historyLoading" size="small">刷新</el-button>
+          <div class="card-header-controls">
+            <el-button @click="compareMode = !compareMode" size="small" :type="compareMode ? 'primary' : 'default'">
+              {{ compareMode ? '取消对比' : '对比' }}
+            </el-button>
+            <el-button @click="exportHistoryCSV" size="small">导出CSV</el-button>
+            <el-button @click="fetchHistory" :loading="historyLoading" size="small">刷新</el-button>
+          </div>
         </div>
       </template>
       
-      <el-table :data="historyRecords" style="width: 100%" v-loading="historyLoading">
+      <el-table v-if="historyRecords.length > 0" :data="historyRecords" style="width: 100%" v-loading="historyLoading" @selection-change="onHistorySelectionChange">
+        <el-table-column v-if="compareMode" type="selection" width="50" />
         <el-table-column prop="strategy_name" label="策略名称" width="150">
           <template #default="scope">
             {{ scope.row.strategy_name || '-' }}
@@ -286,6 +305,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <EmptyState v-else-if="!historyLoading" title="暂无回测记录" description="请先运行回测来生成记录" />
     </el-card>
 
     <!-- 加载状态 -->
@@ -301,14 +321,51 @@
         <div class="loading-text">正在执行回测，请稍候...</div>
       </div>
     </el-card>
-  </div>
+  
+  <!-- Comparison dialog -->
+  <el-dialog v-model="compareDialogVisible" title="结果对比" width="900px">
+    <el-row :gutter="20" v-if="compareResults.length === 2">
+      <el-col :span="12" v-for="(r, i) in compareResults" :key="i">
+        <el-card>
+          <template #header><span>{{ r.strategy_name || `结果 ${i + 1}` }}</span></template>
+          <div class="compare-stats">
+            <div class="compare-row"><span class="cl">总收益率</span><span :class="{ positive: r.total_return > 0, negative: r.total_return < 0 }">{{ formatPercentage(r.total_return) }}</span></div>
+            <div class="compare-row"><span class="cl">年化收益率</span><span :class="{ positive: r.annual_return > 0, negative: r.annual_return < 0 }">{{ formatPercentage(r.annual_return) }}</span></div>
+            <div class="compare-row"><span class="cl">夏普比率</span><span>{{ formatNumber(r.sharpe_ratio) }}</span></div>
+            <div class="compare-row"><span class="cl">最大回撤</span><span class="negative">{{ formatPercentage(r.max_drawdown) }}</span></div>
+            <div class="compare-row"><span class="cl">胜率</span><span>{{ formatPercentage(r.win_rate) }}</span></div>
+            <div class="compare-row"><span class="cl">总交易数</span><span>{{ r.total_trades }}</span></div>
+            <div class="compare-row"><span class="cl">盈亏比</span><span>{{ formatNumber(r.profit_loss_ratio) }}</span></div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+    <p v-else style="text-align:center;color:#999;">请选择两条记录进行对比</p>
+    <template #footer>
+      <el-button @click="compareDialogVisible = false">关闭</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- Delete history record confirm dialog -->
+  <ConfirmDialog
+    v-model:visible="deleteDialogVisible"
+    title="确认删除"
+    message="确定要删除这条回测记录吗？此操作不可撤销。"
+    type="danger"
+    confirm-text="删除"
+    @confirm="confirmDeleteRecord"
+  />
+</div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { getStrategies, runBacktest as apiRunBacktest, getBacktestResults, getBacktestResult, deleteBacktestResult } from '@/services/api';
 import * as echarts from 'echarts';
 import { ElMessage, FormInstance } from 'element-plus';
+import { ArrowDown } from '@element-plus/icons-vue';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
+import EmptyState from '@/components/common/EmptyState.vue';
 
 // Form reference
 const backtestFormRef = ref<FormInstance>();
@@ -359,6 +416,82 @@ const running = ref(false);
 const activeTab = ref('overview');
 const historyRecords = ref<any[]>([]);
 const historyLoading = ref(false);
+const deleteDialogVisible = ref(false);
+const recordToDelete = ref<number | null>(null);
+
+// ==================== Parameter templates ====================
+const templates = ref<{ name: string; config: typeof backtestConfig.value }[]>([])
+
+function saveTemplate() {
+  const name = prompt('输入模板名称：')
+  if (!name) return
+  templates.value.push({ name, config: { ...backtestConfig.value } })
+  ElMessage.success(`模板「${name}」已保存`)
+}
+
+function loadTemplate(index: number) {
+  const tpl = templates.value[index]
+  if (tpl) {
+    backtestConfig.value = { ...tpl.config }
+    ElMessage.success(`已加载模板「${tpl.name}」`)
+  }
+}
+
+// ==================== History comparison ====================
+const compareMode = ref(false)
+const compareDialogVisible = ref(false)
+const compareResults = ref<any[]>([])
+const selectedHistoryIds = ref<number[]>([])
+
+function onHistorySelectionChange(rows: any[]) {
+  selectedHistoryIds.value = rows.map((r: any) => r.id)
+  if (compareMode && selectedHistoryIds.value.length === 2) {
+    compareResults.value = rows
+    compareDialogVisible.value = true
+  }
+}
+
+watch(compareMode, (val) => {
+  if (!val) { selectedHistoryIds.value = []; compareResults.value = [] }
+})
+
+// ==================== CSV export ====================
+function exportHistoryCSV() {
+  const headers = ['策略名称', '开始日期', '结束日期', '总收益率', '夏普比率', '最大回撤', '交易数', '胜率', '创建时间']
+  const rows = historyRecords.value.map((r: any) => [
+    r.strategy_name, r.start_date, r.end_date,
+    formatPercentage(r.total_return), formatNumber(r.sharpe_ratio),
+    formatPercentage(r.max_drawdown), r.total_trades,
+    formatPercentage(r.win_rate), r.created_at,
+  ])
+  const csv = [headers.join(','), ...rows.map((r: string[]) => r.join(','))].join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `backtest_history_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click(); URL.revokeObjectURL(url)
+}
+
+function exportResult() {
+  if (!backtestResult.value) return
+  const headers = ['指标', '值']
+  const rows = [
+    ['总收益率', formatPercentage(backtestResult.value.total_return)],
+    ['年化收益率', formatPercentage(backtestResult.value.annual_return)],
+    ['夏普比率', formatNumber(backtestResult.value.sharpe_ratio)],
+    ['最大回撤', formatPercentage(backtestResult.value.max_drawdown)],
+    ['胜率', formatPercentage(backtestResult.value.win_rate)],
+    ['总交易数', backtestResult.value.total_trades],
+    ['初始资金', formatCurrency(backtestResult.value.initial_capital)],
+    ['最终资金', formatCurrency(backtestResult.value.final_capital)],
+  ]
+  const csv = [headers.join(','), ...rows.map((r: string[]) => r.join(','))].join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `backtest_result_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click(); URL.revokeObjectURL(url)
+}
 
 // Format currency
 function formatCurrency(value: any): string {
@@ -390,8 +523,7 @@ function formatDate(dateStr: string): string {
 // Fetch strategies
 async function fetchStrategies() {
   try {
-    const data = await invoke<any[]>('get_strategies');
-    strategies.value = data;
+    strategies.value = await getStrategies() as any;
   } catch (error) {
     console.error('Failed to fetch strategies:', error);
     ElMessage.error('获取策略列表失败');
@@ -426,8 +558,8 @@ function resetConfig() {
 async function fetchHistory() {
   historyLoading.value = true;
   try {
-    const data = await invoke<any[]>('get_backtest_results', { limit: 50, offset: 0 });
-    historyRecords.value = data;
+    const data = await getBacktestResults(50, 0);
+    historyRecords.value = data as any;
   } catch (error) {
     console.error('Failed to fetch backtest history:', error);
   } finally {
@@ -438,8 +570,7 @@ async function fetchHistory() {
 // View history detail
 async function viewHistoryDetail(id: number) {
   try {
-    const result = await invoke<any>('get_backtest_result', { id });
-    backtestResult.value = result;
+    backtestResult.value = await getBacktestResult(id) as any;
     activeTab.value = 'overview';
   } catch (error) {
     console.error('Failed to fetch backtest detail:', error);
@@ -447,11 +578,20 @@ async function viewHistoryDetail(id: number) {
   }
 }
 
-// Delete history record
-async function deleteHistoryRecord(id: number) {
+// Delete history record — show ConfirmDialog first
+function deleteHistoryRecord(id: number) {
+  recordToDelete.value = id;
+  deleteDialogVisible.value = true;
+}
+
+async function confirmDeleteRecord() {
+  const id = recordToDelete.value;
+  if (id === null) return;
   try {
-    await invoke<boolean>('delete_backtest_result', { id });
+    await deleteBacktestResult(id);
     ElMessage.success('删除成功');
+    deleteDialogVisible.value = false;
+    recordToDelete.value = null;
     fetchHistory();
   } catch (error) {
     console.error('Failed to delete backtest result:', error);
@@ -488,39 +628,20 @@ async function runBacktest() {
       .map(s => s.trim())
       .filter(s => s.length > 0);
 
-    const result = await invoke<any>('run_backtest', {
-      strategyId: backtestConfig.value.strategyId,
-      startDate: backtestConfig.value.startDate,
-      endDate: backtestConfig.value.endDate,
-      initialCapital: backtestConfig.value.initialCapital,
-      commissionRate: backtestConfig.value.commissionRate,
-      slippage: backtestConfig.value.slippage,
+    const result = await apiRunBacktest(
+      backtestConfig.value.strategyId,
+      backtestConfig.value.startDate,
+      backtestConfig.value.endDate,
+      backtestConfig.value.initialCapital,
+      backtestConfig.value.commissionRate,
+      backtestConfig.value.slippage,
       symbols,
-    });
+    );
     
     backtestResult.value = result;
     
-    // Generate mock trade records for display
-    tradeRecords.value = [
-      {
-        date: new Date().toISOString(),
-        symbol: symbols[0] || 'BTC-USDT',
-        type: '买入',
-        price: 1650.00,
-        quantity: 100,
-        amount: 165000,
-        commission: 165
-      },
-      {
-        date: new Date(Date.now() + 86400000).toISOString(),
-        symbol: symbols[0] || 'BTC-USDT',
-        type: '卖出',
-        price: 1680.00,
-        quantity: 100,
-        amount: 168000,
-        commission: 168
-      }
-    ];
+    // Use real trade records from API if available, otherwise empty
+    tradeRecords.value = (result as any).trades || [];
     
     ElMessage.success('回测完成');
     fetchHistory();
@@ -577,11 +698,6 @@ function initEquityChart() {
     
     chart.setOption(option);
   }
-}
-
-// Export result
-function exportResult() {
-  ElMessage.info('导出功能开发中...');
 }
 
 // Initialize on mount
@@ -645,6 +761,33 @@ watch(activeTab, (newTab) => {
 .backtest-stat-card {
   margin-bottom: 20px;
 }
+
+.card-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.compare-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.compare-row .cl {
+  color: #606266;
+}
+
+.compare-row .positive { color: #67c23a; }
+.compare-row .negative { color: #f56c6c; }
 
 .stat-item {
   text-align: center;

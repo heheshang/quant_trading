@@ -194,7 +194,41 @@
         </el-card>
       </el-tab-pane>
       
-
+      <!-- 交易所设置 -->
+      <el-tab-pane label="交易所" name="exchange">
+        <el-card class="settings-card">
+          <template #header>
+            <div class="card-header">
+              <span>OKX 交易所状态</span>
+              <el-button size="small" @click="fetchOkxConnStatus" :loading="okxChecking">检测连接</el-button>
+            </div>
+          </template>
+          
+          <div v-if="okxConnStatus" class="okx-status-grid">
+            <div class="okx-status-field">
+              <span class="field-label">连接状态</span>
+              <el-tag :type="okxConnStatus.connected ? 'success' : 'danger'" size="large">
+                {{ okxConnStatus.connected ? '已连接' : '未连接' }}
+              </el-tag>
+            </div>
+            <div class="okx-status-field">
+              <span class="field-label">模拟交易</span>
+              <span>{{ okxConnStatus.demo_trading ? '是' : '否' }}</span>
+            </div>
+            <div class="okx-status-field">
+              <span class="field-label">交易所时间</span>
+              <span>{{ okxConnStatus.exchange_time || '-' }}</span>
+            </div>
+            <div class="okx-status-field">
+              <span class="field-label">消息</span>
+              <span>{{ okxConnStatus.message || '-' }}</span>
+            </div>
+          </div>
+          <div v-else class="okx-status-placeholder">
+            <p>点击「检测连接」查看 OKX 交易所状态</p>
+          </div>
+        </el-card>
+      </el-tab-pane>
       
       <!-- 交易设置 -->
       <el-tab-pane label="交易" name="trading">
@@ -490,16 +524,28 @@
         <el-button type="primary" @click="saveConfig" :loading="saving">保存配置</el-button>
         <el-button @click="resetConfig">重置</el-button>
         <el-button @click="exportConfig">导出配置</el-button>
-        <el-button @click="importConfig">导入配置</el-button>
+        <el-button @click="triggerImport">导入配置</el-button>
+        <input ref="importFileInput" type="file" accept=".json" style="display:none" @change="handleImport" />
       </div>
     </el-card>
+
+    <!-- Reset config confirm dialog -->
+    <ConfirmDialog
+      v-model:visible="resetDialogVisible"
+      title="确认重置"
+      message="确定要重置所有系统设置吗？此操作不可撤销。"
+      type="danger"
+      confirm-text="重置"
+      @confirm="confirmReset"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { getConfig, updateConfig, checkOkxStatus } from '@/services/api';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 
 // ========================
 // TypeScript Interfaces
@@ -710,6 +756,7 @@ const securityRules: FormRules = {
 
 const activeTab = ref('basic');
 const saving = ref(false);
+const resetDialogVisible = ref(false);
 
 const systemInfo = ref<SystemInfo>({
   name: '量化交易系统',
@@ -784,13 +831,32 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
 }
 
 // ========================
+// OKX Status
+// ========================
+
+const okxConnStatus = ref<any>(null);
+const okxChecking = ref(false);
+
+async function fetchOkxConnStatus() {
+  okxChecking.value = true;
+  try {
+    okxConnStatus.value = await checkOkxStatus();
+  } catch (error) {
+    console.error('Failed to check OKX status:', error);
+    ElMessage.error('检测 OKX 连接失败');
+  } finally {
+    okxChecking.value = false;
+  }
+}
+
+// ========================
 // Methods
 // ========================
 
 // Fetch current configuration
 async function fetchConfig() {
   try {
-    const data = await invoke<SystemConfig>('get_config');
+    const data = await getConfig();
     // Deep merge: backend fields override defaults, missing nested keys keep defaults.
     config.value = deepMerge(config.value, data);
   } catch (error) {
@@ -829,7 +895,7 @@ async function saveConfig() {
 
   saving.value = true;
   try {
-    await invoke<boolean>('update_config', { config: config.value });
+    await updateConfig(config.value as any);
     ElMessage.success('配置保存成功');
   } catch (error) {
     console.error('Failed to save config:', error);
@@ -839,19 +905,75 @@ async function saveConfig() {
   }
 }
 
-// Reset configuration
+// Reset configuration — show ConfirmDialog first
 function resetConfig() {
-  ElMessage.info('重置功能开发中...');
+  resetDialogVisible.value = true;
 }
 
-// Export configuration
+async function confirmReset() {
+  try {
+    await fetchConfig(); // Reload defaults from server
+    ElMessage.success('设置已重置');
+    resetDialogVisible.value = false;
+  } catch (error) {
+    console.error('Failed to reset config:', error);
+    ElMessage.error('重置失败: ' + (error as Error).message);
+  }
+}
+
+// Export configuration to JSON file
 function exportConfig() {
-  ElMessage.info('导出功能开发中...');
+  const data = JSON.stringify(config.value, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `quant-trader-config-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success('配置已导出');
 }
 
-// Import configuration
-function importConfig() {
-  ElMessage.info('导入功能开发中...');
+// Trigger file input for import
+const importFileInput = ref<HTMLInputElement | null>(null);
+function triggerImport() {
+  importFileInput.value?.click();
+}
+
+// Handle imported config file
+async function handleImport(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const imported = JSON.parse(text);
+
+    // Validate imported config has the expected structure
+    if (!imported.system || !imported.database || !imported.trading) {
+      ElMessage.error('无效的配置文件格式');
+      return;
+    }
+
+    // Deep merge imported config into current config
+    config.value = {
+      ...config.value,
+      ...imported,
+      system: { ...config.value.system, ...imported.system },
+      database: { ...config.value.database, ...imported.database },
+      trading: { ...config.value.trading, ...imported.trading },
+      risk: { ...config.value.risk, ...imported.risk },
+      okx: { ...config.value.okx, ...imported.okx },
+    };
+
+    ElMessage.success('配置已导入，请点击"保存配置"以生效');
+  } catch (err) {
+    ElMessage.error('导入失败: ' + (err as Error).message);
+  } finally {
+    // Reset file input so the same file can be re-imported
+    input.value = '';
+  }
 }
 
 // Initialize on mount
@@ -891,5 +1013,30 @@ onMounted(() => {
   display: flex;
   gap: 10px;
   justify-content: center;
+}
+
+.okx-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.okx-status-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.okx-status-field .field-label {
+  color: #909399;
+  font-size: 14px;
+}
+
+.okx-status-placeholder {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
 }
 </style>

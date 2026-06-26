@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use quant_common::types::{MarketData, Order, OrderSide, OrderType, Position, StrategyParams};
+use quant_common::types::{
+    MarketData, Order, OrderSide, OrderType, ParameterSchema, Position, StrategyParams,
+};
 use quant_common::Result;
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
@@ -35,6 +37,46 @@ pub trait Strategy: Send + Sync {
 
     /// 更新策略参数
     async fn update_params(&mut self, params: StrategyParams) -> Result<()>;
+
+    // ── 生命周期钩子（默认空实现） ─────────────────────────────────────
+
+    /// 策略部署时调用
+    async fn on_deploy(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// 策略启动时调用
+    async fn on_start(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// 策略停止时调用
+    async fn on_stop(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// 策略暂停时调用
+    async fn on_pause(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// 策略恢复时调用
+    async fn on_resume(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// 策略归档时调用
+    async fn on_archive(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    // ── 参数 Schema ─────────────────────────────────────────────────────
+
+    /// 返回该策略的参数 Schema 定义（用于前端动态渲染和参数校验）
+    #[must_use]
+    fn parameter_schema(&self) -> Vec<ParameterSchema> {
+        Vec::new()
+    }
 }
 
 /// 均值回归策略示例
@@ -224,6 +266,44 @@ impl Strategy for MeanReversionStrategy {
     async fn update_params(&mut self, params: StrategyParams) -> Result<()> {
         info!(strategy_id = %params.strategy_id, "Updating strategy params");
         self.initialize(params).await
+    }
+
+    fn parameter_schema(&self) -> Vec<ParameterSchema> {
+        vec![
+            ParameterSchema {
+                name: "lookback_period".into(),
+                param_type: quant_common::types::ParamType::Number,
+                default: serde_json::json!(20),
+                range: Some(quant_common::types::ParamRange {
+                    min: 5.0,
+                    max: 100.0,
+                    step: Some(1.0),
+                }),
+                description: "Lookback period for mean reversion calculation".into(),
+            },
+            ParameterSchema {
+                name: "entry_threshold".into(),
+                param_type: quant_common::types::ParamType::Number,
+                default: serde_json::json!(2.0),
+                range: Some(quant_common::types::ParamRange {
+                    min: 0.5,
+                    max: 5.0,
+                    step: Some(0.1),
+                }),
+                description: "Entry threshold in standard deviations".into(),
+            },
+            ParameterSchema {
+                name: "exit_threshold".into(),
+                param_type: quant_common::types::ParamType::Number,
+                default: serde_json::json!(0.5),
+                range: Some(quant_common::types::ParamRange {
+                    min: 0.1,
+                    max: 3.0,
+                    step: Some(0.1),
+                }),
+                description: "Exit threshold in standard deviations".into(),
+            },
+        ]
     }
 }
 

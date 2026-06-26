@@ -1,7 +1,8 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use quant_common::types::{Order, OrderSide, OrderType};
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
+use uuid::Uuid;
 
 /// 交易信号类型
 #[derive(Debug, Clone, PartialEq)]
@@ -9,6 +10,15 @@ pub enum SignalType {
     Buy,
     Sell,
     Hold,
+}
+
+/// 信号来源
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignalSource {
+    Strategy,
+    Manual,
+    Webhook,
+    Scheduled,
 }
 
 /// 交易信号
@@ -19,6 +29,19 @@ pub struct Signal {
     pub strength: f64, // 信号强度 0.0-1.0
     pub price: Option<Decimal>,
     pub quantity: Option<Decimal>,
+    // 流水线/调度所需元数据
+    pub id: String,
+    pub strategy_id: String,
+    pub source: SignalSource,
+    pub generated_at: DateTime<Utc>,
+    pub metadata: serde_json::Value,
+}
+
+impl Signal {
+    fn generate_id() -> String {
+        let u = Uuid::new_v4();
+        format!("sig-{}", u)
+    }
 }
 
 impl Signal {
@@ -92,6 +115,11 @@ impl SignalGenerator {
             strength,
             price: Some(price),
             quantity: None,
+            id: Signal::generate_id(),
+            strategy_id: String::new(),
+            source: SignalSource::Strategy,
+            generated_at: Utc::now(),
+            metadata: serde_json::json!({}),
         }
     }
 
@@ -126,6 +154,11 @@ impl SignalGenerator {
             strength,
             price: Some(price),
             quantity: None,
+            id: Signal::generate_id(),
+            strategy_id: String::new(),
+            source: SignalSource::Strategy,
+            generated_at: Utc::now(),
+            metadata: serde_json::json!({}),
         }
     }
 }
@@ -208,6 +241,11 @@ mod tests {
             strength: 0.8,
             price: Some(Decimal::from(100)),
             quantity: Some(Decimal::from(10)),
+            id: "sig-test-001".to_string(),
+            strategy_id: "test_strategy".to_string(),
+            source: SignalSource::Strategy,
+            generated_at: Utc::now(),
+            metadata: serde_json::json!({}),
         };
         let order = signal.to_order("test_strategy").unwrap();
         assert_eq!(order.side, OrderSide::Buy);
@@ -224,6 +262,11 @@ mod tests {
             strength: 0.0,
             price: None,
             quantity: None,
+            id: "sig-test-002".to_string(),
+            strategy_id: "test_strategy".to_string(),
+            source: SignalSource::Strategy,
+            generated_at: Utc::now(),
+            metadata: serde_json::json!({}),
         };
         assert!(signal.to_order("test_strategy").is_none());
     }

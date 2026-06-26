@@ -59,6 +59,21 @@ pub enum ServiceError {
     #[error("Data source error: {0}")]
     DataSource(String),
 
+    #[error("Invalid status transition: {from} → {to}")]
+    InvalidStatusTransition {
+        from: String,
+        to: String,
+    },
+
+    #[error("Strategy is already running: {0}")]
+    StrategyAlreadyRunning(String),
+
+    #[error("Scheduler error: {0}")]
+    Scheduler(String),
+
+    #[error("Invalid parameter: {0}")]
+    InvalidParameter(String),
+
     #[error("{0}")]
     Other(String),
 }

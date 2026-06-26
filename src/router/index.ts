@@ -6,6 +6,8 @@ const requireAuth = (to: RouteLocationNormalized, _from: RouteLocationNormalized
   
   // Only allow access to login page when not authenticated
   if (to.path !== '/login' && !isAuthenticated) {
+    // Store intended redirect path for post-login
+    localStorage.setItem('redirect_after_login', to.path);
     next('/login');
   } else if (to.path === '/login' && isAuthenticated) {
     // If already authenticated, redirect to dashboard

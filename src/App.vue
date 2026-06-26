@@ -66,7 +66,14 @@
         <!-- Show header only when authenticated -->
         <el-header class="header" v-if="isAuthenticated">
           <div class="header-content">
-            <h3>{{ pageTitle }}</h3>
+            <div class="header-left">
+              <h3>{{ pageTitle }}</h3>
+              <el-breadcrumb separator="/" class="breadcrumb">
+                <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+                <el-breadcrumb-item v-if="route.path !== '/dashboard'" :to="{ path: '/dashboard' }">仪表盘</el-breadcrumb-item>
+                <el-breadcrumb-item v-if="route.path !== '/dashboard'">{{ pageTitle }}</el-breadcrumb-item>
+              </el-breadcrumb>
+            </div>
             <div class="user-info">
               <el-icon><User /></el-icon>
               <span>{{ username }}</span>
@@ -76,7 +83,11 @@
         </el-header>
         
         <el-main class="main-content">
-          <router-view />
+          <router-view v-slot="{ Component, route: r }">
+            <transition name="fade-slide" mode="out-in">
+              <component :is="Component" :key="r.path" />
+            </transition>
+          </router-view>
         </el-main>
       </el-container>
     </el-container>
@@ -202,6 +213,36 @@ const logout = () => {
 .main-content {
   background: #f0f2f5;
   padding: 20px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.breadcrumb {
+  font-size: 12px;
+}
+
+.breadcrumb .el-breadcrumb__inner {
+  font-size: 12px;
+}
+
+/* Route transition animations */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.25s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
 }
 </style>
 

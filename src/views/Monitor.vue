@@ -114,10 +114,18 @@
         <!-- 实时指标图表 -->
         <el-row :gutter="20" style="margin-top: 20px;">
           <el-col :span="24">
-            <el-card>
+              <el-card>
               <template #header>
                 <div class="card-header">
                   <span>实时指标趋势</span>
+                  <el-select v-model="selectedMetrics" multiple placeholder="选择指标" size="small" style="width:200px">
+                    <el-option label="总订单数" value="orders_total" />
+                    <el-option label="已成交订单" value="orders_filled" />
+                    <el-option label="已撤单数" value="orders_cancelled" />
+                    <el-option label="账户余额" value="account_balance" />
+                    <el-option label="持仓价值" value="position_value" />
+                    <el-option label="今日盈亏" value="daily_pnl" />
+                  </el-select>
                 </div>
               </template>
               <div id="metrics-chart" style="height: 400px;"></div>
@@ -137,7 +145,7 @@
                   <el-button type="primary" size="small" @click="fetchAlerts">刷新告警</el-button>
                 </div>
               </template>
-              <el-table :data="alerts" style="width: 100%">
+              <el-table v-if="alerts.length > 0" :data="alerts" style="width: 100%">
                 <el-table-column prop="timestamp" label="时间" width="180" />
                 <el-table-column prop="source" label="来源" width="150" />
                 <el-table-column prop="level" label="级别" width="100" />
@@ -156,11 +164,66 @@
                   </template>
                 </el-table-column>
               </el-table>
+              <EmptyState v-else title="暂无告警" description="当前没有需要处理的告警" />
             </el-card>
           </el-col>
         </el-row>
       </el-tab-pane>
       
+      <!-- 告警阈值 -->
+      <el-tab-pane label="告警阈值" name="thresholds">
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-card>
+              <template #header>
+                <div class="card-header">
+                  <span>阈值配置</span>
+                  <el-button type="primary" size="small" @click="saveThresholds">保存配置</el-button>
+                </div>
+              </template>
+              <el-form label-width="160px">
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="最大回撤阈值">
+                      <el-input-number v-model="thresholdConfig.maxDrawdown" :min="0" :max="100" :precision="1" :step="0.5">
+                        <template #suffix>%</template>
+                      </el-input-number>
+                    </el-form-item>
+                    <el-form-item label="日亏损阈值">
+                      <el-input-number v-model="thresholdConfig.dailyLoss" :min="0" :max="100" :precision="1" :step="0.5">
+                        <template #suffix>%</template>
+                      </el-input-number>
+                    </el-form-item>
+                    <el-form-item label="持仓集中度">
+                      <el-input-number v-model="thresholdConfig.concentration" :min="0" :max="100" :precision="1" :step="1">
+                        <template #suffix>%</template>
+                      </el-input-number>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="杠杆率上限">
+                      <el-input-number v-model="thresholdConfig.leverage" :min="1" :max="10" :precision="1" :step="0.5">
+                        <template #suffix>x</template>
+                      </el-input-number>
+                    </el-form-item>
+                    <el-form-item label="订单延迟告警">
+                      <el-input-number v-model="thresholdConfig.orderLatency" :min="0" :max="10000" :step="10">
+                        <template #suffix>ms</template>
+                      </el-input-number>
+                    </el-form-item>
+                    <el-form-item label="VaR 预警阈值">
+                      <el-input-number v-model="thresholdConfig.varWarning" :min="0" :max="100" :precision="1" :step="0.5">
+                        <template #suffix>%</template>
+                      </el-input-number>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-form>
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
+
       <!-- 系统日志 -->
       <el-tab-pane label="系统日志" name="logs">
         <el-row :gutter="20">
@@ -207,8 +270,8 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue';
 import * as echarts from 'echarts';
-import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getMetrics, getAlerts, getLogs, acknowledgeAlert as apiAcknowledgeAlert } from '@/services/api';
 import { 
   TrendCharts, 
   Check, 
@@ -220,7 +283,9 @@ import {
 import { useWebSocketStatus } from '@/composables/useWebSocketStatus';
 import { useMarketData } from '@/composables/useMarketData';
 import ConnectionStatus from '@/components/ws/ConnectionStatus.vue';
+import EmptyState from '@/components/common/EmptyState.vue';
 import type { Alert, AlertLevel, LogEntry } from '@/services/types';
+import { ElMessage } from 'element-plus';
 
 // --- WS event payload types ---
 interface WsAlertPayload {
@@ -247,6 +312,22 @@ const activeTab = ref('metrics');
 const loading = ref(false);
 const isPollingFallback = ref(false);
 
+// Metrics selection
+const selectedMetrics = ref<string[]>(['orders_total', 'orders_filled', 'account_balance', 'daily_pnl']);
+
+// Metric labels lookup
+const metricLabels: Record<string, string> = {
+  orders_total: '总订单数',
+  orders_filled: '已成交订单',
+  orders_cancelled: '已撤单数',
+  account_balance: '账户余额',
+  position_value: '持仓价值',
+  daily_pnl: '今日盈亏',
+};
+
+// Watch selected metrics → update chart
+watch(selectedMetrics, () => { updateMetricsChart(); }, { deep: true });
+
 // Metrics data
 const metrics = ref<Record<string, number>>({});
 const metricsHistory = ref<Array<{time: string, metrics: Record<string, number>}>>([]);
@@ -257,6 +338,28 @@ const alerts = shallowRef<Alert[]>([]);
 // Logs data (shallowRef for WS-pushed data efficiency)
 const logs = shallowRef<LogEntry[]>([]);
 const logLevel = ref('');
+
+// Threshold config
+const thresholdConfig = ref({
+  maxDrawdown: 20,
+  dailyLoss: 10,
+  concentration: 50,
+  leverage: 3,
+  orderLatency: 1000,
+  varWarning: 5,
+});
+
+function saveThresholds() {
+  const cfg = thresholdConfig.value;
+  localStorage.setItem('monitor_thresholds', JSON.stringify(cfg));
+  ElMessage.success('阈值配置已保存');
+}
+
+// Restore saved thresholds
+const saved = localStorage.getItem('monitor_thresholds');
+if (saved) {
+  try { Object.assign(thresholdConfig.value, JSON.parse(saved)); } catch { /* ignore */ }
+}
 
 // --- Polling fallback state ---
 let disconnectTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -299,12 +402,11 @@ function formatDate(dateInput: string | { timestamp: string }): string {
 // --- Data fetch functions (polling fallback) ---
 async function fetchMetrics() {
   try {
-    const data = await invoke<Record<string, number>>('get_metrics');
-    metrics.value = data;
+    metrics.value = await getMetrics();
     const now = new Date().toLocaleTimeString('zh-CN');
     metricsHistory.value.push({
       time: now,
-      metrics: { ...data }
+      metrics: { ...metrics.value }
     });
     
     if (metricsHistory.value.length > 20) {
@@ -327,8 +429,7 @@ async function fetchMetrics() {
 
 async function fetchAlerts() {
   try {
-    const data = await invoke<Alert[]>('get_alerts');
-    alerts.value = data;
+    alerts.value = await getAlerts();
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
     alerts.value = [
@@ -354,7 +455,7 @@ async function fetchAlerts() {
 
 async function acknowledgeAlert(alertId: number) {
   try {
-    await invoke<boolean>('acknowledge_alert', { alertId });
+    await apiAcknowledgeAlert(alertId);
     
     const current = alerts.value;
     const alert = current.find(a => a.alert_id === alertId);
@@ -375,11 +476,7 @@ async function acknowledgeAlert(alertId: number) {
 
 async function fetchLogs() {
   try {
-    const data = await invoke<LogEntry[]>('get_logs', { 
-      level: logLevel.value || null, 
-      limit: 50 
-    });
-    logs.value = data;
+    logs.value = await getLogs(logLevel.value || undefined, 50);
   } catch (error) {
     console.error('Failed to fetch logs:', error);
     logs.value = [
@@ -479,46 +576,19 @@ function initMetricsChart() {
     metricsChart.value?.dispose();
     metricsChart.value = echarts.init(chartDom);
     
+    const series = selectedMetrics.value.map(key => ({
+      name: metricLabels[key] || key,
+      type: 'line' as const,
+      data: [] as number[],
+      smooth: true,
+    }));
+    
     const option = {
-      tooltip: {
-        trigger: 'axis'
-      },
-      legend: {
-        data: ['总订单数', '已成交订单', '账户余额', '今日盈亏']
-      },
-      xAxis: {
-        type: 'category',
-        data: []
-      },
-      yAxis: {
-        type: 'value'
-      },
-      series: [
-        {
-          name: '总订单数',
-          type: 'line',
-          data: [],
-          smooth: true
-        },
-        {
-          name: '已成交订单',
-          type: 'line',
-          data: [],
-          smooth: true
-        },
-        {
-          name: '账户余额',
-          type: 'line',
-          data: [],
-          smooth: true
-        },
-        {
-          name: '今日盈亏',
-          type: 'line',
-          data: [],
-          smooth: true
-        }
-      ]
+      tooltip: { trigger: 'axis' as const },
+      legend: { data: series.map(s => s.name) },
+      xAxis: { type: 'category' as const, data: [] as string[] },
+      yAxis: { type: 'value' as const },
+      series,
     };
     
     metricsChart.value.setOption(option);
@@ -529,21 +599,14 @@ function updateMetricsChart() {
   const chart = metricsChart.value;
   if (chart && metricsHistory.value.length > 0) {
     const times = metricsHistory.value.map(item => item.time);
-    const ordersTotal = metricsHistory.value.map(item => item.metrics.orders_total || 0);
-    const ordersFilled = metricsHistory.value.map(item => item.metrics.orders_filled || 0);
-    const accountBalance = metricsHistory.value.map(item => item.metrics.account_balance || 0);
-    const dailyPnl = metricsHistory.value.map(item => item.metrics.daily_pnl || 0);
+    const series = selectedMetrics.value.map(key => ({
+      name: metricLabels[key] || key,
+      data: metricsHistory.value.map(item => item.metrics[key] || 0),
+    }));
     
     chart.setOption({
-      xAxis: {
-        data: times
-      },
-      series: [
-        { name: '总订单数', data: ordersTotal },
-        { name: '已成交订单', data: ordersFilled },
-        { name: '账户余额', data: accountBalance },
-        { name: '今日盈亏', data: dailyPnl }
-      ]
+      xAxis: { data: times },
+      series,
     });
   }
 }

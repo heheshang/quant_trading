@@ -11,6 +11,10 @@ pub struct AppConfig {
     pub okx: OkxConfig,
     #[serde(default)]
     pub data_puller: DataPullerConfig,
+    #[serde(default)]
+    pub scheduler: SchedulerConfig,
+    #[serde(default)]
+    pub param_optimizer: ParamOptimizerConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +140,72 @@ pub struct IntervalConfig {
     pub interval_secs: u64,
 }
 
+// ─── Scheduler & Optimizer Config ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerConfig {
+    #[serde(default = "default_scheduler_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_scheduler_max_concurrent")]
+    pub max_concurrent_strategies: usize,
+    #[serde(default = "default_scheduler_default_interval_secs")]
+    pub default_interval_secs: u64,
+    #[serde(default = "default_scheduler_circuit_breaker_threshold")]
+    pub circuit_breaker_threshold: u32,
+    #[serde(default = "default_scheduler_circuit_breaker_window_secs")]
+    pub circuit_breaker_window_secs: u64,
+    #[serde(default = "default_scheduler_circuit_breaker_cooldown_secs")]
+    pub circuit_breaker_cooldown_secs: u64,
+}
+
+impl Default for SchedulerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_scheduler_enabled(),
+            max_concurrent_strategies: default_scheduler_max_concurrent(),
+            default_interval_secs: default_scheduler_default_interval_secs(),
+            circuit_breaker_threshold: default_scheduler_circuit_breaker_threshold(),
+            circuit_breaker_window_secs: default_scheduler_circuit_breaker_window_secs(),
+            circuit_breaker_cooldown_secs: default_scheduler_circuit_breaker_cooldown_secs(),
+        }
+    }
+}
+
+fn default_scheduler_enabled() -> bool { false }
+fn default_scheduler_max_concurrent() -> usize { 10 }
+fn default_scheduler_default_interval_secs() -> u64 { 60 }
+fn default_scheduler_circuit_breaker_threshold() -> u32 { 5 }
+fn default_scheduler_circuit_breaker_window_secs() -> u64 { 300 }
+fn default_scheduler_circuit_breaker_cooldown_secs() -> u64 { 600 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParamOptimizerConfig {
+    #[serde(default = "default_optimizer_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_optimizer_max_iterations")]
+    pub max_iterations: u32,
+    #[serde(default = "default_optimizer_timeout_secs")]
+    pub timeout_secs: u64,
+    #[serde(default = "default_optimizer_parallel_jobs")]
+    pub parallel_jobs: u32,
+}
+
+impl Default for ParamOptimizerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_optimizer_enabled(),
+            max_iterations: default_optimizer_max_iterations(),
+            timeout_secs: default_optimizer_timeout_secs(),
+            parallel_jobs: default_optimizer_parallel_jobs(),
+        }
+    }
+}
+
+fn default_optimizer_enabled() -> bool { false }
+fn default_optimizer_max_iterations() -> u32 { 100 }
+fn default_optimizer_timeout_secs() -> u64 { 3600 }
+fn default_optimizer_parallel_jobs() -> u32 { 4 }
+
 fn default_candle_bars() -> Vec<String> {
     vec!["1m".into(), "5m".into(), "1H".into()]
 }
@@ -255,6 +325,8 @@ impl Default for AppConfig {
                     == "true",
             },
             data_puller: DataPullerConfig::default(),
+            scheduler: SchedulerConfig::default(),
+            param_optimizer: ParamOptimizerConfig::default(),
         }
     }
 }
@@ -307,5 +379,43 @@ mod tests {
         assert_eq!(app_config.monitoring.prometheus_port, 9090);
         assert_eq!(app_config.monitoring.alert_email, None);
         assert_eq!(app_config.monitoring.alert_webhook, None);
+    }
+
+    // ── Scheduler Config ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_scheduler_config_default() {
+        let cfg = SchedulerConfig::default();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.max_concurrent_strategies, 10);
+        assert_eq!(cfg.default_interval_secs, 60);
+        assert_eq!(cfg.circuit_breaker_threshold, 5);
+        assert_eq!(cfg.circuit_breaker_window_secs, 300);
+        assert_eq!(cfg.circuit_breaker_cooldown_secs, 600);
+    }
+
+    #[test]
+    fn test_app_config_includes_scheduler() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.scheduler.enabled);
+        assert_eq!(cfg.scheduler.default_interval_secs, 60);
+    }
+
+    // ── Param Optimizer Config ────────────────────────────────────────────
+
+    #[test]
+    fn test_param_optimizer_config_default() {
+        let cfg = ParamOptimizerConfig::default();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.max_iterations, 100);
+        assert_eq!(cfg.timeout_secs, 3600);
+        assert_eq!(cfg.parallel_jobs, 4);
+    }
+
+    #[test]
+    fn test_app_config_includes_optimizer() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.param_optimizer.enabled);
+        assert_eq!(cfg.param_optimizer.max_iterations, 100);
     }
 }

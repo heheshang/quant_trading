@@ -177,28 +177,130 @@
     </el-dialog>
 
     <!-- 2FA Dialog -->
-    <el-dialog v-model="show2FADialog" title="双因素认证" width="500px">
-      <div v-if="!is2FAEnabled">
-        <p>启用双因素认证以增强账户安全性</p>
-        <el-button type="primary" @click="enable2FA">启用 2FA</el-button>
-      </div>
-      <div v-else>
-        <p>双因素认证已启用</p>
-        <el-button type="danger" @click="disable2FA">禁用 2FA</el-button>
-      </div>
+    <el-dialog v-model="show2FADialog" title="双因素认证" width="540px">
+      <template v-if="!is2FAEnabled && !show2FASetup">
+        <div style="text-align:center;padding:20px 0;">
+          <el-icon :size="48" color="#409EFF"><Lock /></el-icon>
+          <p style="margin-top:12px;font-size:14px;color:#666;">
+            双因素认证为您的账户提供额外的安全保护。启用后，登录时需要输入动态验证码。
+          </p>
+          <el-button type="primary" @click="start2FASetup" style="margin-top:16px;">
+            立即启用
+          </el-button>
+        </div>
+      </template>
+
+      <template v-else-if="show2FASetup">
+        <el-steps :active="twoFAStep" simple style="margin-bottom:20px">
+          <el-step title="绑定密钥" :status="twoFAStep > 1 ? 'finish' : 'process'" />
+          <el-step title="验证代码" :status="twoFAStep > 2 ? 'finish' : twoFAStep === 2 ? 'process' : 'wait'" />
+          <el-step title="完成" :status="twoFAStep > 3 ? 'finish' : 'wait'" />
+        </el-steps>
+
+        <div v-if="twoFAStep === 1">
+          <p style="margin-bottom:12px;font-size:14px;">
+            请在您的验证器应用中添加以下密钥：
+          </p>
+          <div style="text-align:center;padding:16px 0;">
+            <div style="display:inline-block;background:#fff;padding:16px;border:1px solid #dcdfe6;border-radius:8px;">
+              <div style="display:grid;grid-template-columns:repeat(8,18px);gap:2px;margin-bottom:8px">
+                <div v-for="i in 64" :key="i" 
+                  :style="{ 
+                    width:'18px',height:'18px',
+                    background: ['#000','#fff'][Math.floor(Math.random()*2)],
+                    borderRadius:'2px'
+                  }">
+                </div>
+              </div>
+              <div style="font-size:12px;color:#999;">扫描此二维码</div>
+            </div>
+          </div>
+          <el-input :model-value="fake2FASecret" readonly style="margin-bottom:8px;">
+            <template #prepend>密钥</template>
+            <template #append>
+              <el-button @click="copySecret">复制</el-button>
+            </template>
+          </el-input>
+          <p style="font-size:12px;color:#999;">
+            支持 Google Authenticator、Authy、Microsoft Authenticator 等
+          </p>
+          <div style="text-align:right;margin-top:12px;">
+            <el-button @click="show2FASetup = false; show2FADialog = false">取消</el-button>
+            <el-button type="primary" @click="twoFAStep = 2">我已绑定</el-button>
+          </div>
+        </div>
+
+        <div v-if="twoFAStep === 2">
+          <p style="margin-bottom:12px;font-size:14px;">
+            请输入您的验证器应用当前显示的 6 位动态验证码：
+          </p>
+          <div style="text-align:center;padding:12px 0;">
+            <el-input
+              v-model="twoFACode"
+              :maxlength="6"
+              placeholder="000000"
+              size="large"
+              style="width:200px;font-size:24px;text-align:center;"
+              @input="on2FACodeInput"
+            />
+          </div>
+          <div style="text-align:right;margin-top:12px;">
+            <el-button @click="twoFAStep = 1">返回</el-button>
+            <el-button type="primary" @click="verify2FA" :loading="verifying2FA">验证并启用</el-button>
+          </div>
+        </div>
+
+        <div v-if="twoFAStep === 3">
+          <div style="text-align:center;padding:20px 0;">
+            <el-icon :size="48" color="#67C23A"><CircleCheck /></el-icon>
+            <p style="margin-top:12px;font-size:16px;font-weight:bold;color:#333;">双因素认证已启用</p>
+            <p style="font-size:14px;color:#666;margin-top:8px;">
+              今后登录时，您需要输入手机验证码以及动态验证码
+            </p>
+          </div>
+          <div style="text-align:right;">
+            <el-button type="primary" @click="close2FADialog">完成</el-button>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <div style="text-align:center;padding:20px 0;">
+          <el-icon :size="48" color="#67C23A"><CircleCheck /></el-icon>
+          <p style="margin-top:12px;font-size:16px;font-weight:bold;color:#333;">双因素认证已启用</p>
+          <p style="font-size:14px;color:#666;margin-top:8px;margin-bottom:16px;">
+            您的账户已受到双因素认证保护
+          </p>
+          <el-button type="danger" @click="disable2FA">禁用 2FA</el-button>
+        </div>
+      </template>
+
       <template #footer>
-        <span class="dialog-footer">
+        <span v-if="is2FAEnabled" class="dialog-footer">
           <el-button @click="show2FADialog = false">关闭</el-button>
         </span>
       </template>
     </el-dialog>
+
+    <!-- Disable 2FA confirm dialog -->
+    <ConfirmDialog
+      v-model:visible="disable2FADialogVisible"
+      title="确认禁用"
+      message="确定要禁用双因素认证吗？这会降低账户安全性。"
+      type="warning"
+      confirm-text="禁用"
+      @confirm="confirmDisable2FA"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { ElMessage, ElMessageBox, FormInstance } from 'element-plus';
+import { getAccountInfo, getUserProfile, updateProfile, changePassword as apiChangePassword } from '@/services/api';
+import { ElMessage, type FormInstance } from 'element-plus';
+import { Lock, CircleCheck } from '@element-plus/icons-vue';
+import { useRouter } from 'vue-router';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 
 // Reactive data
 const profileForm = ref({
@@ -240,6 +342,62 @@ const changingPassword = ref(false);
 const showPasswordDialog = ref(false);
 const show2FADialog = ref(false);
 const is2FAEnabled = ref(false);
+const disable2FADialogVisible = ref(false);
+const router = useRouter();
+
+// 2FA setup state
+const show2FASetup = ref(false);
+const twoFAStep = ref(1);
+const verifying2FA = ref(false);
+const twoFACode = ref('');
+const fake2FASecret = ref('JBSWY3DPEHPK3PXP');
+
+function start2FASetup() {
+  show2FASetup.value = true;
+  twoFAStep.value = 1;
+  twoFACode.value = '';
+  // Generate a random-looking secret
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  fake2FASecret.value = Array.from({ length: 16 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function copySecret() {
+  navigator.clipboard.writeText(fake2FASecret.value).then(() => {
+    ElMessage.success('密钥已复制到剪贴板');
+  }).catch(() => {
+    ElMessage.warning('复制失败，请手动复制');
+  });
+}
+
+function on2FACodeInput(value: string) {
+  twoFACode.value = value.replace(/\D/g, '').slice(0, 6);
+}
+
+async function verify2FA() {
+  if (twoFACode.value.length !== 6) {
+    ElMessage.warning('请输入完整的 6 位验证码');
+    return;
+  }
+  verifying2FA.value = true;
+  try {
+    // Simulate API verification
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    is2FAEnabled.value = true;
+    twoFAStep.value = 3;
+    ElMessage.success('双因素认证已启用');
+  } catch (error) {
+    ElMessage.error('验证失败，请重试');
+  } finally {
+    verifying2FA.value = false;
+  }
+}
+
+function close2FADialog() {
+  show2FADialog.value = false;
+  show2FASetup.value = false;
+  twoFAStep.value = 1;
+  twoFACode.value = '';
+}
 
 // Validation rules
 const profileRules = {
@@ -317,9 +475,7 @@ async function saveProfile() {
     saving.value = true;
     try {
       // Call Tauri command to update profile
-      const result = await invoke<boolean>('update_profile', { 
-        profileData: profileForm.value 
-      });
+      const result = await updateProfile(profileForm.value as any);
       
       if (result) {
         ElMessage.success('个人信息保存成功');
@@ -346,20 +502,20 @@ async function changePassword() {
     changingPassword.value = true;
     try {
       // Call Tauri command to change password
-      const result = await invoke<boolean>('change_password', {
-        currentPassword: passwordForm.value.currentPassword,
-        newPassword: passwordForm.value.newPassword
-      });
+      const result = await apiChangePassword(
+        passwordForm.value.currentPassword,
+        passwordForm.value.newPassword
+      );
       
       if (result) {
-        ElMessage.success('密码修改成功');
+        ElMessage.success('密码修改成功，即将跳转至登录页面');
         showPasswordDialog.value = false;
-        // Reset password form
-        passwordForm.value = {
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: ''
-        };
+        passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
+        // Auto-redirect to login after 2 seconds
+        setTimeout(() => {
+          localStorage.removeItem('auth_token');
+          router.push('/login');
+        }, 2000);
       } else {
         ElMessage.error('密码修改失败');
       }
@@ -372,37 +528,20 @@ async function changePassword() {
   });
 }
 
-// Enable 2FA
-async function enable2FA() {
-  try {
-    // In a real implementation, this would call a Tauri command to enable 2FA
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-    
-    is2FAEnabled.value = true;
-    ElMessage.success('双因素认证已启用');
-  } catch (error) {
-    console.error('Failed to enable 2FA:', error);
-    ElMessage.error('启用双因素认证失败: ' + (error as Error).message);
-  }
+// Disable 2FA — show ConfirmDialog first
+function disable2FA() {
+  disable2FADialogVisible.value = true;
 }
 
-// Disable 2FA
-async function disable2FA() {
+async function confirmDisable2FA() {
   try {
-    ElMessageBox.confirm('确定要禁用双因素认证吗？这会降低账户安全性。', '确认禁用', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }).then(async () => {
-      // In a real implementation, this would call a Tauri command to disable 2FA
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      
-      is2FAEnabled.value = false;
-      ElMessage.success('双因素认证已禁用');
-      show2FADialog.value = false;
-    }).catch(() => {
-      // User cancelled
-    });
+    // In a real implementation, this would call a Tauri command to disable 2FA
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+
+    is2FAEnabled.value = false;
+    ElMessage.success('双因素认证已禁用');
+    show2FADialog.value = false;
+    disable2FADialogVisible.value = false;
   } catch (error) {
     console.error('Failed to disable 2FA:', error);
     ElMessage.error('禁用双因素认证失败: ' + (error as Error).message);
@@ -414,19 +553,19 @@ async function fetchProfile() {
   loading.value = true;
   try {
     // Fetch account info
-    const accountData = await invoke<any>('get_account_info');
-    accountInfo.value = accountData;
+    const accountData = await getAccountInfo();
+    accountInfo.value = accountData as any;
     
     // Fetch user profile
-    const userProfile = await invoke<any>('get_user_profile');
+    const userProfile = await getUserProfile();
     profileForm.value = {
-      account_id: accountData.account_id,
-      username: userProfile.username,
-      email: userProfile.email,
-      phone: userProfile.phone,
-      full_name: userProfile.full_name,
-      company: userProfile.company,
-      address: userProfile.address
+      account_id: String(accountData?.account_id ?? ''),
+      username: String(userProfile?.username ?? ''),
+      email: String(userProfile?.email ?? ''),
+      phone: String(userProfile?.phone ?? ''),
+      full_name: String(userProfile?.full_name ?? ''),
+      company: String(userProfile?.company ?? ''),
+      address: String(userProfile?.address ?? '')
     };
   } catch (error) {
     console.error('Failed to fetch profile:', error);

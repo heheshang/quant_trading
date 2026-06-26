@@ -14,9 +14,21 @@
       <el-col :span="24">
         <div class="dashboard-header">
           <h2 style="margin: 0">仪表盘</h2>
-          <el-button type="primary" @click="refreshData" :loading="loading">
-            刷新数据
-          </el-button>
+          <div class="header-controls">
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              size="small"
+              @change="onDateRangeChange"
+              style="width: 240px; margin-right: 8px"
+            />
+            <el-button type="primary" @click="refreshData" :loading="loading">
+              刷新数据
+            </el-button>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -68,6 +80,7 @@
             :icon="TrendCharts"
             icon-bg="#409eff"
             :loading="loading"
+            @click="router.push('/trading')"
           />
         </el-col>
         <el-col :span="6">
@@ -79,6 +92,7 @@
             icon-bg="#67c23a"
             :trend="accountStore.dailyPnl"
             :loading="loading"
+            @click="router.push('/monitor')"
           />
         </el-col>
         <el-col :span="6">
@@ -89,6 +103,7 @@
             :icon="Tickets"
             icon-bg="#e6a23c"
             :loading="loading"
+            @click="router.push('/trading')"
           />
         </el-col>
         <el-col :span="6">
@@ -98,7 +113,58 @@
             :icon="Warning"
             icon-bg="#f56c6c"
             :loading="loading"
+            @click="router.push('/risk')"
           />
+        </el-col>
+      </el-row>
+
+      <!-- Market data row -->
+      <el-row :gutter="20" style="margin-top: 20px">
+        <el-col :span="24">
+          <el-card>
+            <template #header>
+              <div class="card-header">
+                <span><el-icon><Coin /></el-icon> 市场价格</span>
+                <el-button size="small" @click="fetchMarketData" :loading="marketLoading">刷新</el-button>
+              </div>
+            </template>
+            <div v-if="marketError" class="market-data-placeholder">
+              <el-icon><Warning /></el-icon>
+              <span>{{ marketError }}</span>
+            </div>
+            <div v-else-if="marketData" class="market-data-grid">
+              <div class="market-item">
+                <span class="market-label">标的</span>
+                <span class="market-value">{{ marketData.symbol }}</span>
+              </div>
+              <div class="market-item">
+                <span class="market-label">最新价</span>
+                <span class="market-value">{{ marketData.price }}</span>
+              </div>
+              <div class="market-item">
+                <span class="market-label">涨跌幅</span>
+                <span class="market-value" :class="{ positive: (marketData.change || 0) >= 0, negative: (marketData.change || 0) < 0 }">
+                  {{ marketData.change_percent ?? '-' }}
+                </span>
+              </div>
+              <div class="market-item">
+                <span class="market-label">成交量</span>
+                <span class="market-value">{{ marketData.volume ?? '-' }}</span>
+              </div>
+              <div class="market-item">
+                <span class="market-label">最高价</span>
+                <span class="market-value">{{ marketData.high ?? '-' }}</span>
+              </div>
+              <div class="market-item">
+                <span class="market-label">最低价</span>
+                <span class="market-value">{{ marketData.low ?? '-' }}</span>
+              </div>
+            </div>
+            <div v-else class="market-data-placeholder">
+              <el-icon><Coin /></el-icon>
+              <span>点击刷新加载行情数据</span>
+            </div>
+          </el-card>
         </el-col>
       </el-row>
 
@@ -129,7 +195,7 @@
             <template #header>
               <div class="card-header"><span>最近交易</span></div>
             </template>
-            <el-table :data="recentTrades" style="width: 100%">
+            <el-table v-if="recentTrades.length > 0" :data="recentTrades" style="width: 100%">
               <el-table-column prop="time" label="时间" width="180" />
               <el-table-column prop="symbol" label="标的" width="120" />
               <el-table-column prop="side" label="方向" width="100">
@@ -149,6 +215,7 @@
                   </template>
                 </el-table-column>
             </el-table>
+            <EmptyState v-else title="暂无交易" description="开始交易后最近交易将显示在这里" />
           </el-card>
         </el-col>
       </el-row>
@@ -158,18 +225,28 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { TrendCharts, Promotion, Tickets, Warning } from '@element-plus/icons-vue'
+import { TrendCharts, Promotion, Tickets, Warning, Coin } from '@element-plus/icons-vue'
 import { useAccountStore } from '@/stores/account'
 import { useOrderStore } from '@/stores/order'
 import { useFormatting } from '@/composables/useFormatting'
 import { useMarketData } from '@/composables/useMarketData'
+import { getMarketData } from '@/services/api'
 import StatsCard from '@/components/StatsCard.vue'
 import RealtimeTickerPanel from '@/components/dashboard/RealtimeTickerPanel.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const accountStore = useAccountStore()
 const orderStore = useOrderStore()
+const router = useRouter()
 const { formatCurrency, formatDate, formatOrderSide, formatOrderStatus } = useFormatting()
+
+// Date filter
+const dateRange = ref<[Date, Date]>([new Date(Date.now() - 30 * 86400000), new Date()])
+function onDateRangeChange() {
+  refreshData()
+}
 
 const recentTrades = computed(() =>
   orderStore.activeOrders.map((order) => ({
@@ -196,6 +273,28 @@ const unrealizedPnl = computed(() =>
 
 const pnlColor = (value: number) => (value >= 0 ? '#f56c6c' : '#67c23a')
 
+// Market data
+const marketData = ref<any>(null)
+const marketError = ref('')
+const marketLoading = ref(false)
+
+async function fetchMarketData() {
+  if (marketLoading.value) return
+  marketLoading.value = true
+  marketError.value = ''
+  try {
+    const data = await getMarketData('default')
+    marketData.value = data
+  } catch (err: any) {
+    marketData.value = null
+    marketError.value = err?.message?.includes('Not implemented')
+      ? '行情数据功能开发中'
+      : '获取行情数据失败: ' + (err?.message || '未知错误')
+  } finally {
+    marketLoading.value = false
+  }
+}
+
 const equityChartRef = ref<HTMLDivElement>()
 const positionChartRef = ref<HTMLDivElement>()
 let equityChart: echarts.ECharts | null = null
@@ -203,47 +302,53 @@ let positionChart: echarts.ECharts | null = null
 
 function initCharts() {
   if (!equityChartRef.value || !positionChartRef.value) return
+  const positions = accountStore.positions
 
-  // Equity chart
+  // Equity chart — load from account history if available, else show empty
   equityChart = echarts.init(equityChartRef.value)
-  const dates: string[] = []
-  const values: number[] = []
-  const today = new Date()
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - i)
-    dates.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }))
-    const baseValue = 1200000
-    const fluctuation = Math.sin(i / 5) * 50000 + Math.random() * 20000
-    values.push(baseValue + fluctuation)
-  }
-
-  equityChart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      formatter: (params: any) =>
-        `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`,
-    },
-    xAxis: { type: 'category', data: dates },
-    yAxis: {
-      type: 'value',
-      axisLabel: { formatter: (v: number) => '¥' + (v / 10000).toFixed(0) + '万' },
-    },
-    series: [
-      {
-        data: values,
-        type: 'line',
-        smooth: true,
-        areaStyle: {},
-        lineStyle: { width: 3 },
-        itemStyle: { color: '#409EFF' },
+  const equityHistory = (accountStore.accountInfo as any)?.equity_history as [string, number][] | undefined
+  if (equityHistory && equityHistory.length > 0) {
+    const dates = equityHistory.map(([d]) =>
+      new Date(d).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
+    )
+    const values = equityHistory.map(([, v]) => v)
+    equityChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) =>
+          `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`,
       },
-    ],
-  })
+      xAxis: { type: 'category', data: dates },
+      yAxis: {
+        type: 'value',
+        axisLabel: { formatter: (v: number) => '¥' + (v / 10000).toFixed(0) + '万' },
+      },
+      series: [
+        {
+          data: values,
+          type: 'line',
+          smooth: true,
+          areaStyle: {},
+          lineStyle: { width: 3 },
+          itemStyle: { color: '#409EFF' },
+        },
+      ],
+    })
+  } else {
+    equityChart.setOption({
+      graphic: {
+        elements: [{
+          type: 'text',
+          key: 'no-data',
+          style: { text: '暂无资产历史', fontSize: 16, textAlign: 'center', fill: '#999' },
+          position: ['50%', '50%'],
+        }],
+      },
+    })
+  }
 
   // Position pie chart
   positionChart = echarts.init(positionChartRef.value)
-  const positions = accountStore.positions
   if (positions.length > 0) {
     positionChart.setOption({
       tooltip: {
@@ -268,14 +373,12 @@ function initCharts() {
   } else {
     positionChart.setOption({
       graphic: {
-        elements: [
-          {
-            type: 'text',
-            key: 'no-data',
-            style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: '#999' },
-            position: ['50%', '50%'],
-          },
-        ],
+        elements: [{
+          type: 'text',
+          key: 'no-data',
+          style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: '#999' },
+          position: ['50%', '50%'],
+        }],
       },
     })
   }
@@ -327,6 +430,11 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
 }
 
 .card-header {

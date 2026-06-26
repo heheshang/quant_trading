@@ -1,5 +1,5 @@
 <template>
-  <el-card class="stats-card" :body-style="{ padding: '20px' }">
+  <el-card class="stats-card" :class="{ clickable: !!to }" :body-style="{ padding: '20px' }" @click="$emit('click')">
     <el-skeleton v-if="loading" :rows="2" animated />
     <div v-else class="stat-item">
       <div v-if="icon" class="stat-icon" :style="{ background: iconBg }">
@@ -37,6 +37,8 @@ const props = withDefaults(
     format: 'raw',
   },
 )
+
+defineEmits<{ click: [] }>()
 
 const formattedValue = computed(() => {
   const v = props.value
@@ -92,6 +94,15 @@ const valueClass = computed(() => {
   font-size: 24px;
   font-weight: bold;
   color: #333;
+}
+
+.stats-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.stats-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .stat-value.positive {

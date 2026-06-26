@@ -14,6 +14,7 @@ pub mod error;
 pub mod market_data_provider;
 pub mod market_service;
 pub mod okx_service;
+pub mod optimizer;
 pub mod risk_service;
 pub mod strategy_service;
 
@@ -24,5 +25,6 @@ pub use config_service::ConfigService;
 pub use error::{ServiceError, ServiceResult};
 pub use market_service::MarketService;
 pub use okx_service::OkxService;
+pub use optimizer::ParamOptimizer;
 pub use risk_service::RiskService;
 pub use strategy_service::StrategyService;

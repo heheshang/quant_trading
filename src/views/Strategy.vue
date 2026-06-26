@@ -15,10 +15,34 @@
       <template #header>
         <div class="card-header">
           <span>策略列表</span>
+          <div class="card-header-controls">
+            <SearchBar v-model="searchQuery" placeholder="搜索策略名称" @search="onSearch" />
+          </div>
         </div>
       </template>
+
+      <!-- Filters & batch actions -->
+      <div class="table-toolbar">
+        <FilterPanel
+          v-model:filters="activeFilters"
+          :filter-options="filterOptions"
+          @change="onFilterChange"
+        />
+        <div class="batch-actions" v-if="selectedStrategies.length > 0">
+          <el-button size="small" @click="batchStart">批量启动</el-button>
+          <el-button size="small" @click="batchStop">批量停止</el-button>
+          <el-button size="small" type="danger" @click="batchDelete">批量删除</el-button>
+        </div>
+      </div>
       
-      <el-table :data="strategies" style="width: 100%" v-loading="loading">
+      <el-table
+        v-if="paginatedStrategies.length > 0"
+        :data="paginatedStrategies"
+        style="width: 100%"
+        v-loading="loading"
+        @selection-change="onSelectionChange"
+      >
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="strategy_name" label="策略名称" width="180" />
         <el-table-column prop="strategy_type" label="策略类型" width="120">
           <template #default="scope">
@@ -50,14 +74,39 @@
             {{ formatDate(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="240">
           <template #default="scope">
+            <el-dropdown trigger="click" @command="(cmd: string) => handleLifecycle(cmd, scope.row)">
+              <el-button size="small" type="primary">
+                生命周期 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="deploy">部署</el-dropdown-item>
+                  <el-dropdown-item command="start">启动</el-dropdown-item>
+                  <el-dropdown-item command="stop">停止</el-dropdown-item>
+                  <el-dropdown-item command="pause">暂停</el-dropdown-item>
+                  <el-dropdown-item command="resume">恢复</el-dropdown-item>
+                  <el-dropdown-item command="archive" divided>归档</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-button size="small" @click="openStrategyDialog(scope.row)">编辑</el-button>
             <el-button size="small" type="primary" @click="runBacktest(scope.row.strategy_id)">回测</el-button>
             <el-button size="small" type="danger" @click="deleteStrategy(scope.row.strategy_id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <div v-if="strategies.length > 0" class="table-footer">
+        <Paginator
+          :total="strategies.length"
+          :page-size="pageSize"
+          :current-page="currentPage"
+          @update:current-page="currentPage = $event"
+          @update:page-size="pageSize = $event"
+        />
+      </div>
+      <EmptyState v-else-if="!loading" title="暂无策略" description="点击「新建策略」按钮创建第一个策略" />
     </el-card>
 
     <!-- 策略编辑对话框 -->
@@ -164,14 +213,30 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- Delete strategy confirm dialog -->
+    <ConfirmDialog
+      v-model:visible="deleteDialogVisible"
+      title="确认删除"
+      message="确定要删除这个策略吗？此操作不可撤销。"
+      type="danger"
+      confirm-text="删除"
+      @confirm="confirmDeleteStrategy"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { getStrategies, saveStrategy as apiSaveStrategy, deleteStrategy as apiDeleteStrategy, toggleStrategy, deployStrategy, startStrategy, stopStrategy, pauseStrategy, resumeStrategy, archiveStrategy, runBacktest as apiRunBacktest } from '@/services/api';
 import * as echarts from 'echarts';
-import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
+import { ElMessage, type FormInstance } from 'element-plus';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
+import EmptyState from '@/components/common/EmptyState.vue';
+import SearchBar from '@/components/common/SearchBar.vue';
+import FilterPanel from '@/components/common/FilterPanel.vue';
+import Paginator from '@/components/common/Paginator.vue';
+import { ArrowDown } from '@element-plus/icons-vue';
 
 // Form validation
 const strategyFormRef = ref<FormInstance>();
@@ -203,6 +268,74 @@ const currentStrategy = ref<any>({});
 const strategyParams = ref<Record<string, any>>({});
 const backtestResult = ref<any>(null);
 const isEditing = ref(false);
+const deleteDialogVisible = ref(false);
+const strategyToDelete = ref<string | null>(null);
+
+// ==================== Search / Filter / Pagination ====================
+const searchQuery = ref('')
+const activeFilters = ref<Record<string, any>>({})
+const currentPage = ref(1)
+const pageSize = ref(10)
+const selectedStrategies = ref<any[]>([])
+
+const filterOptions = [
+  { key: 'strategy_type', label: '策略类型', type: 'select' as const, options: ['TrendFollowing', 'MeanReversion', 'Arbitrage', 'MarketMaking', 'Statistical', 'MachineLearning', 'Custom'] },
+  { key: 'enabled', label: '状态', type: 'select' as const, options: ['enabled', 'disabled'] },
+]
+
+const filteredStrategies = computed(() => {
+  let list = strategies.value
+  // Search filter
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter((s: any) => s.strategy_name?.toLowerCase().includes(q))
+  }
+  // Active filters
+  if (activeFilters.value.strategy_type) {
+    list = list.filter((s: any) => s.strategy_type === activeFilters.value.strategy_type)
+  }
+  if (activeFilters.value.enabled) {
+    const isEnabled = activeFilters.value.enabled === 'enabled'
+    list = list.filter((s: any) => s.enabled === isEnabled)
+  }
+  return list
+})
+
+const paginatedStrategies = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredStrategies.value.slice(start, start + pageSize.value)
+})
+
+function onSearch() { currentPage.value = 1 }
+function onFilterChange() { currentPage.value = 1 }
+function onSelectionChange(rows: any[]) { selectedStrategies.value = rows }
+
+async function batchStart() {
+  for (const s of selectedStrategies.value) {
+    try { await startStrategy(s.strategy_id); ElMessage.success(`已启动: ${s.strategy_name}`) }
+    catch (e) { ElMessage.error(`启动失败: ${s.strategy_name}`) }
+  }
+  selectedStrategies.value = []
+  fetchStrategies()
+}
+
+async function batchStop() {
+  for (const s of selectedStrategies.value) {
+    try { await stopStrategy(s.strategy_id); ElMessage.success(`已停止: ${s.strategy_name}`) }
+    catch (e) { ElMessage.error(`停止失败: ${s.strategy_name}`) }
+  }
+  selectedStrategies.value = []
+  fetchStrategies()
+}
+
+async function batchDelete() {
+  for (const s of selectedStrategies.value) {
+    try { await apiDeleteStrategy(s.strategy_id); ElMessage.success(`已删除: ${s.strategy_name}`) }
+    catch (e) { ElMessage.error(`删除失败: ${s.strategy_name}`) }
+  }
+  selectedStrategies.value = []
+  fetchStrategies()
+}
 
 // Computed properties
 const dialogTitle = computed(() => isEditing.value ? '编辑策略' : '新建策略');
@@ -245,7 +378,7 @@ function getStrategyTypeText(type: string): string {
 async function fetchStrategies() {
   loading.value = true;
   try {
-    const data = await invoke<any[]>('get_strategies');
+    const data = await getStrategies();
     strategies.value = data;
   } catch (error) {
     console.error('Failed to fetch strategies:', error);
@@ -299,7 +432,7 @@ async function saveStrategy() {
       // Merge strategy params
       currentStrategy.value.params = strategyParams.value;
       
-      await invoke<string>('save_strategy', { strategy: currentStrategy.value });
+      await apiSaveStrategy(currentStrategy.value);
       ElMessage.success('策略保存成功');
       dialogVisible.value = false;
       fetchStrategies();
@@ -310,33 +443,30 @@ async function saveStrategy() {
   });
 }
 
-// Delete strategy
-async function deleteStrategy(strategyId: string) {
+// Delete strategy — show ConfirmDialog first
+function deleteStrategy(strategyId: string) {
+  strategyToDelete.value = strategyId;
+  deleteDialogVisible.value = true;
+}
+
+async function confirmDeleteStrategy() {
+  if (!strategyToDelete.value) return;
   try {
-    await ElMessageBox.confirm('确定要删除这个策略吗？', '确认删除', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    });
-    
-    await invoke<boolean>('delete_strategy', { strategyId });
+    await apiDeleteStrategy(strategyToDelete.value);
     ElMessage.success('策略删除成功');
+    deleteDialogVisible.value = false;
+    strategyToDelete.value = null;
     fetchStrategies();
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('Failed to delete strategy:', error);
-      ElMessage.error('删除策略失败');
-    }
+    console.error('Failed to delete strategy:', error);
+    ElMessage.error('删除策略失败');
   }
 }
 
 // Toggle strategy status
 async function toggleStrategyStatus(strategy: any) {
   try {
-    await invoke<boolean>('toggle_strategy', { 
-      strategyId: strategy.strategy_id, 
-      enabled: strategy.enabled 
-    });
+    await toggleStrategy(strategy.strategy_id, strategy.enabled);
     ElMessage.success('策略状态更新成功');
   } catch (error) {
     console.error('Failed to toggle strategy status:', error);
@@ -346,31 +476,50 @@ async function toggleStrategyStatus(strategy: any) {
   }
 }
 
+// Strategy lifecycle management
+async function handleLifecycle(action: string, strategy: any) {
+  const actionLabels: Record<string, string> = {
+    deploy: '部署', start: '启动', stop: '停止',
+    pause: '暂停', resume: '恢复', archive: '归档',
+  }
+  const label = actionLabels[action] || action
+  try {
+    const apiMap: Record<string, (id: string) => Promise<string>> = {
+      deploy: deployStrategy,
+      start: startStrategy,
+      stop: stopStrategy,
+      pause: pauseStrategy,
+      resume: resumeStrategy,
+      archive: archiveStrategy,
+    }
+    const api = apiMap[action]
+    if (!api) { ElMessage.error('未知操作'); return }
+    await api(strategy.strategy_id)
+    ElMessage.success(`策略${label}成功`)
+    fetchStrategies()
+  } catch (error) {
+    console.error(`Failed to ${action} strategy:`, error)
+    ElMessage.error(`策略${label}失败: ${(error as Error).message}`)
+  }
+}
+
 // Run backtest
 async function runBacktest(strategyId: string) {
   try {
     loading.value = true;
-    // Mock backtest result for now
-    backtestResult.value = {
-      strategy_id: strategyId,
-      start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      end_date: new Date().toISOString(),
-      initial_capital: 1000000,
-      final_capital: 1120000,
-      total_return: 0.12,
-      annual_return: 0.48,
-      sharpe_ratio: 1.8,
-      max_drawdown: -0.08,
-      win_rate: 0.65,
-      profit_loss_ratio: 2.1,
-      total_trades: 150,
-      winning_trades: 98,
-      losing_trades: 52,
-      equity_curve: []
-    };
-    
+    const now = new Date();
+    const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const result = await apiRunBacktest(
+      strategyId,
+      startDate.toISOString(),
+      now.toISOString(),
+      1000000,  // initial capital
+      0.0003,   // commission rate
+      0.0001,   // slippage
+      []        // symbols
+    );
+    backtestResult.value = result;
     backtestDialogVisible.value = true;
-    // Initialize backtest chart after dialog is visible
     setTimeout(() => {
       initBacktestChart();
     }, 100);
@@ -385,59 +534,53 @@ async function runBacktest(strategyId: string) {
 // Initialize backtest chart
 function initBacktestChart() {
   const chartDom = document.getElementById('backtest-chart');
-  if (chartDom && backtestResult.value) {
-    const chart = echarts.init(chartDom);
-    
-    // Generate mock equity curve data
-    const dates = [];
-    const values = [];
-    const startDate = new Date(backtestResult.value.start_date);
-    const endDate = new Date(backtestResult.value.end_date);
-    const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    let currentValue = backtestResult.value.initial_capital;
-    for (let i = 0; i <= days; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      dates.push(date.toLocaleDateString('zh-CN'));
-      
-      // Simulate some random growth
-      const dailyReturn = (Math.random() - 0.5) * 0.02;
-      currentValue = currentValue * (1 + dailyReturn);
-      values.push(currentValue);
-    }
-    
-    const option = {
-      tooltip: {
-        trigger: 'axis',
-        formatter: function(params: any) {
-          return `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`;
-        }
-      },
-      xAxis: {
-        type: 'category',
-        data: dates
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          formatter: function(value: number) {
-            return '¥' + (value / 10000).toFixed(0) + '万';
-          }
-        }
-      },
-      series: [{
-        data: values,
-        type: 'line',
-        smooth: true,
-        areaStyle: {},
-        lineStyle: { width: 2 },
-        itemStyle: { color: '#409EFF' }
-      }]
-    };
-    
-    chart.setOption(option);
+  if (!chartDom || !backtestResult.value) return;
+  const chart = echarts.init(chartDom);
+  
+  const equity = backtestResult.value.equity_curve;
+  let dates: string[];
+  let values: number[];
+
+  if (equity && equity.length > 0) {
+    // Use real data from API
+    dates = equity.map(([date]) => new Date(date).toLocaleDateString('zh-CN'));
+    values = equity.map(([, val]) => val);
+  } else {
+    // No data to display
+    chart.dispose();
+    return;
   }
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      formatter: function(params: any) {
+        return `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`;
+      }
+    },
+    xAxis: {
+      type: 'category',
+      data: dates
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: function(value: number) {
+          return '¥' + (value / 10000).toFixed(0) + '万';
+        }
+      }
+    },
+    series: [{
+      data: values,
+      type: 'line',
+      smooth: true,
+      areaStyle: {},
+      lineStyle: { width: 2 },
+      itemStyle: { color: '#409EFF' }
+    }]
+  };
+  
+  chart.setOption(option);
 }
 
 // Initialize on mount
@@ -478,6 +621,32 @@ watch(backtestDialogVisible, (newVal) => {
 
 .strategy-list-card {
   margin-bottom: 20px;
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.table-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.card-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .strategy-params {

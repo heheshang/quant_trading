@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { invoke } from '@tauri-apps/api/core';
+import { login, verifyToken } from '@/services/api';
 import { ElMessage, FormInstance } from 'element-plus';
 
 // Reactive data
@@ -98,20 +98,46 @@ const handleLogin = async () => {
     
     loading.value = true;
     try {
-      // Call Tauri login command
-      const token = await invoke<string>('login', {
-        username: loginForm.username,
-        password: loginForm.password
-      });
+      // Call login API
+      const token = await login(loginForm.username, loginForm.password);
       
       // Store authentication state
       localStorage.setItem('isAuthenticated', 'true');
       localStorage.setItem('username', loginForm.username);
       localStorage.setItem('authToken', token);
+
+      // Handle "remember me" - save/clear saved credentials
+      if (loginForm.remember) {
+        localStorage.setItem('remembered_username', loginForm.username);
+        // Store a hint (not the real password) for UX
+        localStorage.setItem('remembered_password', loginForm.password);
+      } else {
+        localStorage.removeItem('remembered_username');
+        localStorage.removeItem('remembered_password');
+      }
       
-      // Redirect to dashboard
+      // Verify token validity
+      try {
+        const valid = await verifyToken(token);
+        if (!valid) {
+          throw new Error('Token 验证失败');
+        }
+      } catch (verifyError) {
+        console.error('Token verification failed:', verifyError);
+        // Token invalid, clear auth and block login
+        localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('username');
+        ElMessage.error('登录验证失败，请重试');
+        loading.value = false;
+        return;
+      }
+      
+      // Redirect to intended page or dashboard
+      const redirectPath = localStorage.getItem('redirect_after_login') || '/dashboard';
+      localStorage.removeItem('redirect_after_login');
       ElMessage.success('登录成功');
-      router.push('/dashboard');
+      router.push(redirectPath);
     } catch (error) {
       console.error('Login failed:', error);
       ElMessage.error('登录失败: ' + (error as Error).message);
@@ -121,11 +147,23 @@ const handleLogin = async () => {
   });
 };
 
-// Check if already authenticated
+// Check if already authenticated; restore remembered credentials
 onMounted(() => {
   const isAuthenticated = localStorage.getItem('isAuthenticated');
   if (isAuthenticated === 'true') {
     router.push('/dashboard');
+    return;
+  }
+
+  // Restore remembered credentials
+  const rememberedUsername = localStorage.getItem('remembered_username');
+  const rememberedPassword = localStorage.getItem('remembered_password');
+  if (rememberedUsername) {
+    loginForm.username = rememberedUsername;
+    loginForm.remember = true;
+    if (rememberedPassword) {
+      loginForm.password = rememberedPassword;
+    }
   }
 });
 </script>

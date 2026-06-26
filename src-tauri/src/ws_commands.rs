@@ -2,12 +2,8 @@ use exchange_okx::types::OkxEnvironment;
 use exchange_okx::websocket::{OkxWebSocket, WsMessage};
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::broadcast;
-use tracing::warn;
 
 use crate::state::AppState;
-
-use serde_json;
 
 #[tauri::command]
 pub async fn start_market_data(
@@ -21,9 +17,7 @@ pub async fn start_market_data(
 
     let ws = OkxWebSocket::new(OkxEnvironment::Demo);
 
-    // Subscribe to broadcast BEFORE starting the WS, so no messages are lost
-    let mut receiver = ws.subscribe();
-
+    // Subscribe BEFORE starting the WS, so subscriptions register first
     for symbol in &symbols {
         ws.subscribe_ticker(symbol)
             .await
@@ -42,6 +36,9 @@ pub async fn start_market_data(
         .await
         .map_err(|e| format!("Failed to start WebSocket: {}", e))?;
 
+    // Get a separate receiver so the background task reads messages independently
+    let mut rx = ws.get_receiver().await;
+
     let app_clone = app.clone();
     let running = state.ws_state.running.clone();
     running.store(true, Ordering::SeqCst);
@@ -53,23 +50,7 @@ pub async fn start_market_data(
 
     tokio::spawn(async move {
         loop {
-            let msg = match receiver.recv().await {
-                Ok(msg) => Some(msg),
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!("Broadcast receiver lagged by {} messages", n);
-                    let _ = app_clone.emit(
-                        "ws:connection_status",
-                        serde_json::json!({
-                            "status": "reconnecting",
-                            "retry_in": 1,
-                        }),
-                    );
-                    continue;
-                }
-                Err(broadcast::error::RecvError::Closed) => None,
-            };
-
-            match msg {
+            match rx.recv().await {
                 Some(WsMessage::Ticker(data)) => {
                     let _ = app_clone.emit("ws:ticker", &data);
                 }
@@ -148,4 +129,20 @@ pub async fn stop_market_data(state: State<'_, AppState>) -> Result<(), String> 
     *state.ws_state.ws.write().await = None;
     state.ws_state.running.store(false, Ordering::SeqCst);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_subscriptions(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let guard = state.ws_state.ws.read().await;
+    match guard.as_ref() {
+        Some(ws) => {
+            let subs = ws.subscriptions().await;
+            let mut result = Vec::with_capacity(subs.len());
+            for sub in &subs {
+                result.push(format!("{}:{}", sub.channel, sub.inst_id));
+            }
+            Ok(result)
+        }
+        None => Ok(vec![]),
+    }
 }

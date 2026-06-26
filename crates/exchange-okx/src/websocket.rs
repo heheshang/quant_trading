@@ -75,6 +75,11 @@ impl OkxWebSocket {
         self.subscribe_public(&channel, inst_id).await
     }
 
+    /// 获取当前订阅列表
+    pub async fn subscriptions(&self) -> Vec<OkxWsSubscription> {
+        self.subscriptions.read().await.clone()
+    }
+
     /// 启动 WebSocket 连接
     pub async fn start(&self) -> Result<()> {
         let url = self.environment.ws_public_url();
