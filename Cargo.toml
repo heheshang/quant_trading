@@ -13,6 +13,7 @@ members = [
     "crates/repository",
     "crates/clients",
     "crates/services",
+    "crates/data-puller",
 ]
 resolver = "2"
 

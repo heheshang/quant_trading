@@ -10,20 +10,25 @@ use tracing::{info, warn};
 mod commands;
 mod state;
 
-use data_layer::{OkxDataSource, PostgresClient, RedisCache};
+use data_layer::{market_data_repo::MarketDataRepository, OkxDataSource, RedisCache};
+use data_puller::DataPuller;
 use exchange_okx::{types::OkxEnvironment, Client as OkxClient};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
+use quant_services::AppServices;
 use state::AppState;
-use trading_layer::OkxExecutor;
+use trading_layer::{OkxExecutor, OrderManager};
 
 #[tokio::main]
 async fn main() {
+    // 加载 .env 环境变量
+    dotenv::dotenv().ok();
+
     // 加载配置
     let config = AppConfig::default();
 
     // 初始化日志（从 AppConfig 读取，LOG_LEVEL 环境变量可覆写）
-    let log_level = std::env::var("LOG_LEVEL")
-        .unwrap_or_else(|_| config.monitoring.log_level.clone());
+    let log_level =
+        std::env::var("LOG_LEVEL").unwrap_or_else(|_| config.monitoring.log_level.clone());
     monitor_layer::logging::init_logging(monitor_layer::logging::LoggingConfig {
         log_level,
         log_dir: config.monitoring.log_dir.clone(),
@@ -37,7 +42,7 @@ async fn main() {
     info!("Starting Quant Trading System...");
 
     // 初始化 OKX 客户端
-    let (okx_client, okx_executor, okx_data_source) =
+    let (okx_client, okx_executor, okx_data_source, okx_executor_arc) =
         if config.okx.enable && !config.okx.api_key.is_empty() {
             match OkxClient::new(
                 config.okx.api_key.clone(),
@@ -61,33 +66,70 @@ async fn main() {
                     // Create executor and data source from the Arc'd client
                     let executor = OkxExecutor::new(client_arc.clone());
                     let data_source = OkxDataSource::new(client_arc.clone());
+                    // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
+                    let executor_arc = Arc::new(OkxExecutor::new(client_arc.clone()));
 
                     // Keep a reference to the client for direct API calls
-                    (Some(client_arc), Some(executor), Some(data_source))
+                    (
+                        Some(client_arc),
+                        Some(executor),
+                        Some(data_source),
+                        Some(executor_arc),
+                    )
                 }
                 Err(e) => {
                     warn!("Failed to initialize OKX client: {}", e);
-                    (None, None, None)
+                    (None, None, None, None)
                 }
             }
         } else {
             info!("OKX integration disabled");
-            (None, None, None)
+            (None, None, None, None)
         };
 
     // 初始化数据库连接（可选，需要数据库运行）
-    let pg_client = PostgresClient::new(&config.database).await.ok();
-    if pg_client.is_some() {
+    let pg_client = data_layer::PostgresClient::new(&config.database).await.ok();
+    if let Some(ref client) = pg_client {
         info!("PostgreSQL connection established successfully");
+        if let Err(e) = client.run_migrations().await {
+            warn!("Database migration failed: {}", e);
+        } else {
+            info!("Database migrations completed successfully");
+        }
     } else {
         warn!("PostgreSQL connection failed, running without database");
     }
+
+    // 为 AppServices 创建 quant_repository::PostgresClient
+    let repo_pg_client = quant_repository::PostgresClient::new(&config.database).await.ok();
+    let repo_pg = repo_pg_client.map(Arc::new);
 
     let redis_cache = RedisCache::new(&config.redis).ok();
     if redis_cache.is_some() {
         info!("Redis connection established successfully");
     } else {
         warn!("Redis connection failed, running without cache");
+    }
+
+    // 初始化 DataPuller 后台任务
+    if let Some(ref client_arc) = okx_client {
+        if let Some(ref pg) = pg_client {
+            let data_puller = DataPuller::new(
+                config.data_puller.clone(),
+                client_arc.clone(),
+                Arc::new(MarketDataRepository::new(pg.pool().clone())),
+            );
+            tokio::spawn(async move {
+                info!("Starting data puller background task");
+                if let Err(e) = data_puller.run().await {
+                    tracing::error!("Data puller exited with error: {}", e);
+                }
+            });
+        } else {
+            warn!("Data puller skipped: no database connection available");
+        }
+    } else {
+        info!("Data puller skipped: OKX client not initialized");
     }
 
     // 初始化应用状态
@@ -104,15 +146,37 @@ async fn main() {
         })
         .await;
 
+    // Create shared OrderManager
+    let order_manager = OrderManager::new();
+
+    // Create shared Arc wrappers for OKX infrastructure
+    let config_arc = Arc::new(RwLock::new(config));
+    let okx_client_shared = Arc::new(RwLock::new(okx_client));
+    let okx_executor_shared = Arc::new(RwLock::new(okx_executor));
+    let okx_data_source_shared = Arc::new(RwLock::new(okx_data_source));
+
+    // Create AppServices (wires services to shared infrastructure)
+    let app_services = AppServices::new(
+        config_arc.clone(),
+        repo_pg.clone(),
+        None,
+        None,
+        okx_client_shared.clone(),
+        Arc::new(RwLock::new(okx_executor_arc)),
+        okx_data_source_shared.clone(),
+    );
+
     let app_state = AppState {
-        config: Arc::new(RwLock::new(config)),
+        config: config_arc,
         alert_manager,
         log_buffer,
         pg_client,
         redis_cache,
-        okx_client: Arc::new(RwLock::new(okx_client)),
-        okx_executor: Arc::new(RwLock::new(okx_executor)),
-        okx_data_source: Arc::new(RwLock::new(okx_data_source)),
+        okx_client: okx_client_shared,
+        okx_executor: okx_executor_shared,
+        okx_data_source: okx_data_source_shared,
+        order_manager,
+        app_services: Some(app_services),
     };
 
     // 初始化指标收集
@@ -136,6 +200,9 @@ async fn main() {
             commands::get_positions,
             commands::get_active_orders,
             commands::run_backtest,
+            commands::get_backtest_results,
+            commands::get_backtest_result,
+            commands::delete_backtest_result,
             commands::get_metrics,
             commands::get_alerts,
             commands::acknowledge_alert,

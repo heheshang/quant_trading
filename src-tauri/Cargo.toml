@@ -26,7 +26,10 @@ trading-layer = { path = "../crates/trading-layer" }
 risk-layer = { path = "../crates/risk-layer" }
 monitor-layer = { path = "../crates/monitor-layer" }
 security = { path = "../crates/security" }
+quant-services = { path = "../crates/services" }
+quant-repository = { path = "../crates/repository" }
 exchange-okx = { path = "../crates/exchange-okx" }
+data-puller = { path = "../crates/data-puller" }
 
 # Tauri
 tauri = { workspace = true }
@@ -36,6 +39,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 chrono = { workspace = true }
+dotenv = { workspace = true }
 uuid = { workspace = true }
 rust_decimal = { workspace = true, features = ["maths"] }
 rust_decimal_macros = { workspace = true, features = ["reexportable"] }
