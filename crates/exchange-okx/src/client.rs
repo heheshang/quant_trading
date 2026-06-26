@@ -3,11 +3,12 @@ use okx::api::account::OkxAccount;
 use okx::api::announcements::announcements_api::{AnnouncementPage, OkxAnnouncements};
 use okx::api::api_trait::OkxApiTrait;
 use okx::api::market::OkxMarket;
-use okx::api::trade::OkxTrade;
+use okx::api::trade::OkxTrade as OkxTradeApi;
 use okx::config::Credentials;
 use okx::dto::trade_dto::OrderReqDto;
 use okx::OkxClient;
 use quant_common::{Error, Result};
+use reqwest::Method;
 /// OKX 客户端
 #[derive(Debug)]
 pub struct Client {
@@ -15,7 +16,7 @@ pub struct Client {
     _environment: OkxEnvironment,
     account_api: OkxAccount,
     market_api: OkxMarket,
-    trade_api: OkxTrade,
+    trade_api: OkxTradeApi,
 }
 
 impl Client {
@@ -40,7 +41,7 @@ impl Client {
 
         let account_api = OkxAccount::new(api.clone());
         let market_api = OkxMarket::new(api.clone());
-        let trade_api = OkxTrade::new(api.clone());
+        let trade_api = OkxTradeApi::new(api.clone());
 
         Ok(Self {
             api,
@@ -222,6 +223,117 @@ impl Client {
             .await
             .map_err(|e| Error::OKX(e))?;
         serde_json::to_value(instruments).map_err(|e| Error::Internal(e.to_string()))
+    }
+
+    /// 获取 Ticker 24h 统计
+    pub async fn get_ticker(&self, inst_id: &str) -> Result<OkxTicker> {
+        let data = self
+            .market_api
+            .get_ticker(inst_id)
+            .await
+            .map_err(|e| Error::OKX(e))?;
+
+        data.into_iter()
+            .next()
+            .map(|d| OkxTicker {
+                inst_id: d.inst_id,
+                last: d.last,
+                last_sz: d.last_sz,
+                ask_px: d.ask_px,
+                bid_px: d.bid_px,
+                open_24h: d.open24h,
+                high_24h: d.high24h,
+                low_24h: d.low24h,
+                vol_ccy_24h: d.vol_ccy24h,
+                vol_24h: d.vol24h,
+                sod_utc0: d.sod_utc0,
+                sod_utc8: d.sod_utc8,
+                ts: d.ts,
+            })
+            .ok_or_else(|| Error::Internal("empty ticker response".into()))
+    }
+
+    /// 获取资金费率
+    pub async fn get_funding_rate(&self, inst_id: &str) -> Result<OkxFundingRate> {
+        let path = format!("/api/v5/public/funding-rate?instId={}", inst_id);
+        let data = self
+            .api
+            .send_request::<Vec<OkxFundingRate>>(Method::GET, &path, "")
+            .await
+            .map_err(|e| Error::OKX(e))?;
+
+        data.into_iter()
+            .next()
+            .ok_or_else(|| Error::Internal("empty funding rate response".into()))
+    }
+
+    /// 获取标记价格
+    pub async fn get_mark_price(&self, inst_id: &str) -> Result<OkxMarkPrice> {
+        let path = format!("/api/v5/public/mark-price?instId={}", inst_id);
+        let data = self
+            .api
+            .send_request::<Vec<OkxMarkPrice>>(Method::GET, &path, "")
+            .await
+            .map_err(|e| Error::OKX(e))?;
+
+        data.into_iter()
+            .next()
+            .ok_or_else(|| Error::Internal("empty mark price response".into()))
+    }
+
+    /// 获取指数价格
+    pub async fn get_index_price(&self, inst_id: &str) -> Result<OkxIndexPrice> {
+        let path = format!("/api/v5/market/index-tickers?instId={}", inst_id);
+        let data = self
+            .api
+            .send_request::<Vec<OkxIndexPrice>>(Method::GET, &path, "")
+            .await
+            .map_err(|e| Error::OKX(e))?;
+
+        data.into_iter()
+            .next()
+            .ok_or_else(|| Error::Internal("empty index price response".into()))
+    }
+
+    /// 获取持仓量
+    pub async fn get_open_interest(&self, inst_id: &str) -> Result<OkxOpenInterest> {
+        let path = format!("/api/v5/public/open-interest?instId={}", inst_id);
+        let data = self
+            .api
+            .send_request::<Vec<OkxOpenInterest>>(Method::GET, &path, "")
+            .await
+            .map_err(|e| Error::OKX(e))?;
+
+        data.into_iter()
+            .next()
+            .ok_or_else(|| Error::Internal("empty open interest response".into()))
+    }
+
+    /// 获取成交明细
+    pub async fn get_trades(&self, inst_id: &str, limit: Option<u32>) -> Result<Vec<OkxTrade>> {
+        let mut path = format!("/api/v5/market/trades?instId={}", inst_id);
+        if let Some(l) = limit {
+            path.push_str(&format!("&limit={}", l));
+        }
+        self.api
+            .send_request::<Vec<OkxTrade>>(Method::GET, &path, "")
+            .await
+            .map_err(|e| Error::OKX(e))
+    }
+
+    /// 获取订单薄
+    pub async fn get_order_book(&self, inst_id: &str, sz: Option<u32>) -> Result<OkxOrderBook> {
+        let depth = self
+            .market_api
+            .get_books(inst_id, sz)
+            .await
+            .map_err(|e| Error::OKX(e))?;
+
+        Ok(OkxOrderBook {
+            asks: depth.asks,
+            bids: depth.bids,
+            ts: depth.ts,
+        })
     }
 }
 

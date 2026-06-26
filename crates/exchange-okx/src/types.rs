@@ -143,3 +143,105 @@ pub struct OkxWsMessage {
     pub code: Option<String>,
     pub msg: Option<String>,
 }
+
+// ── Market Data Types ──
+
+/// Ticker 24h 统计
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxTicker {
+    pub inst_id: String,
+    pub last: String,
+    pub last_sz: String,
+    pub ask_px: String,
+    pub bid_px: String,
+    pub open_24h: String,
+    pub high_24h: String,
+    pub low_24h: String,
+    pub vol_ccy_24h: String,
+    pub vol_24h: String,
+    pub sod_utc0: String,
+    pub sod_utc8: String,
+    pub ts: String,
+}
+
+/// 资金费率
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxFundingRate {
+    pub inst_id: String,
+    pub funding_rate: String,
+    pub next_funding_rate: String,
+    pub funding_time: String,
+    pub inst_type: String,
+}
+
+/// 标记价格
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxMarkPrice {
+    pub inst_id: String,
+    pub mark_px: String,
+    pub ts: String,
+}
+
+/// 指数价格
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxIndexPrice {
+    pub inst_id: String,
+    pub idx_px: String,
+    pub ts: String,
+}
+
+/// 持仓量
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxOpenInterest {
+    pub inst_id: String,
+    pub oi: String,
+    pub oi_ccy: String,
+    pub ts: String,
+}
+
+/// 成交明细
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxTrade {
+    pub inst_id: String,
+    pub trade_id: String,
+    pub px: String,
+    pub sz: String,
+    pub side: String,
+    pub ts: String,
+}
+
+/// 订单薄
+#[derive(Debug, Serialize, Clone)]
+pub struct OkxOrderBook {
+    pub asks: Vec<Vec<String>>,
+    pub bids: Vec<Vec<String>>,
+    pub ts: String,
+}
+
+impl<'de> Deserialize<'de> for OkxOrderBook {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct DepthHelper {
+            asks: Vec<Vec<String>>,
+            bids: Vec<Vec<String>>,
+            ts: String,
+        }
+
+        let helper = DepthHelper::deserialize(deserializer)?;
+        Ok(OkxOrderBook {
+            asks: helper.asks,
+            bids: helper.bids,
+            ts: helper.ts,
+        })
+    }
+}
