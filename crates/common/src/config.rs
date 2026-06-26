@@ -9,6 +9,8 @@ pub struct AppConfig {
     pub monitoring: MonitoringConfig,
     pub security: SecurityConfig,
     pub okx: OkxConfig,
+    #[serde(default)]
+    pub data_puller: DataPullerConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +39,10 @@ pub struct TradingConfig {
     pub default_commission_rate: f64,
     pub default_slippage: f64,
     pub order_timeout_seconds: u64,
+    /// Simulated fill delay for paper trading (milliseconds).
+    /// Orders remain in `Submitted` state for this duration
+    /// before being automatically filled in simulation mode.
+    pub simulation_delay_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +88,109 @@ pub struct OkxConfig {
     pub enable: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataPullerConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub symbols: Vec<String>,
+    #[serde(default)]
+    pub candle: CandlePullConfig,
+    #[serde(default)]
+    pub ticker: TickerPullConfig,
+    #[serde(default)]
+    pub account_balance: IntervalConfig,
+    #[serde(default)]
+    pub positions: IntervalConfig,
+    #[serde(default)]
+    pub funding_rate: IntervalConfig,
+    #[serde(default)]
+    pub mark_price: IntervalConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CandlePullConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_candle_bars")]
+    pub bars: Vec<String>,
+    #[serde(default = "default_candle_limit")]
+    pub limit: u32,
+    #[serde(default = "default_candle_interval")]
+    pub interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TickerPullConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_ticker_interval")]
+    pub interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IntervalConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_interval_secs")]
+    pub interval_secs: u64,
+}
+
+fn default_candle_bars() -> Vec<String> {
+    vec!["1m".into(), "5m".into(), "1H".into()]
+}
+
+fn default_candle_limit() -> u32 {
+    100
+}
+
+fn default_candle_interval() -> u64 {
+    60
+}
+
+fn default_ticker_interval() -> u64 {
+    30
+}
+
+fn default_interval_secs() -> u64 {
+    60
+}
+
+impl Default for DataPullerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            symbols: vec![],
+            candle: CandlePullConfig {
+                enabled: false,
+                bars: default_candle_bars(),
+                limit: default_candle_limit(),
+                interval_secs: default_candle_interval(),
+            },
+            ticker: TickerPullConfig {
+                enabled: false,
+                interval_secs: default_ticker_interval(),
+            },
+            account_balance: IntervalConfig {
+                enabled: false,
+                interval_secs: default_interval_secs(),
+            },
+            positions: IntervalConfig {
+                enabled: false,
+                interval_secs: default_interval_secs(),
+            },
+            funding_rate: IntervalConfig {
+                enabled: false,
+                interval_secs: 3600,
+            },
+            mark_price: IntervalConfig {
+                enabled: false,
+                interval_secs: 10,
+            },
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -106,6 +215,7 @@ impl Default for AppConfig {
                 default_commission_rate: 0.0003,
                 default_slippage: 0.0001,
                 order_timeout_seconds: 30,
+                simulation_delay_ms: 30_000,
             },
             risk: RiskConfig {
                 max_position_size: 0.2,
@@ -144,6 +254,7 @@ impl Default for AppConfig {
                 enable: std::env::var("OKX_ENABLE").unwrap_or_else(|_| "false".to_string())
                     == "true",
             },
+            data_puller: DataPullerConfig::default(),
         }
     }
 }
