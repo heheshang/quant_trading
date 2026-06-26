@@ -2,7 +2,6 @@ use chrono::Utc;
 use quant_common::types::{Order, OrderSide, OrderType};
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
-use uuid::Uuid;
 
 /// 交易信号类型
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +31,7 @@ impl Signal {
         };
 
         Some(Order {
-            order_id: Uuid::new_v4(),
+            order_id: 0,
             strategy_id: strategy_id.to_string(),
             symbol: self.symbol.clone(),
             order_type,
@@ -128,5 +127,104 @@ impl SignalGenerator {
             price: Some(price),
             quantity: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_rsi_oversold_returns_buy() {
+        let signal = SignalGenerator::from_rsi(
+            Decimal::from(25),  // RSI < 30 → oversold → Buy
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Buy);
+        assert!(signal.strength > 0.0);
+    }
+
+    #[test]
+    fn test_from_rsi_overbought_returns_sell() {
+        let signal = SignalGenerator::from_rsi(
+            Decimal::from(80),  // RSI > 70 → overbought → Sell
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Sell);
+        assert!(signal.strength > 0.0);
+    }
+
+    #[test]
+    fn test_from_rsi_normal_returns_hold() {
+        let signal = SignalGenerator::from_rsi(
+            Decimal::from(50),  // 30 <= RSI <= 70 → Hold
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Hold);
+        assert_eq!(signal.strength, 0.0);
+    }
+
+    #[test]
+    fn test_from_macd_golden_cross_returns_buy() {
+        let signal = SignalGenerator::from_macd(
+            Decimal::from(10),   // MACD > Signal → golden cross → Buy
+            Decimal::from(5),
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Buy);
+    }
+
+    #[test]
+    fn test_from_macd_death_cross_returns_sell() {
+        let signal = SignalGenerator::from_macd(
+            Decimal::from(5),    // MACD < Signal → death cross → Sell
+            Decimal::from(10),
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Sell);
+    }
+
+    #[test]
+    fn test_from_macd_neutral_returns_hold() {
+        let signal = SignalGenerator::from_macd(
+            Decimal::from(10),   // MACD == Signal → Hold
+            Decimal::from(10),
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Hold);
+    }
+
+    #[test]
+    fn test_signal_to_order_buy() {
+        let signal = Signal {
+            signal_type: SignalType::Buy,
+            symbol: "BTC/USDT".to_string(),
+            strength: 0.8,
+            price: Some(Decimal::from(100)),
+            quantity: Some(Decimal::from(10)),
+        };
+        let order = signal.to_order("test_strategy").unwrap();
+        assert_eq!(order.side, OrderSide::Buy);
+        assert_eq!(order.symbol, "BTC/USDT");
+        assert_eq!(order.price, Some(Decimal::from(100)));
+        assert_eq!(order.quantity, Decimal::from(10));
+    }
+
+    #[test]
+    fn test_signal_to_order_hold_returns_none() {
+        let signal = Signal {
+            signal_type: SignalType::Hold,
+            symbol: "BTC/USDT".to_string(),
+            strength: 0.0,
+            price: None,
+            quantity: None,
+        };
+        assert!(signal.to_order("test_strategy").is_none());
     }
 }

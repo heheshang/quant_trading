@@ -43,9 +43,8 @@ pub fn ema(data: &[Decimal], period: usize) -> Vec<Decimal> {
 
     result.push(sma_values[0]);
 
-    for i in period..data.len() {
-        let ema_value =
-            (data[i] - result[result.len() - 1]) * multiplier + result[result.len() - 1];
+    for &val in &data[period..] {
+        let ema_value = (val - result[result.len() - 1]) * multiplier + result[result.len() - 1];
         result.push(ema_value);
     }
 
@@ -170,7 +169,12 @@ pub fn macd(
         histogram.push(macd_line[i] - signal_line[i]);
     }
 
-    info!(macd_len = macd_line.len(), signal_len = signal_line.len(), histogram_len = histogram.len(), "MACD computed");
+    info!(
+        macd_len = macd_line.len(),
+        signal_len = signal_line.len(),
+        histogram_len = histogram.len(),
+        "MACD computed"
+    );
     MACD {
         macd_line,
         signal_line,
@@ -186,13 +190,8 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum IndicatorError {
-    InsufficientData {
-        required: usize,
-        actual: usize,
-    },
-    InputLengthMismatch {
-        reason: String,
-    },
+    InsufficientData { required: usize, actual: usize },
+    InputLengthMismatch { reason: String },
 }
 
 impl fmt::Display for IndicatorError {
@@ -232,15 +231,19 @@ fn ema_wilder(data: &[Decimal], period: usize) -> Vec<Decimal> {
     let first_ema = sum / Decimal::from(period);
     result.push(first_ema);
 
-    for i in period..data.len() {
-        let val = (data[i] - result[result.len() - 1]) * multiplier + result[result.len() - 1];
+    for &val in &data[period..] {
+        let val = (val - result[result.len() - 1]) * multiplier + result[result.len() - 1];
         result.push(val);
     }
 
     result
 }
 
-fn validate_ohlc_equal(high: &[Decimal], low: &[Decimal], close: &[Decimal]) -> IndicatorResult<()> {
+fn validate_ohlc_equal(
+    high: &[Decimal],
+    low: &[Decimal],
+    close: &[Decimal],
+) -> IndicatorResult<()> {
     let len = high.len();
     if low.len() != len || close.len() != len {
         return Err(IndicatorError::InputLengthMismatch {
@@ -568,22 +571,70 @@ mod tests {
     #[test]
     fn test_atr_basic() {
         let high = vec![
-            dec!(101), dec!(103), dec!(102), dec!(104), dec!(106),
-            dec!(105), dec!(107), dec!(109), dec!(108), dec!(110),
-            dec!(112), dec!(111), dec!(113), dec!(115), dec!(114),
-            dec!(116), dec!(118), dec!(117), dec!(119), dec!(120),
+            dec!(101),
+            dec!(103),
+            dec!(102),
+            dec!(104),
+            dec!(106),
+            dec!(105),
+            dec!(107),
+            dec!(109),
+            dec!(108),
+            dec!(110),
+            dec!(112),
+            dec!(111),
+            dec!(113),
+            dec!(115),
+            dec!(114),
+            dec!(116),
+            dec!(118),
+            dec!(117),
+            dec!(119),
+            dec!(120),
         ];
         let low = vec![
-            dec!(99), dec!(100), dec!(99), dec!(101), dec!(103),
-            dec!(102), dec!(104), dec!(106), dec!(105), dec!(107),
-            dec!(109), dec!(108), dec!(110), dec!(112), dec!(111),
-            dec!(113), dec!(115), dec!(114), dec!(116), dec!(117),
+            dec!(99),
+            dec!(100),
+            dec!(99),
+            dec!(101),
+            dec!(103),
+            dec!(102),
+            dec!(104),
+            dec!(106),
+            dec!(105),
+            dec!(107),
+            dec!(109),
+            dec!(108),
+            dec!(110),
+            dec!(112),
+            dec!(111),
+            dec!(113),
+            dec!(115),
+            dec!(114),
+            dec!(116),
+            dec!(117),
         ];
         let close = vec![
-            dec!(100), dec!(102), dec!(101), dec!(103), dec!(105),
-            dec!(104), dec!(106), dec!(108), dec!(107), dec!(109),
-            dec!(111), dec!(110), dec!(112), dec!(114), dec!(113),
-            dec!(115), dec!(117), dec!(116), dec!(118), dec!(119),
+            dec!(100),
+            dec!(102),
+            dec!(101),
+            dec!(103),
+            dec!(105),
+            dec!(104),
+            dec!(106),
+            dec!(108),
+            dec!(107),
+            dec!(109),
+            dec!(111),
+            dec!(110),
+            dec!(112),
+            dec!(114),
+            dec!(113),
+            dec!(115),
+            dec!(117),
+            dec!(116),
+            dec!(118),
+            dec!(119),
         ];
 
         let result = atr(&high, &low, &close, 14).unwrap();
@@ -625,28 +676,100 @@ mod tests {
     #[test]
     fn test_adx_basic() {
         let high = vec![
-            dec!(101), dec!(103), dec!(102), dec!(104), dec!(106),
-            dec!(105), dec!(107), dec!(109), dec!(108), dec!(110),
-            dec!(112), dec!(111), dec!(113), dec!(115), dec!(114),
-            dec!(116), dec!(118), dec!(117), dec!(119), dec!(120),
-            dec!(122), dec!(121), dec!(123), dec!(125), dec!(124),
-            dec!(126), dec!(128), dec!(127), dec!(129), dec!(130),
+            dec!(101),
+            dec!(103),
+            dec!(102),
+            dec!(104),
+            dec!(106),
+            dec!(105),
+            dec!(107),
+            dec!(109),
+            dec!(108),
+            dec!(110),
+            dec!(112),
+            dec!(111),
+            dec!(113),
+            dec!(115),
+            dec!(114),
+            dec!(116),
+            dec!(118),
+            dec!(117),
+            dec!(119),
+            dec!(120),
+            dec!(122),
+            dec!(121),
+            dec!(123),
+            dec!(125),
+            dec!(124),
+            dec!(126),
+            dec!(128),
+            dec!(127),
+            dec!(129),
+            dec!(130),
         ];
         let low = vec![
-            dec!(99), dec!(100), dec!(99), dec!(101), dec!(103),
-            dec!(102), dec!(104), dec!(106), dec!(105), dec!(107),
-            dec!(109), dec!(108), dec!(110), dec!(112), dec!(111),
-            dec!(113), dec!(115), dec!(114), dec!(116), dec!(117),
-            dec!(119), dec!(118), dec!(120), dec!(122), dec!(121),
-            dec!(123), dec!(125), dec!(124), dec!(126), dec!(127),
+            dec!(99),
+            dec!(100),
+            dec!(99),
+            dec!(101),
+            dec!(103),
+            dec!(102),
+            dec!(104),
+            dec!(106),
+            dec!(105),
+            dec!(107),
+            dec!(109),
+            dec!(108),
+            dec!(110),
+            dec!(112),
+            dec!(111),
+            dec!(113),
+            dec!(115),
+            dec!(114),
+            dec!(116),
+            dec!(117),
+            dec!(119),
+            dec!(118),
+            dec!(120),
+            dec!(122),
+            dec!(121),
+            dec!(123),
+            dec!(125),
+            dec!(124),
+            dec!(126),
+            dec!(127),
         ];
         let close = vec![
-            dec!(100), dec!(102), dec!(101), dec!(103), dec!(105),
-            dec!(104), dec!(106), dec!(108), dec!(107), dec!(109),
-            dec!(111), dec!(110), dec!(112), dec!(114), dec!(113),
-            dec!(115), dec!(117), dec!(116), dec!(118), dec!(119),
-            dec!(121), dec!(120), dec!(122), dec!(124), dec!(123),
-            dec!(125), dec!(127), dec!(126), dec!(128), dec!(129),
+            dec!(100),
+            dec!(102),
+            dec!(101),
+            dec!(103),
+            dec!(105),
+            dec!(104),
+            dec!(106),
+            dec!(108),
+            dec!(107),
+            dec!(109),
+            dec!(111),
+            dec!(110),
+            dec!(112),
+            dec!(114),
+            dec!(113),
+            dec!(115),
+            dec!(117),
+            dec!(116),
+            dec!(118),
+            dec!(119),
+            dec!(121),
+            dec!(120),
+            dec!(122),
+            dec!(124),
+            dec!(123),
+            dec!(125),
+            dec!(127),
+            dec!(126),
+            dec!(128),
+            dec!(129),
         ];
 
         let result = adx(&high, &low, &close, 14).unwrap();
@@ -672,21 +795,57 @@ mod tests {
     #[test]
     fn test_stochastic_basic() {
         let high = vec![
-            dec!(105), dec!(107), dec!(106), dec!(108), dec!(110),
-            dec!(109), dec!(111), dec!(113), dec!(112), dec!(114),
-            dec!(116), dec!(115), dec!(117), dec!(119), dec!(118),
+            dec!(105),
+            dec!(107),
+            dec!(106),
+            dec!(108),
+            dec!(110),
+            dec!(109),
+            dec!(111),
+            dec!(113),
+            dec!(112),
+            dec!(114),
+            dec!(116),
+            dec!(115),
+            dec!(117),
+            dec!(119),
+            dec!(118),
             dec!(120),
         ];
         let low = vec![
-            dec!(99), dec!(101), dec!(100), dec!(102), dec!(104),
-            dec!(103), dec!(105), dec!(107), dec!(106), dec!(108),
-            dec!(110), dec!(109), dec!(111), dec!(113), dec!(112),
+            dec!(99),
+            dec!(101),
+            dec!(100),
+            dec!(102),
+            dec!(104),
+            dec!(103),
+            dec!(105),
+            dec!(107),
+            dec!(106),
+            dec!(108),
+            dec!(110),
+            dec!(109),
+            dec!(111),
+            dec!(113),
+            dec!(112),
             dec!(114),
         ];
         let close = vec![
-            dec!(102), dec!(104), dec!(103), dec!(105), dec!(107),
-            dec!(106), dec!(108), dec!(110), dec!(109), dec!(111),
-            dec!(113), dec!(112), dec!(114), dec!(116), dec!(115),
+            dec!(102),
+            dec!(104),
+            dec!(103),
+            dec!(105),
+            dec!(107),
+            dec!(106),
+            dec!(108),
+            dec!(110),
+            dec!(109),
+            dec!(111),
+            dec!(113),
+            dec!(112),
+            dec!(114),
+            dec!(116),
+            dec!(115),
             dec!(117),
         ];
 
@@ -715,25 +874,85 @@ mod tests {
     #[test]
     fn test_cci_basic() {
         let high = vec![
-            dec!(102), dec!(104), dec!(103), dec!(105), dec!(107),
-            dec!(106), dec!(108), dec!(110), dec!(109), dec!(111),
-            dec!(113), dec!(112), dec!(114), dec!(116), dec!(115),
-            dec!(117), dec!(119), dec!(118), dec!(120), dec!(122),
-            dec!(121), dec!(123), dec!(125), dec!(124), dec!(126),
+            dec!(102),
+            dec!(104),
+            dec!(103),
+            dec!(105),
+            dec!(107),
+            dec!(106),
+            dec!(108),
+            dec!(110),
+            dec!(109),
+            dec!(111),
+            dec!(113),
+            dec!(112),
+            dec!(114),
+            dec!(116),
+            dec!(115),
+            dec!(117),
+            dec!(119),
+            dec!(118),
+            dec!(120),
+            dec!(122),
+            dec!(121),
+            dec!(123),
+            dec!(125),
+            dec!(124),
+            dec!(126),
         ];
         let low = vec![
-            dec!(98), dec!(100), dec!(99), dec!(101), dec!(103),
-            dec!(102), dec!(104), dec!(106), dec!(105), dec!(107),
-            dec!(109), dec!(108), dec!(110), dec!(112), dec!(111),
-            dec!(113), dec!(115), dec!(114), dec!(116), dec!(118),
-            dec!(117), dec!(119), dec!(121), dec!(120), dec!(122),
+            dec!(98),
+            dec!(100),
+            dec!(99),
+            dec!(101),
+            dec!(103),
+            dec!(102),
+            dec!(104),
+            dec!(106),
+            dec!(105),
+            dec!(107),
+            dec!(109),
+            dec!(108),
+            dec!(110),
+            dec!(112),
+            dec!(111),
+            dec!(113),
+            dec!(115),
+            dec!(114),
+            dec!(116),
+            dec!(118),
+            dec!(117),
+            dec!(119),
+            dec!(121),
+            dec!(120),
+            dec!(122),
         ];
         let close = vec![
-            dec!(100), dec!(102), dec!(101), dec!(103), dec!(105),
-            dec!(104), dec!(106), dec!(108), dec!(107), dec!(109),
-            dec!(111), dec!(110), dec!(112), dec!(114), dec!(113),
-            dec!(115), dec!(117), dec!(116), dec!(118), dec!(120),
-            dec!(119), dec!(121), dec!(123), dec!(122), dec!(124),
+            dec!(100),
+            dec!(102),
+            dec!(101),
+            dec!(103),
+            dec!(105),
+            dec!(104),
+            dec!(106),
+            dec!(108),
+            dec!(107),
+            dec!(109),
+            dec!(111),
+            dec!(110),
+            dec!(112),
+            dec!(114),
+            dec!(113),
+            dec!(115),
+            dec!(117),
+            dec!(116),
+            dec!(118),
+            dec!(120),
+            dec!(119),
+            dec!(121),
+            dec!(123),
+            dec!(122),
+            dec!(124),
         ];
 
         let result = cci(&high, &low, &close, 20).unwrap();
@@ -755,12 +974,8 @@ mod tests {
 
     #[test]
     fn test_obv_basic() {
-        let close = vec![
-            dec!(100), dec!(102), dec!(101), dec!(103), dec!(105),
-        ];
-        let volume = vec![
-            dec!(1000), dec!(1500), dec!(1200), dec!(1800), dec!(2000),
-        ];
+        let close = vec![dec!(100), dec!(102), dec!(101), dec!(103), dec!(105)];
+        let volume = vec![dec!(1000), dec!(1500), dec!(1200), dec!(1800), dec!(2000)];
 
         let result = obv(&close, &volume).unwrap();
         assert_eq!(result.len(), close.len());

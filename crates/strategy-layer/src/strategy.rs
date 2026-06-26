@@ -6,7 +6,6 @@ use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use rust_decimal::MathematicalOps;
 use tracing::{info, instrument, warn};
-use uuid::Uuid;
 
 const DEFAULT_ENTRY_THRESHOLD: f64 = 2.0;
 const RSI_OVERSOLD: u32 = 30;
@@ -161,7 +160,7 @@ impl Strategy for MeanReversionStrategy {
                 "Buy signal triggered: mean reversion entry"
             );
             orders.push(Order {
-                order_id: Uuid::new_v4(),
+                order_id: 0,
                 strategy_id: self.params.strategy_id.clone(),
                 symbol: context.market_data[0].symbol.clone(),
                 order_type: OrderType::Limit,
@@ -189,7 +188,7 @@ impl Strategy for MeanReversionStrategy {
                 "Sell signal triggered: mean reversion entry"
             );
             orders.push(Order {
-                order_id: Uuid::new_v4(),
+                order_id: 0,
                 strategy_id: self.params.strategy_id.clone(),
                 symbol: context.market_data[0].symbol.clone(),
                 order_type: OrderType::Limit,
@@ -231,5 +230,169 @@ impl Strategy for MeanReversionStrategy {
 impl Default for MeanReversionStrategy {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn make_market_data(close: Decimal) -> MarketData {
+        MarketData {
+            timestamp: Utc::now(),
+            symbol: "BTC/USDT".to_string(),
+            open: close,
+            high: close,
+            low: close,
+            close,
+            volume: Decimal::from(1000),
+            turnover: Decimal::ZERO,
+            open_interest: None,
+            bid_prices: vec![],
+            bid_volumes: vec![],
+            ask_prices: vec![],
+            ask_volumes: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_insufficient_data_returns_empty_signals() {
+        let strategy = MeanReversionStrategy::new();
+        let context = StrategyContext {
+            current_time: Utc::now(),
+            positions: vec![],
+            market_data: vec![make_market_data(Decimal::from(100))], // only 1 point, lookback=20
+        };
+        let orders = strategy.generate_signals(&context).await.unwrap();
+        assert!(orders.is_empty());
+    }
+
+    fn make_full_market_data(
+        timestamp: DateTime<Utc>,
+        close: Decimal,
+        symbol: &str,
+    ) -> MarketData {
+        MarketData {
+            timestamp,
+            symbol: symbol.to_string(),
+            open: close,
+            high: close,
+            low: close,
+            close,
+            volume: Decimal::from(1000),
+            turnover: Decimal::ZERO,
+            open_interest: None,
+            bid_prices: vec![],
+            bid_volumes: vec![],
+            ask_prices: vec![],
+            ask_volumes: vec![],
+        }
+    }
+
+    /// Build a regime-change data series:
+    ///   phase 1: `stable` bars all at `stable_price`
+    ///   phase 2: `trend` bars moving linearly from `stable_price` toward `extreme_price`
+    /// This creates a large SMA gap + extreme RSI at the end.
+    fn build_regime_series(
+        stable: usize,
+        trend: usize,
+        stable_price: i64,
+        extreme_price: i64,
+        symbol: &str,
+    ) -> Vec<MarketData> {
+        let utc = Utc::now();
+        let mut data = Vec::with_capacity(stable + trend);
+
+        for i in 0..stable {
+            data.push(make_full_market_data(
+                utc + chrono::Duration::hours(i as i64),
+                Decimal::from(stable_price),
+                symbol,
+            ));
+        }
+
+        for i in 0..trend {
+            let t = (i + 1) as f64 / trend as f64;
+            let close_f =
+                stable_price as f64 + (extreme_price - stable_price) as f64 * t;
+            let close = Decimal::from_f64(close_f).unwrap();
+            data.push(make_full_market_data(
+                utc + chrono::Duration::hours((stable + i) as i64),
+                close,
+                symbol,
+            ));
+        }
+
+        data
+    }
+
+    #[tokio::test]
+    async fn test_rsi_oversold_triggers_buy() {
+        let mut strategy = MeanReversionStrategy::new();
+        // Use low entry_threshold to make z-score condition easily satisfiable
+        let params = StrategyParams {
+            strategy_id: "test".to_string(),
+            strategy_name: "Test".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({
+                "lookback_period": 5,
+                "entry_threshold": 0.5,
+                "exit_threshold": 0.5,
+            }),
+            enabled: true,
+            max_position: Decimal::from(100000),
+            max_daily_loss: Decimal::from(5000),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        strategy.initialize(params).await.unwrap();
+
+        // 20 bars stable at 100, then 15 bars crashing to 1
+        let data = build_regime_series(20, 15, 100, 1, "BTC/USDT");
+
+        let context = StrategyContext {
+            current_time: Utc::now(),
+            positions: vec![],
+            market_data: data,
+        };
+        let orders = strategy.generate_signals(&context).await.unwrap();
+        assert!(
+            orders.iter().any(|o| o.side == OrderSide::Buy),
+            "Expected Buy signal: price crashed from 100 to 1 after stable period"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rsi_overbought_triggers_sell() {
+        let mut strategy = MeanReversionStrategy::new();
+        let params = StrategyParams {
+            strategy_id: "test".to_string(),
+            strategy_name: "Test".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({
+                "lookback_period": 5,
+                "entry_threshold": 0.5,
+                "exit_threshold": 0.5,
+            }),
+            enabled: true,
+            max_position: Decimal::from(100000),
+            max_daily_loss: Decimal::from(5000),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        strategy.initialize(params).await.unwrap();
+
+        // 20 bars stable at 100, then 15 bars spiking to 199
+        let data = build_regime_series(20, 15, 100, 199, "BTC/USDT");
+
+        let context = StrategyContext {
+            current_time: Utc::now(),
+            positions: vec![],
+            market_data: data,
+        };
+        let orders = strategy.generate_signals(&context).await.unwrap();
+        assert!(
+            orders.iter().any(|o| o.side == OrderSide::Sell),
+            "Expected Sell signal: price surged from 100 to 199 after stable period"
+        );
     }
 }
