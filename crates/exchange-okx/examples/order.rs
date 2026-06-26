@@ -1,7 +1,7 @@
 use okx::api::api_trait::OkxApiTrait;
 use okx::config::Credentials;
-use okx::{Error, OkxClient, OkxMarket, OkxTrade};
-use serde_json::json;
+use okx::OkxClient;
+use okx::{Error, OkxTrade};
 use tracing::info;
 
 #[tokio::main]

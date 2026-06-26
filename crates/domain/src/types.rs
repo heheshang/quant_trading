@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 // ─── Instrument ──────────────────────────────────────────────────────────────
 
@@ -140,7 +139,7 @@ impl OrderStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
-    pub order_id: Uuid,
+    pub order_id: i64,
     pub strategy_id: String,
     pub symbol: String,
     pub order_type: OrderType,
@@ -186,7 +185,7 @@ impl Order {
         price * self.quantity
     }
 
-    /// Create a new pending order with generated UUID.
+    /// Create a new pending order (order_id = 0, assigned by DB on insert).
     pub fn new(
         strategy_id: String,
         symbol: String,
@@ -196,7 +195,7 @@ impl Order {
         quantity: Decimal,
     ) -> Self {
         Self {
-            order_id: Uuid::new_v4(),
+            order_id: 0,
             strategy_id,
             symbol,
             order_type,
@@ -258,7 +257,7 @@ impl Position {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
-    pub account_id: Uuid,
+    pub account_id: i64,
     pub total_assets: Decimal,
     pub available_cash: Decimal,
     pub frozen_cash: Decimal,
@@ -346,6 +345,7 @@ impl StrategyParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BacktestResult {
+    pub id: Option<i64>,
     pub strategy_id: String,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
@@ -428,7 +428,7 @@ pub enum AlertLevel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alert {
-    pub alert_id: Uuid,
+    pub alert_id: i64,
     pub level: AlertLevel,
     pub source: String,
     pub message: String,
@@ -437,10 +437,10 @@ pub struct Alert {
 }
 
 impl Alert {
-    /// Create a new unacknowledged alert.
+    /// Create a new unacknowledged alert (alert_id = 0, assigned by DB on insert).
     pub fn new(level: AlertLevel, source: String, message: String) -> Self {
         Self {
-            alert_id: Uuid::new_v4(),
+            alert_id: 0,
             level,
             source,
             message,
@@ -495,7 +495,7 @@ mod tests {
 
     fn make_order() -> Order {
         Order {
-            order_id: Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "test_strategy".into(),
             symbol: "000001.SZ".into(),
             order_type: OrderType::Limit,
@@ -742,7 +742,8 @@ mod tests {
     }
 
     #[test]
-    fn test_order_new_generates_unique_id() {
+    fn test_order_new_has_zero_id() {
+        // New orders use 0 as placeholder — DB assigns BIGSERIAL on INSERT.
         let o1 = Order::new(
             "s".into(),
             "sym".into(),
@@ -751,15 +752,7 @@ mod tests {
             None,
             dec!(100),
         );
-        let o2 = Order::new(
-            "s".into(),
-            "sym".into(),
-            OrderType::Market,
-            OrderSide::Sell,
-            None,
-            dec!(100),
-        );
-        assert_ne!(o1.order_id, o2.order_id);
+        assert_eq!(o1.order_id, 0);
     }
 
     #[test]
@@ -1013,7 +1006,7 @@ mod tests {
 
     fn make_account() -> Account {
         Account {
-            account_id: Uuid::new_v4(),
+            account_id: 0,
             total_assets: dec!(1000000),
             available_cash: dec!(200000),
             frozen_cash: dec!(50000),
@@ -1186,6 +1179,7 @@ mod tests {
 
     fn make_backtest_result() -> BacktestResult {
         BacktestResult {
+            id: Some(0),
             strategy_id: "strat_1".into(),
             start_date: Utc::now(),
             end_date: Utc::now() + chrono::Duration::days(30),
@@ -1348,10 +1342,10 @@ mod tests {
     }
 
     #[test]
-    fn test_alert_new_generates_unique_id() {
-        let a1 = Alert::new(AlertLevel::Info, "s".into(), "m".into());
-        let a2 = Alert::new(AlertLevel::Info, "s".into(), "m".into());
-        assert_ne!(a1.alert_id, a2.alert_id);
+    fn test_alert_new_has_zero_id() {
+        // New alerts use 0 as placeholder — DB assigns BIGSERIAL on INSERT.
+        let alert = Alert::new(AlertLevel::Info, "s".into(), "m".into());
+        assert_eq!(alert.alert_id, 0);
     }
 
     #[test]

@@ -14,12 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_secret = std::env::var("OKX_API_SECRET").expect("OKX_API_SECRET not set");
     let passphrase = std::env::var("OKX_PASSPHRASE").expect("OKX_PASSPHRASE not set");
 
-    let client = Client::new(
-        api_key,
-        api_secret,
-        passphrase,
-        OkxEnvironment::Demo,
-    )?;
+    let client = Client::new(api_key, api_secret, passphrase, OkxEnvironment::Demo)?;
 
     info!("OKX client created successfully");
 
