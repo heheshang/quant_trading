@@ -6,12 +6,10 @@ use quant_common::types::{
     Account, Alert, BacktestResult, MarketData, Order, Position, StrategyParams, StrategyType,
 };
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
-use strategy_layer::strategy::MeanReversionStrategy;
-use strategy_layer::{BacktestEngine, Strategy};
-use tauri::State;
-use uuid::Uuid;
+use tauri::{Emitter, State};
 
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
@@ -40,36 +38,66 @@ pub async fn get_market_data(_symbol: String) -> Result<MarketData, String> {
 }
 
 #[tauri::command]
-pub async fn submit_order(state: State<'_, AppState>, order: Order) -> Result<String, String> {
-    use quant_common::config::TradingConfig;
+pub async fn submit_order(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    order: Order,
+) -> Result<String, String> {
     use quant_common::types::MarketData;
     use rust_decimal_macros::dec;
     use std::sync::Arc;
-    use trading_layer::{ExecutionEngine, OrderManager};
+    use trading_layer::ExecutionEngine;
 
-    // 创建订单管理器
-    let order_manager = Arc::new(OrderManager::new());
+    let order_manager = Arc::new(state.order_manager.clone());
 
-    // 创建交易配置
-    let config = TradingConfig {
-        enable_paper_trading: true,
-        max_orders_per_second: 100,
-        default_commission_rate: 0.001,
-        default_slippage: 0.0005,
-        order_timeout_seconds: 30,
-    };
+    let app_config = state.config.read().await;
+    let trading_config = app_config.trading.clone();
 
-    // 创建执行引擎
-    let execution_engine = ExecutionEngine::new(order_manager.clone(), config, None);
+    if app_config.risk.enable_pre_trade_check {
+        let risk_config = app_config.risk.clone();
+        let checker = risk_layer::PreTradeRiskChecker::new(risk_config);
 
-    // 提交订单到订单管理器
+        if let Some(ref services) = state.app_services {
+            if let Ok(account) = services.account_service.get_account_info().await {
+                if let Ok(positions) = services.account_service.get_positions().await {
+                    checker
+                        .check_order(&order, &account, &positions)
+                        .map_err(|e| format!("Risk check failed: {}", e))?;
+                }
+            }
+        } else {
+            // No services available (DB not connected), skip risk check
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "warn".to_string(),
+                    message: "Risk check skipped: AppServices not available".to_string(),
+                    module: Some("risk".to_string()),
+                })
+                .await;
+        }
+    }
+    drop(app_config);
+
+    // Get OKX executor from shared state
+    let okx_executor = state.okx_executor.read().await.clone();
+
+    // Create execution engine with shared instances
+    let execution_engine = ExecutionEngine::new(
+        order_manager.clone(),
+        trading_config,
+        okx_executor.map(Arc::new),
+    );
+
+    // Submit order to shared order manager
     let order_id = order_manager
         .submit_order(order.clone())
         .await
         .map_err(|e| format!("Failed to submit order: {}", e))?
         .to_string();
 
-    // 记录订单提交日志
+    // Log order submission
     state
         .log_buffer
         .add_entry(quant_common::types::LogEntry {
@@ -80,14 +108,81 @@ pub async fn submit_order(state: State<'_, AppState>, order: Order) -> Result<St
         })
         .await;
 
-    // 模拟市场数据用于执行
+    // Persist order to PostgreSQL (graceful degradation if DB unavailable)
+    if let Some(ref services) = state.app_services {
+        match services.account_service.get_account_info().await {
+            Ok(account) => {
+                if let Err(e) = services
+                    .account_service
+                    .persist_order(&order, &account.account_id)
+                    .await
+                {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "warn".to_string(),
+                            message: format!("Order persisted to DB failed: {}", e),
+                            module: Some("commands".to_string()),
+                        })
+                        .await;
+                }
+            }
+            Err(_) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: "Account not available for order persistence".to_string(),
+                        module: Some("commands".to_string()),
+                    })
+                    .await;
+            }
+        }
+    }
+
+    let _ = app.emit(
+        "order:submitted",
+        serde_json::json!({
+            "order_id": order_id,
+            "symbol": order.symbol,
+            "side": order.side,
+            "order_type": order.order_type,
+            "price": order.price,
+            "quantity": order.quantity,
+            "status": "Submitted",
+            "timestamp": Utc::now().to_rfc3339(),
+        }),
+    );
+
+    // Simulate market data for execution
+    // Ensure market orders (price=None) get a non-zero fallback price
+    let market_price = match order.price {
+        Some(price) => price,
+        None => {
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "warn".to_string(),
+                    message: format!(
+                        "Market order without price for {}, using fallback price",
+                        order.symbol
+                    ),
+                    module: Some("commands".to_string()),
+                })
+                .await;
+            dec!(100) // Default price for paper trading market orders
+        }
+    };
     let market_data = MarketData {
         symbol: order.symbol.clone(),
         timestamp: chrono::Utc::now(),
-        open: order.price.unwrap_or(dec!(0)),
-        high: order.price.unwrap_or(dec!(0)),
-        low: order.price.unwrap_or(dec!(0)),
-        close: order.price.unwrap_or(dec!(0)),
+        open: market_price,
+        high: market_price,
+        low: market_price,
+        close: market_price,
         volume: dec!(1000000),
         turnover: dec!(1000000000),
         open_interest: None,
@@ -97,12 +192,9 @@ pub async fn submit_order(state: State<'_, AppState>, order: Order) -> Result<St
         ask_volumes: vec![],
     };
 
-    // 执行订单
+    // Execute order asynchronously
     tokio::spawn(async move {
-        // 模拟一些延迟
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-        // 执行订单
         if let Err(e) = execution_engine.execute_order(order, &market_data).await {
             eprintln!("Order execution failed: {}", e);
         }
@@ -112,149 +204,219 @@ pub async fn submit_order(state: State<'_, AppState>, order: Order) -> Result<St
 }
 
 #[tauri::command]
-pub async fn get_account_info() -> Result<Account, String> {
-    // Mock account data for demonstration
-    Ok(Account {
-        account_id: Uuid::new_v4(),
-        total_assets: dec!(1234567.91),
-        available_cash: dec!(234567.99),
-        frozen_cash: dec!(0),
-        market_value: dec!(1000000),
-        total_pnl: dec!(12345.67),
-        daily_pnl: dec!(12345.67),
-        margin: dec!(0),
-        margin_ratio: dec!(0),
-        updated_at: Utc::now(),
-    })
+pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, String> {
+    match state.app_services.as_ref() {
+        Some(services) => match services.account_service.get_account_info().await {
+            Ok(account) => Ok(account),
+            Err(service_error) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: format!(
+                            "AccountService unavailable, using mock data: {}",
+                            service_error
+                        ),
+                        module: Some("commands".to_string()),
+                    })
+                    .await;
+                Ok(Account {
+                    account_id: 0,
+                    total_assets: dec!(1234567.91),
+                    available_cash: dec!(234567.99),
+                    frozen_cash: dec!(0),
+                    market_value: dec!(1000000),
+                    total_pnl: dec!(12345.67),
+                    daily_pnl: dec!(12345.67),
+                    margin: dec!(0),
+                    margin_ratio: dec!(0),
+                    updated_at: Utc::now(),
+                })
+            }
+        },
+        None => Ok(Account {
+            account_id: 0,
+            total_assets: dec!(1234567.91),
+            available_cash: dec!(234567.99),
+            frozen_cash: dec!(0),
+            market_value: dec!(1000000),
+            total_pnl: dec!(12345.67),
+            daily_pnl: dec!(12345.67),
+            margin: dec!(0),
+            margin_ratio: dec!(0),
+            updated_at: Utc::now(),
+        }),
+    }
 }
 
 #[tauri::command]
-pub async fn get_positions() -> Result<Vec<Position>, String> {
-    // Mock positions data for demonstration
-    Ok(vec![
-        Position {
-            symbol: "600519.SH".to_string(),
-            quantity: dec!(100),
-            available_quantity: dec!(100),
-            avg_price: dec!(1680.50),
-            market_value: dec!(168050),
-            unrealized_pnl: dec!(12345.67),
-            realized_pnl: dec!(0),
-            updated_at: Utc::now(),
+pub async fn get_positions(state: State<'_, AppState>) -> Result<Vec<Position>, String> {
+    match state.app_services.as_ref() {
+        Some(services) => match services.account_service.get_positions().await {
+            Ok(positions) => Ok(positions),
+            Err(_) => Ok(vec![
+                Position {
+                    symbol: "600519.SH".to_string(),
+                    quantity: dec!(100),
+                    available_quantity: dec!(100),
+                    avg_price: dec!(1680.50),
+                    market_value: dec!(168050),
+                    unrealized_pnl: dec!(12345.67),
+                    realized_pnl: dec!(0),
+                    updated_at: Utc::now(),
+                },
+                Position {
+                    symbol: "000001.SZ".to_string(),
+                    quantity: dec!(500),
+                    available_quantity: dec!(500),
+                    avg_price: dec!(12.00),
+                    market_value: dec!(6175),
+                    unrealized_pnl: dec!(175),
+                    realized_pnl: dec!(0),
+                    updated_at: Utc::now(),
+                },
+            ]),
         },
-        Position {
-            symbol: "000001.SZ".to_string(),
-            quantity: dec!(500),
-            available_quantity: dec!(500),
-            avg_price: dec!(12.00),
-            market_value: dec!(6175),
-            unrealized_pnl: dec!(175),
-            realized_pnl: dec!(0),
-            updated_at: Utc::now(),
-        },
-    ])
+        None => Ok(vec![
+            Position {
+                symbol: "600519.SH".to_string(),
+                quantity: dec!(100),
+                available_quantity: dec!(100),
+                avg_price: dec!(1680.50),
+                market_value: dec!(168050),
+                unrealized_pnl: dec!(12345.67),
+                realized_pnl: dec!(0),
+                updated_at: Utc::now(),
+            },
+            Position {
+                symbol: "000001.SZ".to_string(),
+                quantity: dec!(500),
+                available_quantity: dec!(500),
+                avg_price: dec!(12.00),
+                market_value: dec!(6175),
+                unrealized_pnl: dec!(175),
+                realized_pnl: dec!(0),
+                updated_at: Utc::now(),
+            },
+        ]),
+    }
 }
 
 #[tauri::command]
-pub async fn get_active_orders() -> Result<Vec<Order>, String> {
-    // Mock orders data for demonstration
-    Ok(vec![Order {
-        order_id: Uuid::new_v4(),
-        strategy_id: "trend_following".to_string(),
-        symbol: "600519.SH".to_string(),
-        order_type: quant_common::types::OrderType::Limit,
-        side: quant_common::types::OrderSide::Buy,
-        price: Some(dec!(1685.00)),
-        quantity: dec!(100),
-        filled_quantity: dec!(0),
-        status: quant_common::types::OrderStatus::Submitted,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0),
-    }])
+pub async fn get_active_orders(state: State<'_, AppState>) -> Result<Vec<Order>, String> {
+    // 优先从 OrderManager 内存获取真实活跃订单（Submitted / PartiallyFilled）
+    let manager_orders = state.order_manager.get_active_orders().await;
+    if !manager_orders.is_empty() {
+        return Ok(manager_orders);
+    }
+
+    // 内存无活跃订单时，降级查询数据库
+    if let Some(services) = state.app_services.as_ref() {
+        if let Ok(orders) = services.account_service.get_active_orders().await {
+            return Ok(orders);
+        }
+    }
+
+    // 无任何数据源可用 → 返回空列表（不再返回硬编码 mock 假数据）
+    Ok(Vec::new())
 }
 
 #[tauri::command]
 pub async fn run_backtest(
+    state: State<'_, AppState>,
     strategy_id: String,
-    _start_date: String,
-    _end_date: String,
+    start_date: String,
+    end_date: String,
+    initial_capital: f64,
+    commission_rate: f64,
+    slippage: f64,
+    symbols: Vec<String>,
 ) -> Result<BacktestResult, String> {
-    // 模拟市场数据
-    let market_data = vec![
-        MarketData {
-            symbol: "600519.SH".to_string(),
-            timestamp: chrono::Utc::now() - chrono::Duration::days(30),
-            open: dec!(1600.00),
-            high: dec!(1650.00),
-            low: dec!(1580.00),
-            close: dec!(1620.00),
-            volume: dec!(1000000),
-            turnover: dec!(1620000000),
-            open_interest: None,
-            bid_prices: vec![],
-            bid_volumes: vec![],
-            ask_prices: vec![],
-            ask_volumes: vec![],
-        },
-        MarketData {
-            symbol: "600519.SH".to_string(),
-            timestamp: chrono::Utc::now() - chrono::Duration::days(29),
-            open: dec!(1620.00),
-            high: dec!(1680.00),
-            low: dec!(1610.00),
-            close: dec!(1650.00),
-            volume: dec!(1200000),
-            turnover: dec!(1980000000),
-            open_interest: None,
-            bid_prices: vec![],
-            bid_volumes: vec![],
-            ask_prices: vec![],
-            ask_volumes: vec![],
-        },
-    ];
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
 
-    // 创建回测引擎
-    let mut engine = BacktestEngine::new(
-        dec!(1000000), // 初始资金
-        dec!(0.001),   // 手续费率
-        dec!(0.0005),  // 滑点
-    );
+    let start = chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", start_date))
+        .map_err(|e| format!("Invalid start date: {}", e))?
+        .with_timezone(&chrono::Utc);
 
-    // 创建策略实例
-    let mut strategy = MeanReversionStrategy::new();
+    let end = chrono::DateTime::parse_from_rfc3339(&format!("{}T23:59:59Z", end_date))
+        .map_err(|e| format!("Invalid end date: {}", e))?
+        .with_timezone(&chrono::Utc);
 
-    // 初始化策略参数
-    let strategy_params = StrategyParams {
-        strategy_id: strategy_id.clone(),
-        strategy_name: "回测策略".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 20,
-            "entry_threshold": 2.0,
-            "exit_threshold": 0.5
-        }),
-        enabled: true,
-        max_position: dec!(100000),
-        max_daily_loss: dec!(5000),
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-    };
+    let init_cap = rust_decimal::Decimal::from_f64(initial_capital)
+        .ok_or_else(|| format!("Invalid initial capital: {}", initial_capital))?;
+    let comm_rate = rust_decimal::Decimal::from_f64(commission_rate)
+        .ok_or_else(|| format!("Invalid commission rate: {}", commission_rate))?;
+    let slip = rust_decimal::Decimal::from_f64(slippage)
+        .ok_or_else(|| format!("Invalid slippage: {}", slippage))?;
 
-    // 初始化策略
-    strategy
-        .initialize(strategy_params)
+    services
+        .strategy_service
+        .run_backtest(&strategy_id, start, end, init_cap, comm_rate, slip, &symbols)
         .await
-        .map_err(|e| format!("Failed to initialize strategy: {}", e))?;
+        .map_err(|e| e.to_string())
+}
 
-    // 运行回测
-    let result = engine
-        .run(&strategy, market_data)
+/// 查询回测结果列表（分页）
+#[tauri::command]
+pub async fn get_backtest_results(
+    state: State<'_, AppState>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<quant_repository::BacktestResultSummaryRow>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+
+    services
+        .strategy_service
+        .get_backtest_results(limit, offset)
         .await
-        .map_err(|e| format!("Backtest failed: {}", e))?;
+        .map_err(|e| e.to_string())
+}
 
-    Ok(result)
+/// 查询单个回测结果详情（含 equity_curve）
+#[tauri::command]
+pub async fn get_backtest_result(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<BacktestResult, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+
+    let id_num: i64 = id.parse().map_err(|e| format!("Invalid ID: {}", e))?;
+
+    services
+        .strategy_service
+        .get_backtest_result(id_num)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 删除回测结果
+#[tauri::command]
+pub async fn delete_backtest_result(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+
+    let id_num: i64 = id.parse().map_err(|e| format!("Invalid ID: {}", e))?;
+
+    services
+        .strategy_service
+        .delete_backtest_result(id_num)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 获取实时指标数据
@@ -283,10 +445,7 @@ pub async fn get_metrics() -> Result<HashMap<String, f64>, String> {
         "position_value".to_string(),
         monitor_layer::POSITION_VALUE.get(),
     );
-    metrics.insert(
-        "daily_pnl".to_string(),
-        monitor_layer::DAILY_PNL.get(),
-    );
+    metrics.insert("daily_pnl".to_string(), monitor_layer::DAILY_PNL.get());
 
     Ok(metrics)
 }
@@ -304,9 +463,9 @@ pub async fn acknowledge_alert(
     state: State<'_, AppState>,
     alert_id: String,
 ) -> Result<bool, String> {
-    let uuid = Uuid::parse_str(&alert_id).map_err(|e| format!("Invalid alert ID: {}", e))?;
+    let alert_id_num: i64 = alert_id.parse().map_err(|e| format!("Invalid alert ID: {}", e))?;
 
-    let acknowledged = state.alert_manager.acknowledge_alert(uuid).await;
+    let acknowledged = state.alert_manager.acknowledge_alert(alert_id_num).await;
     Ok(acknowledged)
 }
 
@@ -504,7 +663,7 @@ pub async fn pre_trade_check(
 
             // Create alert for failed check
             let alert = Alert {
-                alert_id: Uuid::new_v4(),
+                alert_id: 0,
                 level: quant_common::types::AlertLevel::Warning,
                 source: "Risk Management".to_string(),
                 message: error_msg.clone(),
@@ -1010,6 +1169,8 @@ mod tests {
     use tokio::sync::RwLock;
 
     fn make_test_state() -> AppState {
+        use trading_layer::OrderManager;
+
         let alert_manager = Arc::new(AlertManager::new(false, vec![]));
         let log_buffer = Arc::new(LogBuffer::new(1000));
         AppState {
@@ -1021,6 +1182,8 @@ mod tests {
             okx_client: Arc::new(RwLock::new(None)),
             okx_executor: Arc::new(RwLock::new(None)),
             okx_data_source: Arc::new(RwLock::new(None)),
+            order_manager: OrderManager::new(),
+            app_services: None,
         }
     }
 
@@ -1033,7 +1196,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_account_info_returns_valid_account() {
-        let result = get_account_info().await;
+        let state = make_test_state();
+        // SAFETY: State is a transparent wrapper around &T
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_account_info(state_guard).await;
         assert!(result.is_ok());
         let account = result.unwrap();
         assert!(account.total_assets > Decimal::ZERO);
@@ -1042,7 +1209,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_positions_returns_non_empty() {
-        let result = get_positions().await;
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_positions(state_guard).await;
         assert!(result.is_ok());
         let positions = result.unwrap();
         assert!(!positions.is_empty());
@@ -1051,10 +1221,31 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_active_orders_returns_submitted() {
-        let result = get_active_orders().await;
+        let state = make_test_state();
+        // Submit an order first so OrderManager has a submitted order
+        let order = Order {
+            order_id: 0,
+            strategy_id: "test_strategy".to_string(),
+            symbol: "600519.SH".to_string(),
+            order_type: quant_common::types::OrderType::Limit,
+            side: quant_common::types::OrderSide::Buy,
+            price: Some(dec!(1685.00)),
+            quantity: dec!(100),
+            filled_quantity: dec!(0),
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: dec!(0),
+            slippage: dec!(0),
+        };
+        state.order_manager.submit_order(order).await.unwrap();
+
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_active_orders(state_guard).await;
         assert!(result.is_ok());
         let orders = result.unwrap();
-        assert!(!orders.is_empty());
+        assert_eq!(orders.len(), 1);
         assert_eq!(
             orders[0].status,
             quant_common::types::OrderStatus::Submitted
