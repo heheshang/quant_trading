@@ -5,9 +5,10 @@ use quant_common::{Error, Result};
 use rust_decimal::prelude::ToPrimitive;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 
 /// OKX 订单执行器
+#[derive(Clone)]
 pub struct OkxExecutor {
     client: Arc<RwLock<OkxClient>>,
 }
@@ -60,12 +61,17 @@ impl OkxExecutor {
         let ord_type = match order.order_type {
             OrderType::Market => "market".to_string(),
             OrderType::Limit => "limit".to_string(),
-            _ => {
-                warn!(
-                    "Unsupported order type {:?}, defaulting to limit",
+            OrderType::StopLoss | OrderType::StopLimit => {
+                return Err(Error::Validation(format!(
+                    "Stop order type {:?} not supported by OKX executor",
                     order.order_type
-                );
-                "limit".to_string()
+                )));
+            }
+            OrderType::TWAP | OrderType::VWAP | OrderType::Iceberg => {
+                return Err(Error::Validation(format!(
+                    "Algorithmic order type {:?} not supported by OKX executor",
+                    order.order_type
+                )));
             }
         };
 

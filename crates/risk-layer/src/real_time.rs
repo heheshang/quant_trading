@@ -3,7 +3,6 @@ use quant_common::config::RiskConfig;
 use quant_common::types::{Account, Alert, AlertLevel};
 use rust_decimal::Decimal;
 use tracing::{info, instrument, warn};
-use uuid::Uuid;
 
 const DEFAULT_MAX_DRAWDOWN: f64 = 0.15;
 const MARGIN_RATIO_CRITICAL: f64 = 0.9;
@@ -68,12 +67,11 @@ impl RealTimeRiskMonitor {
         }
 
         // 计算当前回撤 = (峰值 - 当前) / 峰值
-        let current_drawdown =
-            (self.peak_equity - account.total_assets) / self.peak_equity;
+        let current_drawdown = (self.peak_equity - account.total_assets) / self.peak_equity;
 
         if current_drawdown > max_drawdown {
             Some(Alert {
-                alert_id: Uuid::new_v4(),
+                alert_id: 0,
                 level: AlertLevel::Critical,
                 source: "RiskMonitor".to_string(),
                 message: format!("Max drawdown exceeded: {}", current_drawdown),
@@ -88,7 +86,7 @@ impl RealTimeRiskMonitor {
     fn check_margin_ratio(&self, account: &Account) -> Option<Alert> {
         if account.margin_ratio > Decimal::from_f64_retain(MARGIN_RATIO_CRITICAL).unwrap() {
             Some(Alert {
-                alert_id: Uuid::new_v4(),
+                alert_id: 0,
                 level: AlertLevel::Warning,
                 source: "RiskMonitor".to_string(),
                 message: format!("High margin ratio: {}", account.margin_ratio),
@@ -106,7 +104,7 @@ impl RealTimeRiskMonitor {
 
         if account.daily_pnl < -max_daily_loss {
             Some(Alert {
-                alert_id: Uuid::new_v4(),
+                alert_id: 0,
                 level: AlertLevel::Critical,
                 source: "RiskMonitor".to_string(),
                 message: format!("Daily loss limit exceeded: {}", account.daily_pnl),

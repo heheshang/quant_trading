@@ -132,7 +132,7 @@ impl PreTradeRiskChecker {
         };
 
         let concentration_ratio = new_position_value / account.total_assets;
-        let max_concentration = Decimal::from_f64_retain(self.config.max_position_size)
+        let max_concentration = Decimal::from_f64_retain(self.config.max_concentration)
             .unwrap_or(Decimal::from_f64_retain(DEFAULT_MAX_CONCENTRATION).unwrap());
 
         if concentration_ratio > max_concentration {
@@ -156,8 +156,6 @@ mod tests {
     use chrono::Utc;
     use quant_common::types::{OrderSide, OrderType};
     use rust_decimal_macros::dec;
-    use uuid::Uuid;
-
     #[test]
     fn test_cash_check() {
         let config = RiskConfig {
@@ -173,7 +171,7 @@ mod tests {
         let checker = PreTradeRiskChecker::new(config);
 
         let order = Order {
-            order_id: Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "test".to_string(),
             symbol: "TEST".to_string(),
             order_type: OrderType::Limit,
@@ -189,7 +187,7 @@ mod tests {
         };
 
         let account = Account {
-            account_id: Uuid::new_v4(),
+            account_id: 0,
             total_assets: dec!(10000),
             available_cash: dec!(500), // Insufficient
             frozen_cash: dec!(0),

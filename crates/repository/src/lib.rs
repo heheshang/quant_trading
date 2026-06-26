@@ -8,10 +8,12 @@
 //! - Row types map 1:1 to database tables
 //! - No business logic — pure data access
 
+pub mod backtest;
 pub mod error;
 pub mod market_data;
 pub mod postgres;
 
+pub use backtest::{BacktestRepository, BacktestResultSummaryRow, PgBacktestRepository};
 pub use error::RepoError;
 pub use market_data::MarketDataRepository;
 pub use postgres::PostgresClient;

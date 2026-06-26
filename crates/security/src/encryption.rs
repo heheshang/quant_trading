@@ -45,13 +45,10 @@ impl DataEncryption {
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let ciphertext = self
-            .cipher
-            .encrypt(nonce, plaintext)
-            .map_err(|e| {
-                error!(error = %e, "encryption failed");
-                Error::Internal(format!("Encryption failed: {}", e))
-            })?;
+        let ciphertext = self.cipher.encrypt(nonce, plaintext).map_err(|e| {
+            error!(error = %e, "encryption failed");
+            Error::Internal(format!("Encryption failed: {}", e))
+        })?;
 
         // 将 nonce 和密文组合并 base64 编码
         let mut result = nonce_bytes.to_vec();
@@ -65,12 +62,10 @@ impl DataEncryption {
     pub fn decrypt(&self, encrypted: &str) -> Result<Vec<u8>> {
         info!("decrypting data");
 
-        let data = general_purpose::STANDARD
-            .decode(encrypted)
-            .map_err(|e| {
-                error!(error = %e, "base64 decode failed");
-                Error::Internal(format!("Base64 decode failed: {}", e))
-            })?;
+        let data = general_purpose::STANDARD.decode(encrypted).map_err(|e| {
+            error!(error = %e, "base64 decode failed");
+            Error::Internal(format!("Base64 decode failed: {}", e))
+        })?;
 
         if data.len() < 12 {
             warn!("invalid encrypted data: too short");
@@ -80,13 +75,10 @@ impl DataEncryption {
         let nonce = Nonce::from_slice(&data[..12]);
         let ciphertext = &data[12..];
 
-        let plaintext = self
-            .cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|e| {
-                error!(error = %e, "decryption failed");
-                Error::Internal(format!("Decryption failed: {}", e))
-            })?;
+        let plaintext = self.cipher.decrypt(nonce, ciphertext).map_err(|e| {
+            error!(error = %e, "decryption failed");
+            Error::Internal(format!("Decryption failed: {}", e))
+        })?;
 
         Ok(plaintext)
     }
@@ -138,11 +130,10 @@ impl PasswordHasher {
             Argon2,
         };
 
-        let parsed_hash = PasswordHash::new(hash)
-            .map_err(|e| {
-                warn!(error = %e, "invalid password hash format");
-                Error::Internal(format!("Invalid hash: {}", e))
-            })?;
+        let parsed_hash = PasswordHash::new(hash).map_err(|e| {
+            warn!(error = %e, "invalid password hash format");
+            Error::Internal(format!("Invalid hash: {}", e))
+        })?;
 
         let valid = Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)

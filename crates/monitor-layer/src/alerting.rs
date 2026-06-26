@@ -136,7 +136,7 @@ impl AlertManager {
             .collect()
     }
 
-    pub async fn acknowledge_alert(&self, alert_id: uuid::Uuid) -> bool {
+    pub async fn acknowledge_alert(&self, alert_id: i64) -> bool {
         let mut alerts = self.alerts.write().await;
         if let Some(alert) = alerts.iter_mut().find(|a| a.alert_id == alert_id) {
             alert.acknowledged = true;

@@ -46,7 +46,7 @@ impl AlgorithmicOrderSlicer {
 
         for i in 0..params.num_slices {
             let order = Order {
-                order_id: uuid::Uuid::new_v4(),
+                order_id: 0,
                 strategy_id: format!("TWAP_{}", i),
                 symbol: symbol.clone(),
                 order_type: OrderType::Market,
@@ -62,7 +62,7 @@ impl AlgorithmicOrderSlicer {
             };
 
             orders.push(order);
-            current_time = current_time + Duration::minutes(time_interval);
+            current_time += Duration::minutes(time_interval);
         }
 
         info!("TWAP sliced into {} orders", orders.len());
@@ -97,7 +97,7 @@ impl AlgorithmicOrderSlicer {
             let slice_quantity = params.total_quantity * volume_ratio;
 
             let order = Order {
-                order_id: uuid::Uuid::new_v4(),
+                order_id: 0,
                 strategy_id: format!("VWAP_{}", i),
                 symbol: symbol.clone(),
                 order_type: OrderType::Market,
@@ -146,7 +146,7 @@ impl AlgorithmicOrderSlicer {
             };
 
             let order = Order {
-                order_id: uuid::Uuid::new_v4(),
+                order_id: 0,
                 strategy_id: format!("ICEBERG_{}", i),
                 symbol: symbol.clone(),
                 order_type: OrderType::Limit,

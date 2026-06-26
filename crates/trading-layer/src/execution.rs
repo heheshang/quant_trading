@@ -42,6 +42,13 @@ impl ExecutionEngine {
 
     /// 模拟盘执行
     async fn simulate_execution(&self, mut order: Order, market_data: &MarketData) -> Result<()> {
+        // 模拟订单在订单簿中停留的时间
+        // 在此期间订单保持 Submitted 状态，可通过 get_active_orders 查询
+        let delay_ms = self.config.simulation_delay_ms;
+        if delay_ms > 0 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+        }
+
         // 计算成交价格（考虑滑点）
         let execution_price = self.calculate_execution_price(&order, market_data)?;
 

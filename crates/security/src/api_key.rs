@@ -48,11 +48,10 @@ impl ApiKeyManager {
         info!(method = %method, path = %request_path, "generating API signature");
         let prehash = format!("{}{}{}{}", timestamp, method, request_path, body);
 
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .map_err(|e| {
-                error!(error = %e, "HMAC initialization failed");
-                Error::Internal(format!("HMAC init failed: {}", e))
-            })?;
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| {
+            error!(error = %e, "HMAC initialization failed");
+            Error::Internal(format!("HMAC init failed: {}", e))
+        })?;
 
         mac.update(prehash.as_bytes());
         let result = mac.finalize();

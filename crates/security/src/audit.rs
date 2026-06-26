@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use quant_common::Result;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use uuid::Uuid;
 
 /// 审计日志类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +21,7 @@ pub enum AuditAction {
 /// 审计日志条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLog {
-    pub id: Uuid,
+    pub id: i64,
     pub timestamp: DateTime<Utc>,
     pub user_id: String,
     pub username: String,
@@ -51,7 +50,7 @@ impl AuditLogger {
         error_message: Option<String>,
     ) -> Result<AuditLog> {
         let log = AuditLog {
-            id: Uuid::new_v4(),
+            id: 0,
             timestamp: Utc::now(),
             user_id: user_id.to_string(),
             username: username.to_string(),

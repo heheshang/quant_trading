@@ -21,7 +21,10 @@ impl VaRCalculator {
         let index = index.min(returns.len() - 1);
 
         let var = -sorted_returns[index];
-        info!("Historical VaR computed: confidence={}, result={}", confidence_level, var);
+        info!(
+            "Historical VaR computed: confidence={}, result={}",
+            confidence_level, var
+        );
         var
     }
 
@@ -53,7 +56,10 @@ impl VaRCalculator {
         };
 
         let var = mean + z_score * std_dev;
-        info!("Parametric VaR computed: confidence={}, result={}", confidence_level, var);
+        info!(
+            "Parametric VaR computed: confidence={}, result={}",
+            confidence_level, var
+        );
         var
     }
 }

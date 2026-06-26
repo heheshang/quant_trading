@@ -4,11 +4,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, instrument, warn};
-use uuid::Uuid;
 
 /// 订单管理器
+#[derive(Clone)]
 pub struct OrderManager {
-    orders: Arc<RwLock<HashMap<Uuid, Order>>>,
+    orders: Arc<RwLock<HashMap<i64, Order>>>,
+}
+
+impl Default for OrderManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OrderManager {
@@ -20,7 +26,7 @@ impl OrderManager {
 
     /// 提交订单
     #[instrument(skip(self), fields(order_id = %order.order_id, symbol = %order.symbol, side = ?order.side))]
-    pub async fn submit_order(&self, mut order: Order) -> Result<Uuid> {
+    pub async fn submit_order(&self, mut order: Order) -> Result<i64> {
         // 验证订单
         self.validate_order(&order)?;
 
@@ -36,7 +42,7 @@ impl OrderManager {
 
     /// 更新订单状态
     #[instrument(skip(self), fields(order_id = %order_id, status = ?status))]
-    pub async fn update_order_status(&self, order_id: Uuid, status: OrderStatus) -> Result<()> {
+    pub async fn update_order_status(&self, order_id: i64, status: OrderStatus) -> Result<()> {
         let mut orders = self.orders.write().await;
 
         if let Some(order) = orders.get_mut(&order_id) {
@@ -52,7 +58,7 @@ impl OrderManager {
 
     /// 获取订单
     #[instrument(skip(self), fields(order_id = %order_id))]
-    pub async fn get_order(&self, order_id: Uuid) -> Result<Order> {
+    pub async fn get_order(&self, order_id: i64) -> Result<Order> {
         let orders = self.orders.read().await;
         match orders.get(&order_id) {
             Some(order) => Ok(order.clone()),
@@ -80,7 +86,7 @@ impl OrderManager {
 
     /// 撤销订单
     #[instrument(skip(self), fields(order_id = %order_id))]
-    pub async fn cancel_order(&self, order_id: Uuid) -> Result<()> {
+    pub async fn cancel_order(&self, order_id: i64) -> Result<()> {
         info!("Cancelling order: {}", order_id);
         self.update_order_status(order_id, OrderStatus::Cancelled)
             .await
@@ -145,7 +151,7 @@ mod tests {
         let manager = OrderManager::new();
 
         let order = Order {
-            order_id: Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "test_strategy".to_string(),
             symbol: "TEST".to_string(),
             order_type: OrderType::Limit,

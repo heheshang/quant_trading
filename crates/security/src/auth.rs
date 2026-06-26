@@ -3,7 +3,6 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use quant_common::{Error, Result};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
-use uuid::Uuid;
 
 /// JWT Claims
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -47,7 +46,7 @@ impl AuthService {
             username: username.to_string(),
             exp: exp.timestamp(),
             iat: now.timestamp(),
-            jti: Uuid::new_v4().to_string(),
+            jti: uuid::Uuid::new_v4().to_string(),
             roles,
         };
 
@@ -132,7 +131,7 @@ mod tests {
             username: "testuser".to_string(),
             exp: (Utc::now() + Duration::hours(1)).timestamp(),
             iat: Utc::now().timestamp(),
-            jti: Uuid::new_v4().to_string(),
+            jti: uuid::Uuid::new_v4().to_string(),
             roles: vec!["trader".to_string()],
         };
 

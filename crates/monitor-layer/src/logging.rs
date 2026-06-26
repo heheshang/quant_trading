@@ -1,7 +1,10 @@
 use quant_common::types::LogEntry;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{field::{Field, Visit}, Event, Subscriber};
+use tracing::{
+    field::{Field, Visit},
+    Event, Subscriber,
+};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{
     filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
@@ -291,9 +294,15 @@ mod tests {
     #[tokio::test]
     async fn test_log_buffer_get_entries_by_level() {
         let buffer = LogBuffer::new(100);
-        buffer.add_entry(LogEntry::new("INFO", "info msg", None)).await;
-        buffer.add_entry(LogEntry::new("WARN", "warn msg", None)).await;
-        buffer.add_entry(LogEntry::new("ERROR", "error msg", None)).await;
+        buffer
+            .add_entry(LogEntry::new("INFO", "info msg", None))
+            .await;
+        buffer
+            .add_entry(LogEntry::new("WARN", "warn msg", None))
+            .await;
+        buffer
+            .add_entry(LogEntry::new("ERROR", "error msg", None))
+            .await;
 
         let warn_entries = buffer.get_entries_by_level("WARN").await;
         assert_eq!(warn_entries.len(), 1);
@@ -303,8 +312,12 @@ mod tests {
     #[tokio::test]
     async fn test_log_buffer_get_entries_by_level_case_insensitive() {
         let buffer = LogBuffer::new(100);
-        buffer.add_entry(LogEntry::new("info", "lowercase", None)).await;
-        buffer.add_entry(LogEntry::new("INFO", "uppercase", None)).await;
+        buffer
+            .add_entry(LogEntry::new("info", "lowercase", None))
+            .await;
+        buffer
+            .add_entry(LogEntry::new("INFO", "uppercase", None))
+            .await;
 
         let entries = buffer.get_entries_by_level("info").await;
         assert_eq!(entries.len(), 2);
@@ -313,8 +326,12 @@ mod tests {
     #[tokio::test]
     async fn test_log_buffer_get_entries_by_module() {
         let buffer = LogBuffer::new(100);
-        buffer.add_entry(LogEntry::new("INFO", "main msg", Some("main".into()))).await;
-        buffer.add_entry(LogEntry::new("INFO", "trading msg", Some("trading".into()))).await;
+        buffer
+            .add_entry(LogEntry::new("INFO", "main msg", Some("main".into())))
+            .await;
+        buffer
+            .add_entry(LogEntry::new("INFO", "trading msg", Some("trading".into())))
+            .await;
 
         let main_entries = buffer.get_entries_by_module("main").await;
         assert_eq!(main_entries.len(), 1);
