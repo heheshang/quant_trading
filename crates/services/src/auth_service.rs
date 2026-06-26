@@ -52,11 +52,10 @@ impl AuthService {
             let role: String = row.get("role");
             let stored_hash: String = row.get("password_hash");
 
-            let valid = PasswordHasher::verify_password(password, &stored_hash)
-                .map_err(|e| {
-                    error!("Password verification error: {}", e);
-                    ServiceError::PasswordVerification(e.to_string())
-                })?;
+            let valid = PasswordHasher::verify_password(password, &stored_hash).map_err(|e| {
+                error!("Password verification error: {}", e);
+                ServiceError::PasswordVerification(e.to_string())
+            })?;
             if !valid {
                 error!("Password mismatch for user: {}", username);
                 return Err(ServiceError::InvalidCredentials);
@@ -209,8 +208,8 @@ impl AuthService {
             })?;
         let stored_hash: String = row.get("password_hash");
 
-        let valid = PasswordHasher::verify_password(current_password, &stored_hash)
-            .map_err(|e| {
+        let valid =
+            PasswordHasher::verify_password(current_password, &stored_hash).map_err(|e| {
                 error!("Password verification error: {}", e);
                 ServiceError::PasswordVerification(e.to_string())
             })?;
@@ -219,11 +218,10 @@ impl AuthService {
             return Err(ServiceError::Other("Current password is incorrect".into()));
         }
 
-        let new_hash = PasswordHasher::hash_password(new_password)
-            .map_err(|e| {
-                error!("Password hash failed: {}", e);
-                ServiceError::PasswordHash(e.to_string())
-            })?;
+        let new_hash = PasswordHasher::hash_password(new_password).map_err(|e| {
+            error!("Password hash failed: {}", e);
+            ServiceError::PasswordHash(e.to_string())
+        })?;
         sqlx::query("UPDATE users SET password_hash = $1 WHERE username = $2")
             .bind(&new_hash)
             .bind(username)

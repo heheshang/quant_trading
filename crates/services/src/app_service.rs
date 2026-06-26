@@ -7,7 +7,7 @@ use data_layer::OkxDataSource;
 use exchange_okx::Client as OkxClient;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
-use quant_repository::{MarketDataRepository, PostgresClient};
+use quant_repository::{MarketDataRepository, PgBacktestRepository, PostgresClient};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
@@ -16,6 +16,7 @@ use trading_engine::OkxExecutor;
 use crate::account_service::AccountService;
 use crate::auth_service::AuthService;
 use crate::config_service::ConfigService;
+use crate::market_data_provider::LockingProvider;
 use crate::market_service::MarketService;
 use crate::okx_service::OkxService;
 use crate::risk_service::RiskService;
@@ -65,7 +66,14 @@ impl AppServices {
             auth_service: AuthService::new(config.clone(), postgres.clone()),
             account_service: AccountService::new(postgres.clone()),
             market_service: MarketService::new(okx_data_source.clone()),
-            strategy_service: StrategyService::new(postgres.clone(), okx_data_source.clone()),
+            strategy_service: StrategyService::new(
+                postgres.clone(),
+                Some(Arc::new(LockingProvider::new(okx_data_source.clone()))),
+                postgres
+                    .as_ref()
+                    .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
+                        as Arc<dyn quant_repository::BacktestRepository>),
+            ),
             okx_service: OkxService::new(
                 okx_client.clone(),
                 okx_executor.clone(),

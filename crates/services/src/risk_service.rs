@@ -74,7 +74,10 @@ impl RiskService {
         })?;
 
         if account_rows.len() < 2 {
-            error!("Insufficient account history for VaR (need >= 2, got {})", account_rows.len());
+            error!(
+                "Insufficient account history for VaR (need >= 2, got {})",
+                account_rows.len()
+            );
             return Err(ServiceError::Other(
                 "Insufficient account history for VaR calculation (need >= 2 data points)".into(),
             ));
@@ -102,7 +105,11 @@ impl RiskService {
         metrics.insert("max_concentration".to_string(), max_conc);
         metrics.insert("var_confidence_level".to_string(), var_conf);
 
-        info!(var_95 = metrics["var_95"], var_99 = metrics["var_99"], "Risk metrics computed");
+        info!(
+            var_95 = metrics["var_95"],
+            var_99 = metrics["var_99"],
+            "Risk metrics computed"
+        );
         Ok(metrics)
     }
 
@@ -220,7 +227,7 @@ mod tests {
 
     fn sample_order_buy() -> Order {
         Order {
-            order_id: uuid::Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "test_strat".into(),
             symbol: "BTC-USDT".into(),
             order_type: OrderType::Limit,
@@ -238,7 +245,7 @@ mod tests {
 
     fn sample_order_sell_small() -> Order {
         Order {
-            order_id: uuid::Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "test_strat".into(),
             symbol: "BTC-USDT".into(),
             order_type: OrderType::Limit,
@@ -256,7 +263,7 @@ mod tests {
 
     fn sample_account_healthy() -> Account {
         Account {
-            account_id: uuid::Uuid::new_v4(),
+            account_id: 0,
             total_assets: dec!(1000000),
             available_cash: dec!(500000),
             frozen_cash: dec!(0),
@@ -271,7 +278,7 @@ mod tests {
 
     fn sample_account_broke() -> Account {
         Account {
-            account_id: uuid::Uuid::new_v4(),
+            account_id: 0,
             total_assets: dec!(1000),
             available_cash: dec!(10),
             frozen_cash: dec!(0),

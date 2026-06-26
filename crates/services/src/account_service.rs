@@ -43,7 +43,7 @@ impl AccountService {
             ServiceError::NotFound("No account found".into())
         })?;
 
-        info!(account_id = %row.get::<uuid::Uuid, _>("account_id"), "Account info retrieved");
+        info!(account_id = %row.get::<i64, _>("account_id"), "Account info retrieved");
         Ok(Account {
             account_id: row.get("account_id"),
             total_assets: row.get("total_assets"),
@@ -83,54 +83,52 @@ impl AccountService {
             ServiceError::from(e)
         })?;
 
-        let orders = rows
-            .iter()
-            .map(|row| -> ServiceResult<Order> {
-                let status_str: String = row.get("status");
-                let otype_str: String = row.get("order_type");
-                let side_str: String = row.get("side");
+        let orders =
+            rows.iter()
+                .map(|row| -> ServiceResult<Order> {
+                    let status_str: String = row.get("status");
+                    let otype_str: String = row.get("order_type");
+                    let side_str: String = row.get("side");
 
-                let status = serde_json::from_value(serde_json::Value::String(status_str))
-                    .map_err(|e| ServiceError::Deserialization {
-                        field: "status",
-                        source: e,
-                    })?;
-                let order_type = serde_json::from_value(serde_json::Value::String(otype_str))
-                    .map_err(|e| ServiceError::Deserialization {
+                    let status = serde_json::from_value(serde_json::Value::String(status_str))
+                        .map_err(|e| ServiceError::Deserialization {
+                            field: "status",
+                            source: e,
+                        })?;
+                    let order_type = serde_json::from_value(serde_json::Value::String(otype_str))
+                        .map_err(|e| ServiceError::Deserialization {
                         field: "order_type",
                         source: e,
                     })?;
-                let side =
-                    serde_json::from_value(serde_json::Value::String(side_str)).map_err(|e| {
-                        ServiceError::Deserialization {
+                    let side = serde_json::from_value(serde_json::Value::String(side_str))
+                        .map_err(|e| ServiceError::Deserialization {
                             field: "side",
                             source: e,
-                        }
-                    })?;
+                        })?;
 
-                Ok(Order {
-                    order_id: row.get("order_id"),
-                    strategy_id: row.get("strategy_id"),
-                    symbol: row.get("symbol"),
-                    order_type,
-                    side,
-                    price: row.get("price"),
-                    quantity: row.get("quantity"),
-                    filled_quantity: row.get("filled_quantity"),
-                    commission: row.get("commission"),
-                    slippage: row.get("slippage"),
-                    status,
-                    created_at: row.get("created_at"),
-                    updated_at: row.get("updated_at"),
+                    Ok(Order {
+                        order_id: row.get("order_id"),
+                        strategy_id: row.get("strategy_id"),
+                        symbol: row.get("symbol"),
+                        order_type,
+                        side,
+                        price: row.get("price"),
+                        quantity: row.get("quantity"),
+                        filled_quantity: row.get("filled_quantity"),
+                        commission: row.get("commission"),
+                        slippage: row.get("slippage"),
+                        status,
+                        created_at: row.get("created_at"),
+                        updated_at: row.get("updated_at"),
+                    })
                 })
-            })
-            .collect::<ServiceResult<Vec<_>>>()?;
+                .collect::<ServiceResult<Vec<_>>>()?;
 
         info!(count = orders.len(), "Active orders retrieved");
         Ok(orders)
     }
 
-    pub async fn persist_order(&self, order: &Order, account_id: &uuid::Uuid) -> ServiceResult<()> {
+    pub async fn persist_order(&self, order: &Order, account_id: &i64) -> ServiceResult<()> {
         let client = self
             .postgres
             .as_ref()
@@ -253,7 +251,7 @@ mod tests {
     async fn test_persist_order_no_db() {
         let svc = AccountService::new(None);
         let order = Order {
-            order_id: uuid::Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "strat_1".into(),
             symbol: "BTC-USDT".into(),
             order_type: OrderType::Limit,
@@ -267,7 +265,7 @@ mod tests {
             commission: rust_decimal::Decimal::ZERO,
             slippage: rust_decimal::Decimal::ZERO,
         };
-        let result = svc.persist_order(&order, &uuid::Uuid::new_v4()).await;
+        let result = svc.persist_order(&order, &0).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),

@@ -20,13 +20,10 @@ impl MarketService {
     pub async fn get_realtime_data(&self, symbol: &str) -> ServiceResult<MarketData> {
         let ds = self.okx_data_source.read().await;
         match ds.as_ref() {
-            Some(source) => source
-                .get_realtime_data(symbol)
-                .await
-                .map_err(|e| {
-                    error!(symbol = %symbol, "Failed to get realtime data: {}", e);
-                    ServiceError::DataSource(e.to_string())
-                }),
+            Some(source) => source.get_realtime_data(symbol).await.map_err(|e| {
+                error!(symbol = %symbol, "Failed to get realtime data: {}", e);
+                ServiceError::DataSource(e.to_string())
+            }),
             None => {
                 error!("OKX data source not available for realtime data");
                 Err(ServiceError::Other(

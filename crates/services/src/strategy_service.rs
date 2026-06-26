@@ -1,32 +1,31 @@
 use crate::error::{ServiceError, ServiceResult};
-use data_layer::market_data::DataSource;
-use data_layer::OkxDataSource;
+use crate::market_data_provider::MarketDataProvider;
 use quant_common::types::{BacktestResult, StrategyParams, StrategyType};
-use quant_repository::PostgresClient;
-use rust_decimal::prelude::FromPrimitive;
+use quant_repository::{BacktestRepository, BacktestResultSummaryRow, PostgresClient};
 use rust_decimal::Decimal;
 use sqlx::Row;
 use std::sync::Arc;
 use std::time::Instant;
 use strategy_engine::strategy::MeanReversionStrategy;
 use strategy_engine::{BacktestEngine, Strategy};
-use tokio::sync::RwLock;
 use tracing::{error, info, instrument, warn};
-use uuid::Uuid;
 
 pub struct StrategyService {
     postgres: Option<Arc<PostgresClient>>,
-    okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+    market_data_provider: Option<Arc<dyn MarketDataProvider>>,
+    backtest_repo: Option<Arc<dyn BacktestRepository>>,
 }
 
 impl StrategyService {
     pub fn new(
         postgres: Option<Arc<PostgresClient>>,
-        okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+        market_data_provider: Option<Arc<dyn MarketDataProvider>>,
+        backtest_repo: Option<Arc<dyn BacktestRepository>>,
     ) -> Self {
         Self {
             postgres,
-            okx_data_source,
+            market_data_provider,
+            backtest_repo,
         }
     }
 
@@ -180,9 +179,9 @@ impl StrategyService {
         strategy_id: &str,
         start: chrono::DateTime<chrono::Utc>,
         end: chrono::DateTime<chrono::Utc>,
-        initial_capital: f64,
-        commission_rate: f64,
-        slippage: f64,
+        initial_capital: Decimal,
+        commission_rate: Decimal,
+        slippage: Decimal,
         symbols: &[String],
     ) -> ServiceResult<BacktestResult> {
         let start_time = Instant::now();
@@ -202,7 +201,10 @@ impl StrategyService {
         .fetch_optional(pool)
         .await
         .map_err(|e| {
-            error!("Failed to fetch strategy {} for backtest: {}", strategy_id, e);
+            error!(
+                "Failed to fetch strategy {} for backtest: {}",
+                strategy_id, e
+            );
             ServiceError::from(e)
         })?
         .ok_or_else(|| {
@@ -223,20 +225,17 @@ impl StrategyService {
             .to_string();
 
         let market_data = {
-            let ds = self.okx_data_source.read().await;
-            match ds.as_ref() {
-                Some(source) => source
-                    .get_historical_data(&symbol, start, end)
-                    .await
-                    .map_err(|e| {
-                        error!("Failed to fetch market data for {}: {}", symbol, e);
-                        ServiceError::DataSource(e.to_string())
-                    })?,
-                None => {
-                    error!("OKX data source not initialized for backtest");
-                    return Err(ServiceError::OkxDataSourceNotInitialized);
-                }
-            }
+            let provider = self.market_data_provider.as_ref().ok_or_else(|| {
+                error!("Market data provider not initialized for backtest");
+                ServiceError::DataSource("Market data provider not initialized".to_string())
+            })?;
+            provider
+                .get_historical_data(&symbol, start, end)
+                .await
+                .map_err(|e| {
+                    error!("Failed to fetch market data for {}: {}", symbol, e);
+                    ServiceError::DataSource(e)
+                })?
         };
 
         if market_data.is_empty() {
@@ -270,92 +269,41 @@ impl StrategyService {
         };
 
         let mut strategy = MeanReversionStrategy::new();
-        strategy
-            .initialize(strategy_params)
-            .await
-            .map_err(|e| {
-                error!("Strategy initialization failed: {}", e);
-                ServiceError::Strategy(e.to_string())
-            })?;
-
-        let initial_capital_dec = Decimal::from_f64(initial_capital).unwrap_or(Decimal::ZERO);
-        let commission_rate_dec = Decimal::from_f64(commission_rate).unwrap_or(Decimal::ZERO);
-        let slippage_dec = Decimal::from_f64(slippage).unwrap_or(Decimal::ZERO);
+        strategy.initialize(strategy_params).await.map_err(|e| {
+            error!("Strategy initialization failed: {}", e);
+            ServiceError::Strategy(e.to_string())
+        })?;
 
         let mut engine =
-            BacktestEngine::new(initial_capital_dec, commission_rate_dec, slippage_dec);
-        let result = engine
-            .run(&strategy, market_data)
-            .await
-            .map_err(|e| {
-                error!("Backtest execution failed: {}", e);
-                ServiceError::Backtest(e.to_string())
-            })?;
+            BacktestEngine::new(initial_capital, commission_rate, slippage);
+        let result = engine.run(&strategy, market_data).await.map_err(|e| {
+            error!("Backtest execution failed: {}", e);
+            ServiceError::Backtest(e.to_string())
+        })?;
 
+        let _backtest_id = 0i64;
         let backtest_result = BacktestResult {
+            id: None,
             strategy_id: strategy_id.to_string(),
             ..result
         };
 
-        let backtest_id = Uuid::new_v4();
-        let equity_json = serde_json::to_value(&backtest_result.equity_curve).map_err(|e| {
-            ServiceError::Serialization {
-                what: "equity curve",
-                source: e,
-            }
-        })?;
-        let symbols_str: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-
-        sqlx::query(
-            r#"
-            INSERT INTO backtest_results (
-                backtest_id, strategy_id, strategy_name,
-                start_date, end_date,
-                initial_capital, final_capital,
-                total_return, annual_return,
-                sharpe_ratio, max_drawdown,
-                win_rate, profit_loss_ratio,
-                total_trades, winning_trades, losing_trades,
-                equity_curve, symbols,
-                commission_rate, slippage
-            ) VALUES (
-                $1, $2, $3,
-                $4, $5,
-                $6, $7,
-                $8, $9,
-                $10, $11,
-                $12, $13,
-                $14, $15, $16,
-                $17, $18,
-                $19, $20
-            )
-            "#,
+        // Persist via Repository
+        let repo = self
+            .backtest_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        repo.insert(
+            &backtest_result,
+            &db_name,
+            symbols,
+            commission_rate,
+            slippage,
         )
-        .bind(backtest_id)
-        .bind(&backtest_result.strategy_id)
-        .bind(&db_name)
-        .bind(backtest_result.start_date)
-        .bind(backtest_result.end_date)
-        .bind(backtest_result.initial_capital)
-        .bind(backtest_result.final_capital)
-        .bind(backtest_result.total_return)
-        .bind(backtest_result.annual_return)
-        .bind(backtest_result.sharpe_ratio)
-        .bind(backtest_result.max_drawdown)
-        .bind(backtest_result.win_rate)
-        .bind(backtest_result.profit_loss_ratio)
-        .bind(backtest_result.total_trades)
-        .bind(backtest_result.winning_trades)
-        .bind(backtest_result.losing_trades)
-        .bind(&equity_json)
-        .bind(&symbols_str)
-        .bind(commission_rate_dec)
-        .bind(slippage_dec)
-        .execute(pool)
         .await
         .map_err(|e| {
             error!("Failed to persist backtest result: {}", e);
-            ServiceError::from(e)
+            ServiceError::Other(e.to_string())
         })?;
 
         let duration_ms = start_time.elapsed().as_millis();
@@ -370,14 +318,67 @@ impl StrategyService {
         );
         Ok(backtest_result)
     }
+
+    /// Query backtest results with pagination (sorted by created_at DESC).
+    #[instrument(skip(self), fields(limit, offset))]
+    pub async fn get_backtest_results(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> ServiceResult<Vec<BacktestResultSummaryRow>> {
+        let repo = self
+            .backtest_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        repo.find_all(limit, offset).await.map_err(|e| {
+            error!("Failed to query backtest results: {}", e);
+            ServiceError::Other(e.to_string())
+        })
+    }
+
+    /// Query a single backtest result by ID (includes equity_curve).
+    #[instrument(skip(self), fields(%id))]
+    pub async fn get_backtest_result(&self, id: i64) -> ServiceResult<BacktestResult> {
+        let repo = self
+            .backtest_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        repo.find_by_id(id).await.map_err(|e| {
+            error!("Failed to query backtest result {}: {}", id, e);
+            ServiceError::Other(e.to_string())
+        })?
+        .ok_or_else(|| {
+            ServiceError::NotFound(format!("Backtest result '{}' not found", id))
+        })
+    }
+
+    /// Delete a backtest result by ID. Returns true if a row was deleted.
+    #[instrument(skip(self), fields(%id))]
+    pub async fn delete_backtest_result(&self, id: i64) -> ServiceResult<bool> {
+        let repo = self
+            .backtest_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let deleted = repo.delete_by_id(id).await.map_err(|e| {
+            error!("Failed to delete backtest result {}: {}", id, e);
+            ServiceError::Other(e.to_string())
+        })?;
+        if deleted {
+            info!(%id, "Backtest result deleted");
+        } else {
+            warn!(%id, "Backtest result not found for deletion");
+        }
+        Ok(deleted)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal::prelude::FromPrimitive;
 
     fn make_service_no_db() -> StrategyService {
-        StrategyService::new(None, Arc::new(RwLock::new(None)))
+        StrategyService::new(None, None, None)
     }
 
     #[tokio::test]
@@ -443,12 +444,45 @@ mod tests {
                 "test_001",
                 chrono::Utc::now() - chrono::Duration::days(7),
                 chrono::Utc::now(),
-                100000.0,
-                0.001,
-                0.0005,
+                Decimal::from(100000),
+                Decimal::from_f64(0.001).unwrap(),
+                Decimal::from_f64(0.0005).unwrap(),
                 &["BTC-USDT".to_string()],
             )
             .await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ServiceError::DatabaseNotConnected
+        ));
+    }
+
+    #[tokio::test]
+    async fn get_backtest_results_no_db_returns_error() {
+        let svc = make_service_no_db();
+        let result = svc.get_backtest_results(20, 0).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ServiceError::DatabaseNotConnected
+        ));
+    }
+
+    #[tokio::test]
+    async fn get_backtest_result_no_db_returns_error() {
+        let svc = make_service_no_db();
+        let result = svc.get_backtest_result(1).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ServiceError::DatabaseNotConnected
+        ));
+    }
+
+    #[tokio::test]
+    async fn delete_backtest_result_no_db_returns_error() {
+        let svc = make_service_no_db();
+        let result = svc.delete_backtest_result(1).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -460,5 +494,7 @@ mod tests {
     fn new_with_none_creates_service_with_no_deps() {
         let svc = make_service_no_db();
         assert!(svc.postgres.is_none());
+        assert!(svc.market_data_provider.is_none());
+        assert!(svc.backtest_repo.is_none());
     }
 }

@@ -11,6 +11,7 @@ pub mod app_service;
 pub mod auth_service;
 pub mod config_service;
 pub mod error;
+pub mod market_data_provider;
 pub mod market_service;
 pub mod okx_service;
 pub mod risk_service;
