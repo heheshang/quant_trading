@@ -1,0 +1,18 @@
+[package]
+name = "data-puller"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+quant-common = { path = "../common" }
+exchange-okx = { path = "../exchange-okx" }
+data-layer = { path = "../data-layer" }
+
+tokio = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
