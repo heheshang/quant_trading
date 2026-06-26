@@ -4,6 +4,7 @@ import type {
   Alert,
   AppConfig,
   BacktestResult,
+  BacktestResultSummaryRow,
   LogEntry,
   MarketData,
   OkxBalance,
@@ -66,6 +67,21 @@ export function runBacktest(
   })
 }
 
+export function getBacktestResults(
+  limit: number,
+  offset: number,
+): Promise<BacktestResultSummaryRow[]> {
+  return invoke<BacktestResultSummaryRow[]>('get_backtest_results', { limit, offset })
+}
+
+export function getBacktestResult(id: number): Promise<BacktestResult> {
+  return invoke<BacktestResult>('get_backtest_result', { id: id.toString() })
+}
+
+export function deleteBacktestResult(id: number): Promise<boolean> {
+  return invoke<boolean>('delete_backtest_result', { id: id.toString() })
+}
+
 export function getMetrics(): Promise<Record<string, number>> {
   return invoke<Record<string, number>>('get_metrics')
 }
@@ -74,8 +90,8 @@ export function getAlerts(): Promise<Alert[]> {
   return invoke<Alert[]>('get_alerts')
 }
 
-export function acknowledgeAlert(alertId: string): Promise<boolean> {
-  return invoke<boolean>('acknowledge_alert', { alertId })
+export function acknowledgeAlert(alertId: number): Promise<boolean> {
+  return invoke<boolean>('acknowledge_alert', { alertId: alertId.toString() })
 }
 
 export function getLogs(

@@ -34,7 +34,7 @@ export type OrderSide = 'Buy' | 'Sell'
 export type OrderStatus = 'Pending' | 'Submitted' | 'PartiallyFilled' | 'Filled' | 'Cancelled' | 'Rejected' | 'Expired'
 
 export interface Order {
-  order_id: string
+  order_id: number
   strategy_id: string
   symbol: string
   order_type: OrderType
@@ -61,7 +61,7 @@ export interface Position {
 }
 
 export interface AccountInfo {
-  account_id: string
+  account_id: number
   total_assets: number
   available_cash: number
   frozen_cash: number
@@ -95,6 +95,7 @@ export type StrategyType =
   | 'Custom'
 
 export interface BacktestResult {
+  id?: number
   strategy_id: string
   start_date: string
   end_date: string
@@ -112,6 +113,20 @@ export interface BacktestResult {
   equity_curve: [string, number][]
 }
 
+export interface BacktestResultSummaryRow {
+  id: number
+  strategy_id: string
+  strategy_name: string | null
+  start_date: string
+  end_date: string
+  total_return: number
+  sharpe_ratio: number | null
+  max_drawdown: number | null
+  total_trades: number | null
+  win_rate: number | null
+  created_at: string
+}
+
 export interface RiskMetrics {
   timestamp: string
   var_95: number
@@ -125,7 +140,7 @@ export interface RiskMetrics {
 export type AlertLevel = 'Info' | 'Warning' | 'Critical'
 
 export interface Alert {
-  alert_id: string
+  alert_id: number
   level: AlertLevel
   source: string
   message: string

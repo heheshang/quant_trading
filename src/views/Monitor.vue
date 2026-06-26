@@ -224,7 +224,7 @@ import type { Alert, AlertLevel, LogEntry } from '@/services/types';
 
 // --- WS event payload types ---
 interface WsAlertPayload {
-  alert_id: string
+alert_id: number
   level: AlertLevel
   source: string
   message: string
@@ -333,7 +333,7 @@ async function fetchAlerts() {
     console.error('Failed to fetch alerts:', error);
     alerts.value = [
       {
-        alert_id: '1',
+        alert_id: 1,
         level: 'Warning',
         source: 'Risk Management',
         message: 'Account margin ratio approaching limit',
@@ -341,7 +341,7 @@ async function fetchAlerts() {
         acknowledged: false
       },
       {
-        alert_id: '2',
+        alert_id: 2,
         level: 'Critical',
         source: 'Trading Engine',
         message: 'Order execution latency exceeded threshold',
@@ -352,7 +352,7 @@ async function fetchAlerts() {
   }
 }
 
-async function acknowledgeAlert(alertId: string) {
+async function acknowledgeAlert(alertId: number) {
   try {
     await invoke<boolean>('acknowledge_alert', { alertId });
     

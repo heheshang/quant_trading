@@ -218,13 +218,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus';
+import { cancelOkxOrder } from '@/services/api';
+import { useOrderStore } from '@/stores/order';
 
 // Reactive data
 const accountInfo = ref({
-  account_id: '',
+  account_id: 0,
   total_assets: 1234567.91,
   available_cash: 234567.99,
   frozen_cash: 0,
@@ -260,6 +263,7 @@ const orderRules = {
 
 const orderFormRef = ref<FormInstance>();
 const submitting = ref(false);
+const orderStore = useOrderStore();
 
 // Format currency
 function formatCurrency(value: any): string {
@@ -306,13 +310,9 @@ function getOrderStatusText(status: string): string {
   }
 }
 
-// Generate a simple UUID-like string
-function generateOrderId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+// Generate a simple order ID using timestamp
+function generateOrderId(): number {
+  return Date.now();
 }
 
 // Fetch account info
@@ -362,10 +362,10 @@ async function fetchStrategies() {
 // Submit order
 async function submitOrder() {
   if (!orderFormRef.value) return;
-  
+
   await orderFormRef.value.validate(async (valid) => {
     if (!valid) return;
-    
+
     submitting.value = true;
     try {
       const order = {
@@ -383,11 +383,15 @@ async function submitOrder() {
         commission: 0,
         slippage: 0
       };
-      
-      const orderId = await invoke<string>('submit_order', { order });
-      ElMessage.success(`订单提交成功: ${orderId}`);
-      resetOrderForm();
-      await fetchActiveOrders();
+
+      const orderId = await orderStore.placeOrder(order as any);
+      if (orderId) {
+        ElMessage.success(`订单提交成功: ${orderId}`);
+        resetOrderForm();
+        await fetchActiveOrders();
+      } else {
+        ElMessage.error('订单提交失败');
+      }
     } catch (error) {
       console.error('Failed to submit order:', error);
       ElMessage.error('订单提交失败: ' + (error as Error).message);
@@ -398,19 +402,30 @@ async function submitOrder() {
 }
 
 // Cancel order
-async function cancelOrder(_orderId: string) {
+async function cancelOrder(orderId: number) {
   try {
     await ElMessageBox.confirm('确定要撤销此订单吗？', '确认撤单', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
     });
-    
-    // TODO: Implement cancel order functionality
-    ElMessage.info('撤单功能开发中...');
-    await fetchActiveOrders();
+
+    // Find the order's symbol from activeOrders
+    const order = activeOrders.value.find((o: any) => o.order_id === orderId);
+    if (!order) {
+      ElMessage.error('未找到对应订单');
+      return;
+    }
+
+    const cancelled = await cancelOkxOrder(order.symbol, orderId.toString());
+    if (cancelled) {
+      ElMessage.success('撤单成功');
+      await fetchActiveOrders();
+    } else {
+      ElMessage.error('撤单失败');
+    }
   } catch {
-    // User cancelled
+    // User cancelled or error
   }
 }
 
@@ -438,6 +453,23 @@ onMounted(() => {
   fetchPositions();
   fetchActiveOrders();
   fetchStrategies();
+
+  // Listen for order:submitted events from backend
+  const unlisten = listen('order:submitted', (event) => {
+    const data = event.payload as Record<string, unknown>;
+    console.log('Order submitted event received:', data);
+    ElMessage.success(`订单已提交: ${data.symbol}`);
+    fetchActiveOrders();
+  });
+  // Store unlisten for cleanup
+  (window as any).__order_event_unlisten = unlisten;
+});
+
+onUnmounted(() => {
+  const unlisten = (window as any).__order_event_unlisten;
+  if (unlisten) {
+    unlisten.then((fn: () => void) => fn());
+  }
 });
 </script>
 

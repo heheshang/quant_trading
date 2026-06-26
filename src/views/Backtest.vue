@@ -138,7 +138,7 @@
               <el-card class="backtest-stat-card">
                 <div class="stat-item">
                   <div class="stat-label">夏普比率</div>
-                  <div class="stat-value">{{ backtestResult.sharpe_ratio.toFixed(2) }}</div>
+                  <div class="stat-value">{{ formatNumber(backtestResult.sharpe_ratio) }}</div>
                 </div>
               </el-card>
             </el-col>
@@ -207,23 +207,85 @@
             <el-table-column prop="type" label="类型" width="100" />
             <el-table-column prop="price" label="价格" width="120">
               <template #default="scope">
-                ¥{{ scope.row.price.toFixed(2) }}
+                ¥{{ formatCurrency(scope.row.price) }}
               </template>
             </el-table-column>
             <el-table-column prop="quantity" label="数量" width="100" />
             <el-table-column prop="amount" label="金额" width="120">
               <template #default="scope">
-                ¥{{ scope.row.amount.toFixed(2) }}
+                ¥{{ formatCurrency(scope.row.amount) }}
               </template>
             </el-table-column>
             <el-table-column prop="commission" label="手续费" width="100">
               <template #default="scope">
-                ¥{{ scope.row.commission.toFixed(2) }}
+                ¥{{ formatCurrency(scope.row.commission) }}
               </template>
             </el-table-column>
           </el-table>
         </el-tab-pane>
       </el-tabs>
+    </el-card>
+
+    <!-- 历史记录 -->
+    <el-card class="history-card">
+      <template #header>
+        <div class="card-header">
+          <span>回测历史记录</span>
+          <el-button @click="fetchHistory" :loading="historyLoading" size="small">刷新</el-button>
+        </div>
+      </template>
+      
+      <el-table :data="historyRecords" style="width: 100%" v-loading="historyLoading">
+        <el-table-column prop="strategy_name" label="策略名称" width="150">
+          <template #default="scope">
+            {{ scope.row.strategy_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="start_date" label="开始日期" width="120">
+          <template #default="scope">
+            {{ formatDate(scope.row.start_date) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="end_date" label="结束日期" width="120">
+          <template #default="scope">
+            {{ formatDate(scope.row.end_date) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_return" label="总收益率" width="100">
+          <template #default="scope">
+            <span :class="{ positive: scope.row.total_return > 0, negative: scope.row.total_return < 0 }">
+              {{ formatPercentage(scope.row.total_return) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sharpe_ratio" label="夏普比率" width="100">
+          <template #default="scope">
+            {{ formatNumber(scope.row.sharpe_ratio) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="max_drawdown" label="最大回撤" width="100">
+          <template #default="scope">
+            <span class="negative">{{ formatPercentage(scope.row.max_drawdown) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_trades" label="交易数" width="80" />
+        <el-table-column prop="win_rate" label="胜率" width="80">
+          <template #default="scope">
+            {{ formatPercentage(scope.row.win_rate) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" width="160">
+          <template #default="scope">
+            {{ formatDate(scope.row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="scope">
+            <el-button size="small" @click="viewHistoryDetail(scope.row.id)">详情</el-button>
+            <el-button size="small" type="danger" @click="deleteHistoryRecord(scope.row.id)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-card>
 
     <!-- 加载状态 -->
@@ -289,16 +351,18 @@ const backtestConfig = ref({
   initialCapital: 1000000,
   commissionRate: 0.001,
   slippage: 0.0005,
-  symbols: '600519.SH'
+  symbols: 'BTC-USDT'
 });
 const backtestResult = ref<any>(null);
 const tradeRecords = ref<any[]>([]);
 const running = ref(false);
 const activeTab = ref('overview');
+const historyRecords = ref<any[]>([]);
+const historyLoading = ref(false);
 
 // Format currency
 function formatCurrency(value: any): string {
-  if (!value) return '0.00';
+  if (value === null || value === undefined) return '0.00';
   return parseFloat(value.toString()).toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -307,8 +371,20 @@ function formatCurrency(value: any): string {
 
 // Format percentage
 function formatPercentage(value: any): string {
-  if (!value) return '0.00%';
+  if (value === null || value === undefined) return '0.00%';
   return (parseFloat(value.toString()) * 100).toFixed(2) + '%';
+}
+
+// Format number (handles null/undefined gracefully)
+function formatNumber(value: any): string {
+  if (value === null || value === undefined) return '-';
+  return parseFloat(value.toString()).toFixed(2);
+}
+
+// Format date string for display
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleString('zh-CN');
 }
 
 // Fetch strategies
@@ -340,10 +416,47 @@ function resetConfig() {
     initialCapital: 1000000,
     commissionRate: 0.001,
     slippage: 0.0005,
-    symbols: '600519.SH'
+    symbols: 'BTC-USDT'
   };
   backtestResult.value = null;
   tradeRecords.value = [];
+}
+
+// Fetch history records
+async function fetchHistory() {
+  historyLoading.value = true;
+  try {
+    const data = await invoke<any[]>('get_backtest_results', { limit: 50, offset: 0 });
+    historyRecords.value = data;
+  } catch (error) {
+    console.error('Failed to fetch backtest history:', error);
+  } finally {
+    historyLoading.value = false;
+  }
+}
+
+// View history detail
+async function viewHistoryDetail(id: number) {
+  try {
+    const result = await invoke<any>('get_backtest_result', { id });
+    backtestResult.value = result;
+    activeTab.value = 'overview';
+  } catch (error) {
+    console.error('Failed to fetch backtest detail:', error);
+    ElMessage.error('获取回测详情失败');
+  }
+}
+
+// Delete history record
+async function deleteHistoryRecord(id: number) {
+  try {
+    await invoke<boolean>('delete_backtest_result', { id });
+    ElMessage.success('删除成功');
+    fetchHistory();
+  } catch (error) {
+    console.error('Failed to delete backtest result:', error);
+    ElMessage.error('删除失败');
+  }
 }
 
 // Run backtest
@@ -370,10 +483,19 @@ async function runBacktest() {
   
   running.value = true;
   try {
+    const symbols = backtestConfig.value.symbols
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
     const result = await invoke<any>('run_backtest', {
       strategyId: backtestConfig.value.strategyId,
       startDate: backtestConfig.value.startDate,
-      endDate: backtestConfig.value.endDate
+      endDate: backtestConfig.value.endDate,
+      initialCapital: backtestConfig.value.initialCapital,
+      commissionRate: backtestConfig.value.commissionRate,
+      slippage: backtestConfig.value.slippage,
+      symbols,
     });
     
     backtestResult.value = result;
@@ -382,7 +504,7 @@ async function runBacktest() {
     tradeRecords.value = [
       {
         date: new Date().toISOString(),
-        symbol: '600519.SH',
+        symbol: symbols[0] || 'BTC-USDT',
         type: '买入',
         price: 1650.00,
         quantity: 100,
@@ -391,7 +513,7 @@ async function runBacktest() {
       },
       {
         date: new Date(Date.now() + 86400000).toISOString(),
-        symbol: '600519.SH',
+        symbol: symbols[0] || 'BTC-USDT',
         type: '卖出',
         price: 1680.00,
         quantity: 100,
@@ -401,6 +523,7 @@ async function runBacktest() {
     ];
     
     ElMessage.success('回测完成');
+    fetchHistory();
   } catch (error) {
     console.error('Backtest failed:', error);
     ElMessage.error('回测失败: ' + (error as Error).message);
@@ -464,6 +587,7 @@ function exportResult() {
 // Initialize on mount
 onMounted(() => {
   fetchStrategies();
+  fetchHistory();
   
   // Set default dates
   const today = new Date();

@@ -16,8 +16,8 @@ const {
   const mockStartListening = vi.fn()
   const mockCleanup = vi.fn()
 
-  const defaultAccount = {
-    account_id: 'test',
+const defaultAccount = {
+  account_id: 0,
     total_assets: 1_000_000,
     available_cash: 500_000,
     frozen_cash: 0,

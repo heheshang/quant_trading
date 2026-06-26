@@ -103,7 +103,7 @@ const defaultMetrics = {
 
 const defaultAlerts: Alert[] = [
   {
-    alert_id: 'a1',
+    alert_id: 1,
     level: 'Warning',
     source: 'Risk Management',
     message: 'Margin ratio approaching limit',
@@ -111,7 +111,7 @@ const defaultAlerts: Alert[] = [
     acknowledged: false,
   },
   {
-    alert_id: 'a2',
+    alert_id: 2,
     level: 'Critical',
     source: 'Trading Engine',
     message: 'Order latency exceeded threshold',
@@ -340,7 +340,7 @@ describe('Monitor', () => {
 
     // Verify invoke was called
     expect(mockInvoke).toHaveBeenCalledWith('acknowledge_alert', {
-      alertId: 'a1',
+      alertId: 1,
     })
 
     // Button should now show "已确认" and be disabled

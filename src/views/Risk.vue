@@ -270,7 +270,7 @@ const riskConfig = ref({
 const riskAlerts = ref<any[]>([]);
 
 const testOrder = ref({
-  order_id: '',
+  order_id: 0,
   strategy_id: 'test_strategy',
   symbol: '600519.SH',
   order_type: 'Limit',
@@ -369,13 +369,9 @@ function getAlertLevelText(level: string): string {
   }
 }
 
-// Generate a simple UUID-like string
-function generateId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+// Generate a simple ID using timestamp
+function generateId(): number {
+  return Date.now();
 }
 
 // Fetch risk metrics
@@ -445,7 +441,7 @@ async function runPreTradeCheck() {
       
       // Mock account and positions data for testing
       const account = {
-        account_id: generateId(),
+        account_id: 0,
         total_assets: 1000000,
         available_cash: 500000,
         frozen_cash: 0,
@@ -502,7 +498,7 @@ async function acknowledgeAlert(alertId: string) {
 // Reset test order
 function resetTestOrder() {
   testOrder.value = {
-    order_id: '',
+    order_id: 0,
     strategy_id: 'test_strategy',
     symbol: '600519.SH',
     order_type: 'Limit',
