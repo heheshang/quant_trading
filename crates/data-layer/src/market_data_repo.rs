@@ -7,7 +7,7 @@ use tracing::instrument;
 /// A single K-line record as stored in the market_data partitioned table
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct MarketDataRecord {
-    pub id: uuid::Uuid,
+    pub id: i64,
     pub instrument_id: String,
     pub timeframe: String,
     pub timestamp: DateTime<Utc>,
@@ -109,6 +109,122 @@ impl MarketDataRepository {
 
         Ok(records)
     }
+
+    /// Insert a single ticker snapshot record
+    #[instrument(skip(self))]
+    pub async fn insert_ticker_snapshot(&self, item: &NewTickerSnapshot) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO ticker_snapshots (instrument_id, ts, last_px, open_24h, high_24h, low_24h, vol_24h, vol_ccy_24h, change_24h)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(&item.instrument_id)
+        .bind(item.ts)
+        .bind(item.last_px)
+        .bind(item.open_24h)
+        .bind(item.high_24h)
+        .bind(item.low_24h)
+        .bind(item.vol_24h)
+        .bind(item.vol_ccy_24h)
+        .bind(item.change_24h)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to insert ticker_snapshot: {}", e)))?;
+
+        Ok(rows_affected.rows_affected() as u64)
+    }
+
+    /// Insert a single account snapshot record
+    #[instrument(skip(self))]
+    pub async fn insert_account_snapshot(&self, item: &NewAccountSnapshot) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO account_snapshots (ccy, ts, eq, cash_bal, avail_eq, frozen_bal)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(&item.ccy)
+        .bind(item.ts)
+        .bind(item.eq)
+        .bind(item.cash_bal)
+        .bind(item.avail_eq)
+        .bind(item.frozen_bal)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to insert account_snapshot: {}", e)))?;
+
+        Ok(rows_affected.rows_affected() as u64)
+    }
+
+    /// Insert a single position snapshot record
+    #[instrument(skip(self))]
+    pub async fn insert_position_snapshot(&self, item: &NewPositionSnapshot) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO position_snapshots (inst_id, ts, pos, avg_px, upl, upl_ratio, mark_px)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(&item.inst_id)
+        .bind(item.ts)
+        .bind(item.pos)
+        .bind(item.avg_px)
+        .bind(item.upl)
+        .bind(item.upl_ratio)
+        .bind(item.mark_px)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to insert position_snapshot: {}", e)))?;
+
+        Ok(rows_affected.rows_affected() as u64)
+    }
+
+    /// Insert a single funding rate record
+    #[instrument(skip(self))]
+    pub async fn insert_funding_rate(&self, item: &NewFundingRate) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO funding_rates (inst_id, ts, funding_rate, next_funding_rate, funding_time)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(&item.inst_id)
+        .bind(item.ts)
+        .bind(item.funding_rate)
+        .bind(item.next_funding_rate)
+        .bind(item.funding_time)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to insert funding_rate: {}", e)))?;
+
+        Ok(rows_affected.rows_affected() as u64)
+    }
+
+    /// Insert a single mark price record
+    #[instrument(skip(self))]
+    pub async fn insert_mark_price(&self, item: &NewMarkPrice) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO mark_prices (inst_id, ts, mark_px, idx_px)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(&item.inst_id)
+        .bind(item.ts)
+        .bind(item.mark_px)
+        .bind(item.idx_px)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to insert mark_price: {}", e)))?;
+
+        Ok(rows_affected.rows_affected() as u64)
+    }
 }
 
 /// Input struct for inserting new K-line data
@@ -122,6 +238,57 @@ pub struct NewMarketDataRecord {
     pub low: Decimal,
     pub close: Decimal,
     pub volume: Decimal,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewTickerSnapshot {
+    pub instrument_id: String,
+    pub ts: DateTime<Utc>,
+    pub last_px: Option<Decimal>,
+    pub open_24h: Option<Decimal>,
+    pub high_24h: Option<Decimal>,
+    pub low_24h: Option<Decimal>,
+    pub vol_24h: Option<Decimal>,
+    pub vol_ccy_24h: Option<Decimal>,
+    pub change_24h: Option<Decimal>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewAccountSnapshot {
+    pub ccy: String,
+    pub ts: DateTime<Utc>,
+    pub eq: Option<Decimal>,
+    pub cash_bal: Option<Decimal>,
+    pub avail_eq: Option<Decimal>,
+    pub frozen_bal: Option<Decimal>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewPositionSnapshot {
+    pub inst_id: String,
+    pub ts: DateTime<Utc>,
+    pub pos: Option<Decimal>,
+    pub avg_px: Option<Decimal>,
+    pub upl: Option<Decimal>,
+    pub upl_ratio: Option<Decimal>,
+    pub mark_px: Option<Decimal>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewFundingRate {
+    pub inst_id: String,
+    pub ts: DateTime<Utc>,
+    pub funding_rate: Option<Decimal>,
+    pub next_funding_rate: Option<Decimal>,
+    pub funding_time: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewMarkPrice {
+    pub inst_id: String,
+    pub ts: DateTime<Utc>,
+    pub mark_px: Option<Decimal>,
+    pub idx_px: Option<Decimal>,
 }
 
 #[cfg(test)]
