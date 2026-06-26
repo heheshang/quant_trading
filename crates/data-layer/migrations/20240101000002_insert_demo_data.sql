@@ -1,10 +1,11 @@
 -- 插入示例用户 (密码: admin123)
-INSERT INTO users (username, password_hash, email, roles)
+INSERT INTO users (username, password_hash, email, role, full_name)
 VALUES (
     'admin',
-    '$argon2id$v=19$m=19456,t=2,p=1$VE5FVEVTVFNBTFQ$8jqS3nB5V5xqY9Z3k2nF0A', -- 需要使用实际的 argon2 哈希
+    '$argon2id$v=19$m=19456,t=2,p=1$VE5FVEVTVFNBTFQ$8jqS3nB5V5xqY9Z3k2nF0A',
     'admin@example.com',
-    ARRAY['admin', 'trader']
+    'admin',
+    'Administrator'
 ) ON CONFLICT (username) DO NOTHING;
 
 -- 插入常用交易标的
@@ -20,13 +21,25 @@ ON CONFLICT (symbol) DO NOTHING;
 -- 为 admin 用户创建模拟账户
 DO $$
 DECLARE
-    admin_user_id UUID;
+    admin_user_id BIGINT;
 BEGIN
-    SELECT id INTO admin_user_id FROM users WHERE username = 'admin';
+    SELECT user_id INTO admin_user_id FROM users WHERE username = 'admin';
     
     IF admin_user_id IS NOT NULL THEN
         INSERT INTO accounts (user_id, account_type, total_assets, available_cash)
         VALUES (admin_user_id, 'demo', 100000, 100000)
         ON CONFLICT DO NOTHING;
+        
+        INSERT INTO strategies (strategy_id, user_id, strategy_name, strategy_type, params, enabled, max_position, max_daily_loss)
+        VALUES (
+            'mean_reversion_001',
+            admin_user_id,
+            '均值回归策略',
+            'MeanReversion',
+            '{"period": 20, "std_dev": 2.0, "entry_threshold": 2.0}'::jsonb,
+            true,
+            100000,
+            5000
+        ) ON CONFLICT (strategy_id) DO NOTHING;
     END IF;
 END $$;

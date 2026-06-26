@@ -1,4 +1,4 @@
--- Migration 005: Add JSONB fields to backtest_results and strategies tables
+-- Add JSONB fields to backtest_results and strategies tables
 
 ALTER TABLE backtest_results
 ADD COLUMN IF NOT EXISTS parameters_json JSONB;

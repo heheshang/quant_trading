@@ -90,7 +90,7 @@ impl DataQualityChecker {
     #[instrument(skip(self, data), fields(len = data.len()))]
     pub fn remove_duplicates(&self, data: &mut Vec<MarketData>) {
         let original_len = data.len();
-        data.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        data.sort_by_key(|a| a.timestamp);
         data.dedup_by(|a, b| a.symbol == b.symbol && a.timestamp == b.timestamp);
 
         let removed = original_len - data.len();

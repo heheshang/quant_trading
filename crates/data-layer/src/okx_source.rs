@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 
 /// OKX 数据源
+#[derive(Clone)]
 pub struct OkxDataSource {
     client: Arc<RwLock<OkxClient>>,
 }

@@ -25,12 +25,10 @@ impl RedisCache {
         };
 
         let cfg = Config::from_url(redis_url);
-        let pool = cfg
-            .create_pool(Some(Runtime::Tokio1))
-            .map_err(|e| {
-                error!("Failed to create Redis pool: {}", e);
-                Error::Redis(e.to_string())
-            })?;
+        let pool = cfg.create_pool(Some(Runtime::Tokio1)).map_err(|e| {
+            error!("Failed to create Redis pool: {}", e);
+            Error::Redis(e.to_string())
+        })?;
 
         Ok(Self { pool })
     }

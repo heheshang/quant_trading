@@ -1,16 +1,9 @@
 use chrono::{TimeDelta, Utc};
-use data_layer::migrations::migrations::get_all_migrations;
-use data_layer::{MarketDataRepository, MigrationManager, NewMarketDataRecord};
+use data_layer::{MarketDataRepository, NewMarketDataRecord};
 use quant_common::Result;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
-
-/// Integration tests for MarketDataRepository
-/// Requires a running PostgreSQL instance.
-///
-/// To run:
-///   cargo test --package data-layer --test market_data_repo_test -- --ignored
 
 async fn get_test_pool() -> Result<Arc<PgPool>> {
     let database_url = std::env::var("TEST_DATABASE_URL")
@@ -26,22 +19,20 @@ async fn get_test_pool() -> Result<Arc<PgPool>> {
 }
 
 async fn cleanup(pool: &PgPool) -> Result<()> {
-    let _ = sqlx::query("TRUNCATE TABLE market_data").execute(pool).await;
     let _ = sqlx::query("DROP TABLE IF EXISTS market_data CASCADE")
         .execute(pool)
         .await;
-    let _ = sqlx::query("DROP TABLE IF EXISTS migrations CASCADE")
+    let _ = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE")
         .execute(pool)
         .await;
     Ok(())
 }
 
 async fn setup_migrations(pool: &PgPool) -> Result<()> {
-    let mut manager = MigrationManager::new(Arc::new(pool.clone()));
-    for migration in get_all_migrations() {
-        manager.add_migration(migration);
-    }
-    manager.migrate().await
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .map_err(|e| quant_common::Error::Database(format!("Migration failed: {}", e)))
 }
 
 #[tokio::test]
@@ -50,7 +41,9 @@ async fn test_repo_insert_batch() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
     cleanup(&*pool).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool).await.expect("Migrations should succeed");
+    setup_migrations(&*pool)
+        .await
+        .expect("Migrations should succeed");
 
     let repo = MarketDataRepository::new((*pool).clone());
 
@@ -88,7 +81,10 @@ async fn test_repo_insert_batch() {
         },
     ];
 
-    let inserted = repo.insert_batch(&items).await.expect("Batch insert should succeed");
+    let inserted = repo
+        .insert_batch(&items)
+        .await
+        .expect("Batch insert should succeed");
     assert_eq!(inserted, 3, "Should insert 3 records");
 
     cleanup(&*pool).await.expect("Failed to cleanup");
@@ -102,7 +98,10 @@ async fn test_repo_insert_batch_empty() {
 
     let repo = MarketDataRepository::new((*pool).clone());
 
-    let inserted = repo.insert_batch(&[]).await.expect("Empty batch should succeed");
+    let inserted = repo
+        .insert_batch(&[])
+        .await
+        .expect("Empty batch should succeed");
     assert_eq!(inserted, 0, "Empty batch should return 0");
 
     cleanup(&*pool).await.expect("Failed to cleanup");
@@ -114,7 +113,9 @@ async fn test_repo_insert_duplicate() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
     cleanup(&*pool).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool).await.expect("Migrations should succeed");
+    setup_migrations(&*pool)
+        .await
+        .expect("Migrations should succeed");
 
     let repo = MarketDataRepository::new((*pool).clone());
 
@@ -130,10 +131,16 @@ async fn test_repo_insert_duplicate() {
         volume: Decimal::new(1000, 0),
     };
 
-    let first = repo.insert_batch(&[item.clone()]).await.expect("First insert should succeed");
+    let first = repo
+        .insert_batch(&[item.clone()])
+        .await
+        .expect("First insert should succeed");
     assert_eq!(first, 1, "First insert should return 1");
 
-    let second = repo.insert_batch(&[item.clone()]).await.expect("Duplicate insert should succeed");
+    let second = repo
+        .insert_batch(&[item.clone()])
+        .await
+        .expect("Duplicate insert should succeed");
     assert_eq!(second, 0, "ON CONFLICT DO NOTHING should skip duplicate");
 
     cleanup(&*pool).await.expect("Failed to cleanup");
@@ -145,7 +152,9 @@ async fn test_repo_query_by_range() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
     cleanup(&*pool).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool).await.expect("Migrations should succeed");
+    setup_migrations(&*pool)
+        .await
+        .expect("Migrations should succeed");
 
     let repo = MarketDataRepository::new((*pool).clone());
 
@@ -164,7 +173,9 @@ async fn test_repo_query_by_range() {
         });
     }
 
-    repo.insert_batch(&items).await.expect("Batch insert should succeed");
+    repo.insert_batch(&items)
+        .await
+        .expect("Batch insert should succeed");
 
     let from = base;
     let to = base + TimeDelta::try_hours(10).unwrap();
@@ -188,7 +199,9 @@ async fn test_repo_query_empty_range() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
     cleanup(&*pool).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool).await.expect("Migrations should succeed");
+    setup_migrations(&*pool)
+        .await
+        .expect("Migrations should succeed");
 
     let repo = MarketDataRepository::new((*pool).clone());
 

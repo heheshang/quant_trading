@@ -1,8 +1,8 @@
--- Migration 004: Create market_data partitioned table
+-- Create market_data partitioned table
 -- Creates a RANGE-partitioned table by timestamp for efficient time-series queries
 
 CREATE TABLE IF NOT EXISTS market_data (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id BIGSERIAL,
     instrument_id VARCHAR(50) NOT NULL,
     timeframe VARCHAR(10) NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS market_data (
     low DECIMAL(20, 8) NOT NULL,
     close DECIMAL(20, 8) NOT NULL,
     volume DECIMAL(20, 8) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, timestamp)
 ) PARTITION BY RANGE (timestamp);
 
 -- Create monthly partitions for 2024
@@ -42,8 +43,7 @@ CREATE TABLE IF NOT EXISTS market_data_2025_10 PARTITION OF market_data FOR VALU
 CREATE TABLE IF NOT EXISTS market_data_2025_11 PARTITION OF market_data FOR VALUES FROM ('2025-11-01') TO ('2025-12-01');
 CREATE TABLE IF NOT EXISTS market_data_2025_12 PARTITION OF market_data FOR VALUES FROM ('2025-12-01') TO ('2026-01-01');
 
--- Indices for efficient querying
-CREATE UNIQUE INDEX IF NOT EXISTS idx_market_data_uniq ON market_data (instrument_id, timeframe, timestamp);
+-- Indices for efficient querying (UNIQUE not allowed on partitioned tables without partition key)
 CREATE INDEX IF NOT EXISTS idx_market_data_query ON market_data (instrument_id, timeframe, timestamp DESC);
 
 -- Down migration

@@ -38,7 +38,7 @@ impl PostgresClient {
         sqlx::migrate!("./migrations")
             .run(&*self.pool)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(|e| Error::Database(format!("Migration failed: {}", e)))?;
         Ok(())
     }
 
@@ -61,7 +61,7 @@ impl PostgresClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dotenv::dotenv;
+
     #[tokio::test]
     async fn test_connection() {
         let config = DatabaseConfig {
