@@ -64,26 +64,20 @@ impl OkxService {
     #[instrument(skip(self, request), fields(symbol = %request.inst_id, side = %request.side, ord_type = %request.ord_type))]
     pub async fn place_order(&self, request: OkxPlaceOrderRequest) -> ServiceResult<OkxOrder> {
         with_okx_client!(self, |client| {
-            client
-                .place_order(request)
-                .await
-                .map_err(|e| {
-                    error!("Place order failed: {}", e);
-                    ServiceError::OkxApi(e.to_string())
-                })
+            client.place_order(request).await.map_err(|e| {
+                error!("Place order failed: {}", e);
+                ServiceError::OkxApi(e.to_string())
+            })
         })
     }
 
     #[instrument(skip(self), fields(inst_id = %inst_id, order_id = %ord_id))]
     pub async fn cancel_order(&self, inst_id: &str, ord_id: &str) -> ServiceResult<()> {
         with_okx_client!(self, |client| {
-            client
-                .cancel_order(inst_id, ord_id)
-                .await
-                .map_err(|e| {
-                    error!("Cancel order failed: {}", e);
-                    ServiceError::OkxApi(e.to_string())
-                })
+            client.cancel_order(inst_id, ord_id).await.map_err(|e| {
+                error!("Cancel order failed: {}", e);
+                ServiceError::OkxApi(e.to_string())
+            })
         })
     }
 
@@ -105,6 +99,69 @@ impl OkxService {
         with_okx_client!(self, |client| {
             client
                 .get_instruments(inst_type)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_ticker(&self, inst_id: &str) -> ServiceResult<OkxTicker> {
+        with_okx_client!(self, |client| {
+            client
+                .get_ticker(inst_id)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_funding_rate(&self, inst_id: &str) -> ServiceResult<OkxFundingRate> {
+        with_okx_client!(self, |client| {
+            client
+                .get_funding_rate(inst_id)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_mark_price(&self, inst_id: &str) -> ServiceResult<OkxMarkPrice> {
+        with_okx_client!(self, |client| {
+            client
+                .get_mark_price(inst_id)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_index_price(&self, inst_id: &str) -> ServiceResult<OkxIndexPrice> {
+        with_okx_client!(self, |client| {
+            client
+                .get_index_price(inst_id)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_open_interest(&self, inst_id: &str) -> ServiceResult<OkxOpenInterest> {
+        with_okx_client!(self, |client| {
+            client
+                .get_open_interest(inst_id)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_trades(&self, inst_id: &str, limit: Option<u32>) -> ServiceResult<Vec<OkxTrade>> {
+        with_okx_client!(self, |client| {
+            client
+                .get_trades(inst_id, limit)
+                .await
+                .map_err(|e| ServiceError::OkxApi(e.to_string()))
+        })
+    }
+
+    pub async fn get_order_book(&self, inst_id: &str, sz: Option<u32>) -> ServiceResult<OkxOrderBook> {
+        with_okx_client!(self, |client| {
+            client
+                .get_order_book(inst_id, sz)
                 .await
                 .map_err(|e| ServiceError::OkxApi(e.to_string()))
         })
@@ -288,7 +345,7 @@ mod tests {
     async fn test_execute_order_not_initialized() {
         let svc = make_service();
         let order = Order {
-            order_id: uuid::Uuid::new_v4(),
+            order_id: 0,
             strategy_id: "strat_1".into(),
             symbol: "BTC-USDT".into(),
             order_type: OrderType::Limit,
