@@ -226,20 +226,23 @@ export interface OkxConfig {
   enable: boolean
 }
 
+// ── OKX View Types (匹配 Rust serde camelCase 输出) ──
+
 export interface OkxBalance {
   ccy: string
-  avail_bal: number
-  frozen_bal: number
   eq: number
+  cashBal: number
+  availEq: number
+  frozenBal: number
 }
 
 export interface OkxPosition {
-  inst_id: string
-  pos_side: string
+  instId: string
   pos: number
-  avg_px: number
+  availPos: number
+  avgPx: number
   upl: number
-  mark_px: number
+  uplRatio: number
 }
 
 export interface OkxPlaceOrderRequest {
@@ -252,17 +255,17 @@ export interface OkxPlaceOrderRequest {
 }
 
 export interface OkxOrder {
-  ord_id: string
-  inst_id: string
+  ordId: string
+  clOrdId: string
+  instId: string
   side: string
-  ord_type: string
-  sz: number
+  ordType: string
   px: number
+  sz: number
   state: string
-  fill_sz: number
-  fill_px: number
-  fee: number
-  c_time: string
+  avgPx: number
+  accFillSz: number
+  uTime: string
 }
 
 export interface OkxCandle {
@@ -275,15 +278,15 @@ export interface OkxCandle {
 }
 
 export interface OkxInstrument {
-  inst_id: string
-  inst_type: string
+  instId: string
+  instType: string
   uly: string
-  base_ccy: string
-  quote_ccy: string
-  ct_val: number
-  tick_sz: number
-  lot_sz: number
-  min_sz: number
+  baseCcy: string
+  quoteCcy: string
+  ctVal: number
+  tickSz: string
+  lotSz: number
+  minSz: number
 }
 
 export interface WsTicker {

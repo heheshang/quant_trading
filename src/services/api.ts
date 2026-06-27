@@ -101,8 +101,8 @@ export function getLogs(
   return invoke<LogEntry[]>('get_logs', { level, limit })
 }
 
-export function getStrategies(page?: number, pageSize?: number): Promise<StrategyParams[]> {
-  return invoke<StrategyParams[]>('get_strategies', { page, pageSize })
+export function getStrategies(): Promise<StrategyParams[]> {
+  return invoke<StrategyParams[]>('get_strategies')
 }
 
 export function saveStrategy(strategy: StrategyParams): Promise<string> {
@@ -179,15 +179,17 @@ export function updateProfile(profileData: Record<string, unknown>): Promise<boo
 export function changePassword(
   currentPassword: string,
   newPassword: string,
+  username?: string,
 ): Promise<boolean> {
   return invoke<boolean>('change_password', {
     currentPassword,
     newPassword,
+    username,
   })
 }
 
-export function getUserProfile(): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>('get_user_profile')
+export function getUserProfile(username?: string): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>('get_user_profile', { username })
 }
 
 export function getOkxBalance(ccy?: string): Promise<OkxBalance[]> {
