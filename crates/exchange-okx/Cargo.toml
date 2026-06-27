@@ -27,5 +27,12 @@ futures = { workspace = true }
 url = "2.5"
 # OKX official SDK
 okx = { workspace = true }
+async-trait = "0.1"
+mockall = { version = "0.13", optional = true }
+
+[features]
+test-utils = ["mockall"]
 
 [dev-dependencies]
+mockall = "0.13"
+async-trait = "0.1"

@@ -78,7 +78,7 @@ pub struct OkxOrder {
     pub u_time: String,
 }
 
-/// K线数据
+/// K线数据 (OKX API 原始格式, 使用数字索引)
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OkxCandle {
     #[serde(rename = "0")]
@@ -95,6 +95,160 @@ pub struct OkxCandle {
     pub vol: String, // 成交量
     #[serde(rename = "6")]
     pub vol_ccy: String, // 成交额
+}
+
+/// K线数据 (前端展示格式)
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CandleView {
+    pub ts: String,
+    pub o: f64,
+    pub h: f64,
+    pub l: f64,
+    pub c: f64,
+    pub vol: f64,
+}
+
+impl From<OkxCandle> for CandleView {
+    fn from(c: OkxCandle) -> Self {
+        CandleView {
+            ts: c.ts,
+            o: c.open.parse().unwrap_or(0.0),
+            h: c.high.parse().unwrap_or(0.0),
+            l: c.low.parse().unwrap_or(0.0),
+            c: c.close.parse().unwrap_or(0.0),
+            vol: c.vol.parse().unwrap_or(0.0),
+        }
+    }
+}
+
+/// 交易对信息 (OKX API 原始格式)
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OkxInstrument {
+    pub inst_id: String,
+    pub inst_type: String,
+    pub uly: String,
+    pub base_ccy: String,
+    pub quote_ccy: String,
+    pub ct_val: String,
+    pub tick_sz: String,
+    pub lot_sz: String,
+    pub min_sz: String,
+}
+
+/// 交易对信息 (前端展示格式)
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct InstrumentView {
+    pub inst_id: String,
+    pub inst_type: String,
+    pub uly: String,
+    pub base_ccy: String,
+    pub quote_ccy: String,
+    pub ct_val: f64,
+    pub tick_sz: String,
+    pub lot_sz: f64,
+    pub min_sz: f64,
+}
+
+impl From<OkxInstrument> for InstrumentView {
+    fn from(i: OkxInstrument) -> Self {
+        InstrumentView {
+            inst_id: i.inst_id,
+            inst_type: i.inst_type,
+            uly: i.uly,
+            base_ccy: i.base_ccy,
+            quote_ccy: i.quote_ccy,
+            ct_val: i.ct_val.parse().unwrap_or(0.0),
+            tick_sz: i.tick_sz,
+            lot_sz: i.lot_sz.parse().unwrap_or(0.0),
+            min_sz: i.min_sz.parse().unwrap_or(0.0),
+        }
+    }
+}
+
+/// 余额信息 (前端展示格式)
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceView {
+    pub ccy: String,
+    pub eq: f64,
+    pub cash_bal: f64,
+    pub avail_eq: f64,
+    pub frozen_bal: f64,
+}
+
+impl From<OkxBalance> for BalanceView {
+    fn from(b: OkxBalance) -> Self {
+        BalanceView {
+            ccy: b.ccy,
+            eq: b.eq.parse().unwrap_or(0.0),
+            cash_bal: b.cash_bal.parse().unwrap_or(0.0),
+            avail_eq: b.avail_eq.parse().unwrap_or(0.0),
+            frozen_bal: b.frozen_bal.parse().unwrap_or(0.0),
+        }
+    }
+}
+
+/// 持仓信息 (前端展示格式)
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PositionView {
+    pub inst_id: String,
+    pub pos: f64,
+    pub avail_pos: f64,
+    pub avg_px: f64,
+    pub upl: f64,
+    pub upl_ratio: f64,
+}
+
+impl From<OkxPosition> for PositionView {
+    fn from(p: OkxPosition) -> Self {
+        PositionView {
+            inst_id: p.inst_id,
+            pos: p.pos.parse().unwrap_or(0.0),
+            avail_pos: p.avail_pos.parse().unwrap_or(0.0),
+            avg_px: p.avg_px.parse().unwrap_or(0.0),
+            upl: p.upl.parse().unwrap_or(0.0),
+            upl_ratio: p.upl_ratio.parse().unwrap_or(0.0),
+        }
+    }
+}
+
+/// 订单信息 (前端展示格式)
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderView {
+    pub ord_id: String,
+    pub cl_ord_id: String,
+    pub inst_id: String,
+    pub side: String,
+    pub ord_type: String,
+    pub px: f64,
+    pub sz: f64,
+    pub state: String,
+    pub avg_px: f64,
+    pub acc_fill_sz: f64,
+    pub u_time: String,
+}
+
+impl From<OkxOrder> for OrderView {
+    fn from(o: OkxOrder) -> Self {
+        OrderView {
+            ord_id: o.ord_id,
+            cl_ord_id: o.cl_ord_id,
+            inst_id: o.inst_id,
+            side: o.side,
+            ord_type: o.ord_type,
+            px: o.px.parse().unwrap_or(0.0),
+            sz: o.sz.parse().unwrap_or(0.0),
+            state: o.state,
+            avg_px: o.avg_px.parse().unwrap_or(0.0),
+            acc_fill_sz: o.acc_fill_sz.parse().unwrap_or(0.0),
+            u_time: o.u_time,
+        }
+    }
 }
 
 /// 下单请求

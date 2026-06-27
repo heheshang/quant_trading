@@ -1,4 +1,4 @@
-use exchange_okx::client::Client;
+use exchange_okx::client::{Client, ClientInterface};
 use exchange_okx::types::OkxEnvironment;
 use tracing::info;
 
