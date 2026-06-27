@@ -12,7 +12,7 @@ quant-domain = { path = "../domain" }
 quant-common = { path = "../common" }
 quant-repository = { path = "../repository" }
 quant-clients = { path = "../clients" }
-exchange-okx = { path = "../exchange-okx" }
+exchange-okx = { path = "../exchange-okx", features = ["test-utils"] }
 strategy-engine = { package = "strategy-layer", path = "../strategy-layer" }
 trading-engine = { package = "trading-layer", path = "../trading-layer" }
 risk-engine = { package = "risk-layer", path = "../risk-layer" }
@@ -35,3 +35,7 @@ async-trait = "0.1"
 # Database (for query access in services)
 sqlx = { workspace = true }
 rust_decimal_macros = { workspace = true }
+toml = "0.8"
+
+[dev-dependencies]
+okx = { workspace = true }

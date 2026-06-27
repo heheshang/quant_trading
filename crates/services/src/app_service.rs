@@ -4,10 +4,11 @@
 //! This is the single entry point for business logic.
 
 use data_layer::OkxDataSource;
-use exchange_okx::Client as OkxClient;
+use exchange_okx::ClientInterface;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
 use quant_repository::{MarketDataRepository, PgBacktestRepository, PostgresClient};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
@@ -32,7 +33,7 @@ pub struct AppServices {
     pub postgres: Option<Arc<PostgresClient>>,
     pub redis: Option<Arc<RedisCache>>,
     pub market_data: Option<Arc<MarketDataRepository>>,
-    pub okx_client: Arc<RwLock<Option<Arc<RwLock<OkxClient>>>>>,
+    pub okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
     pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
 
@@ -56,13 +57,55 @@ impl AppServices {
         postgres: Option<Arc<PostgresClient>>,
         redis: Option<Arc<RedisCache>>,
         market_data: Option<Arc<MarketDataRepository>>,
-        okx_client: Arc<RwLock<Option<Arc<RwLock<OkxClient>>>>>,
+        okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
         okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
         okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     ) -> Self {
         info!("Initializing AppServices");
         Self {
             config_service: ConfigService::new(config.clone()),
+            auth_service: AuthService::new(config.clone(), postgres.clone()),
+            account_service: AccountService::new(postgres.clone()),
+            market_service: MarketService::new(okx_data_source.clone()),
+            strategy_service: StrategyService::new(
+                postgres.clone(),
+                Some(Arc::new(LockingProvider::new(okx_data_source.clone()))),
+                postgres
+                    .as_ref()
+                    .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
+                        as Arc<dyn quant_repository::BacktestRepository>),
+            ),
+            okx_service: OkxService::new(
+                okx_client.clone(),
+                okx_executor.clone(),
+                okx_data_source.clone(),
+            ),
+            risk_service: RiskService::new(postgres.clone()),
+            config,
+            postgres,
+            redis,
+            market_data,
+            okx_client,
+            okx_executor,
+            okx_data_source,
+        }
+    }
+
+    /// Construct AppServices with a config file path for persistence.
+    #[instrument(skip_all)]
+    pub fn with_config_path(
+        config: Arc<RwLock<AppConfig>>,
+        config_path: PathBuf,
+        postgres: Option<Arc<PostgresClient>>,
+        redis: Option<Arc<RedisCache>>,
+        market_data: Option<Arc<MarketDataRepository>>,
+        okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+        okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
+        okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+    ) -> Self {
+        info!("Initializing AppServices with config path: {}", config_path.display());
+        Self {
+            config_service: ConfigService::with_path(config.clone(), config_path),
             auth_service: AuthService::new(config.clone(), postgres.clone()),
             account_service: AccountService::new(postgres.clone()),
             market_service: MarketService::new(okx_data_source.clone()),

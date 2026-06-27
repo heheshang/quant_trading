@@ -1,17 +1,30 @@
 use quant_common::config::AppConfig;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 /// Configuration management service.
 #[derive(Debug)]
 pub struct ConfigService {
     config: Arc<RwLock<AppConfig>>,
+    config_path: Option<PathBuf>,
 }
 
 impl ConfigService {
     pub fn new(config: Arc<RwLock<AppConfig>>) -> Self {
-        Self { config }
+        Self {
+            config,
+            config_path: None,
+        }
+    }
+
+    /// Create ConfigService with a known config file path for persistence.
+    pub fn with_path(config: Arc<RwLock<AppConfig>>, config_path: PathBuf) -> Self {
+        Self {
+            config,
+            config_path: Some(config_path),
+        }
     }
 
     #[instrument(skip_all)]
@@ -22,10 +35,33 @@ impl ConfigService {
     }
 
     #[instrument(skip(self, new_config))]
-    pub async fn update_config(&self, new_config: AppConfig) {
-        let mut cfg = self.config.write().await;
-        *cfg = new_config;
-        info!("Config updated");
+    pub async fn update_config(&self, new_config: AppConfig) -> String {
+        // Update in-memory state
+        {
+            let mut cfg = self.config.write().await;
+            *cfg = new_config.clone();
+        }
+        info!("Config updated in memory");
+
+        // Persist to file if a config path is configured
+        if let Some(ref path) = self.config_path {
+            let toml_str = toml::to_string(&new_config)
+                .unwrap_or_else(|e| {
+                    warn!("Failed to serialize config: {}", e);
+                    return String::new();
+                });
+            if toml_str.is_empty() {
+                return "Config updated in memory, but serialization failed".to_string();
+            }
+            if let Err(e) = tokio::fs::write(path, &toml_str).await {
+                warn!("Failed to persist config to {}: {}", path.display(), e);
+                return format!("Config updated in memory, but file write failed: {}", e);
+            }
+            info!("Config persisted to {}", path.display());
+            "Config updated and persisted".to_string()
+        } else {
+            "Config updated in memory (no persistence path configured)".to_string()
+        }
     }
 }
 
