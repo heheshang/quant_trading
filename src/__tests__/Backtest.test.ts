@@ -20,7 +20,7 @@ async function mountComponent() {
   await wrapper.vm.$nextTick()
   await wrapper.vm.$nextTick()
   await new Promise(r => setTimeout(r, 30))
-  return wrapper
+  return wrapper as unknown as { vm: Record<string, any>; exists: () => boolean }
 }
 
 describe('Backtest.vue - 按钮测试', () => {

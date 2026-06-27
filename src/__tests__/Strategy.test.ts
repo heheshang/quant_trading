@@ -27,7 +27,7 @@ function mockFormRef() {
 
 let container: HTMLDivElement
 
-async function mountComponent() {
+async function mountComponent(): Promise<any> {
   const wrapper = mount(Strategy, { attachTo: container, global: { plugins: [ElementPlus] } })
   for (let i = 0; i < 5; i++) await wrapper.vm.$nextTick()
   await new Promise(r => setTimeout(r, 30))
@@ -78,8 +78,8 @@ describe('Strategy.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
-    // fetchStrategies calls getStrategies() which passes { page: undefined, pageSize: undefined }
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies', { page: undefined, pageSize: undefined })
+    // fetchStrategies calls getStrategies() with no pagination params
+    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
   }, 30000)
 
   it('保存策略 - 调用 save_strategy', async () => {
@@ -169,7 +169,7 @@ describe('Strategy.vue - 按钮测试', () => {
 
   it('加载状态显示', async () => {
     mockInvoke.mockImplementation(() => new Promise(() => {}))
-    const wrapper = mount(Strategy, { attachTo: container, global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Strategy, { attachTo: container, global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()

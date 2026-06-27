@@ -26,7 +26,7 @@ function mockFormRef() {
 
 let container: HTMLDivElement
 
-async function mountComponent() {
+async function mountComponent(): Promise<any> {
   const wrapper = mount(Settings, { attachTo: container, global: { plugins: [ElementPlus] } })
   for (let i = 0; i < 5; i++) await wrapper.vm.$nextTick()
   await new Promise(r => setTimeout(r, 30))
@@ -128,7 +128,7 @@ describe('Settings.vue - 按钮测试', () => {
       if (cmd === 'get_config') return defaultConfig
       return {}
     })
-    const savePromise = wrapper.vm.saveConfig()
+    wrapper.vm.saveConfig()
     await new Promise(r => setTimeout(r, 80))
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.saving).toBe(true)

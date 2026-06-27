@@ -25,7 +25,7 @@ describe('Test.vue - 按钮测试', () => {
   })
 
   it('运行系统测试按钮 - 调用 get_metrics 并显示测试结果', async () => {
-    const wrapper = mount(Test, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Test, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -47,7 +47,7 @@ describe('Test.vue - 按钮测试', () => {
   })
 
   it('系统测试 - 每个测试项都有状态和耗时', async () => {
-    const wrapper = mount(Test, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Test, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -74,7 +74,7 @@ describe('Test.vue - 按钮测试', () => {
   it('API 失败时 - 设置 apiStatus 正确', async () => {
     mockInvoke.mockRejectedValue(new Error('Network error'))
 
-    const wrapper = mount(Test, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Test, { global: { plugins: [ElementPlus] } })
     await new Promise(r => setTimeout(r, 50))
 
     expect(wrapper.vm.apiStatus.api).toBe(false)
@@ -83,7 +83,7 @@ describe('Test.vue - 按钮测试', () => {
   it('测试期间 loading 状态', async () => {
     mockInvoke.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 500)))
 
-    const wrapper = mount(Test, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Test, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -107,7 +107,7 @@ describe('Test.vue - 按钮测试', () => {
   })
 
   it('无结果时显示 EmptyState', async () => {
-    const wrapper = mount(Test, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Test, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 

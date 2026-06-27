@@ -18,7 +18,7 @@ vi.mock('element-plus', async () => {
 const mockInvoke = vi.mocked(invoke)
 
 /** Mount Login and wait for onMounted to settle. */
-async function mountLogin() {
+async function mountLogin(): Promise<any> {
   const wrapper = mount(Login, { global: { plugins: [ElementPlus] } })
   await wrapper.vm.$nextTick()
   await wrapper.vm.$nextTick()

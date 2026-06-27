@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Profile from '@/views/Profile.vue'
@@ -11,10 +11,7 @@ vi.mock('element-plus', async () => {
 
 const mockInvoke = vi.mocked(invoke)
 
-function mockFormRef() {
-  return { validate: vi.fn((cb: any) => cb(true)) } as any
-}
-
+// mockFormRef disabled - unused
 function mockFormRefAsync() {
   return { validate: vi.fn((cb: any) => { const p = cb(true); return p; }) } as any
 }
@@ -61,14 +58,14 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('编辑信息按钮 - 切换到编辑模式', async () => {
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.isEditing).toBe(false)
 
-    const editBtn = wrapper.findAll('.el-button--primary').find(b => b.text().includes('编辑信息'))
+    const editBtn = wrapper.findAll('.el-button--primary').find((b: any) => b.text().includes('编辑信息'))
     expect(editBtn).toBeDefined()
     await editBtn!.trigger('click')
     await wrapper.vm.$nextTick()
@@ -77,7 +74,7 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('保存按钮 - 调用 updateProfile', async () => {
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -93,7 +90,7 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('取消按钮 - 退出编辑模式', async () => {
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -101,7 +98,7 @@ describe('Profile.vue - 按钮测试', () => {
     wrapper.vm.isEditing = true
     await wrapper.vm.$nextTick()
 
-    const cancelBtn = wrapper.findAll('.el-button').find(b => b.text().includes('取消'))
+    const cancelBtn = wrapper.findAll('.el-button').find((b: any) => b.text().includes('取消'))
     expect(cancelBtn).toBeDefined()
     await cancelBtn!.trigger('click')
     await wrapper.vm.$nextTick()
@@ -110,14 +107,14 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('修改密码按钮 - 打开对话框', async () => {
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.showPasswordDialog).toBe(false)
 
-    const pwdBtn = wrapper.findAll('.el-button').find(b => b.text().includes('修改密码'))
+    const pwdBtn = wrapper.findAll('.el-button').find((b: any) => b.text().includes('修改密码'))
     expect(pwdBtn).toBeDefined()
     await pwdBtn!.trigger('click')
     await wrapper.vm.$nextTick()
@@ -126,7 +123,7 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('修改密码 - 调用 changePassword', async () => {
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -148,14 +145,14 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('双因素认证按钮 - 打开 2FA 对话框', async () => {
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.show2FADialog).toBe(false)
 
-    const faBtn = wrapper.findAll('.el-button').find(b => b.text().includes('双因素认证'))
+    const faBtn = wrapper.findAll('.el-button').find((b: any) => b.text().includes('双因素认证'))
     expect(faBtn).toBeDefined()
     await faBtn!.trigger('click')
     await wrapper.vm.$nextTick()
@@ -166,7 +163,7 @@ describe('Profile.vue - 按钮测试', () => {
   it('API 调用失败 - 显示错误消息且不崩溃', async () => {
     mockInvoke.mockRejectedValue(new Error('Network error'))
 
-    const wrapper = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()

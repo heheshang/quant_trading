@@ -41,7 +41,7 @@ function getMockChart(): {
   }
 }
 
-async function mountAndReady(symbol = 'BTC-USDT') {
+async function mountAndReady(symbol = 'BTC-USDT'): Promise<any> {
   const wrapper = mount(RealtimeCandleChart, {
     props: { symbol },
   })

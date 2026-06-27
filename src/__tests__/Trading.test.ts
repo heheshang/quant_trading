@@ -30,7 +30,7 @@ function mockFormRef() {
 
 let container: HTMLDivElement
 
-async function mountComponent() {
+async function mountComponent(): Promise<any> {
   const wrapper = mount(Trading, { attachTo: container, global: { plugins: [ElementPlus] } })
   for (let i = 0; i < 5; i++) await wrapper.vm.$nextTick()
   await new Promise(r => setTimeout(r, 30))
