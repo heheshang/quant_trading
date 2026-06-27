@@ -198,36 +198,9 @@
         </el-steps>
 
         <div v-if="twoFAStep === 1">
-          <p style="margin-bottom:12px;font-size:14px;">
-            请在您的验证器应用中添加以下密钥：
+          <p style="margin-bottom:12px;font-size:14px;color:#909399;">
+            两步验证功能开发中，敬请期待
           </p>
-          <div style="text-align:center;padding:16px 0;">
-            <div style="display:inline-block;background:#fff;padding:16px;border:1px solid #dcdfe6;border-radius:8px;">
-              <div style="display:grid;grid-template-columns:repeat(8,18px);gap:2px;margin-bottom:8px">
-                <div v-for="i in 64" :key="i" 
-                  :style="{ 
-                    width:'18px',height:'18px',
-                    background: ['#000','#fff'][Math.floor(Math.random()*2)],
-                    borderRadius:'2px'
-                  }">
-                </div>
-              </div>
-              <div style="font-size:12px;color:#999;">扫描此二维码</div>
-            </div>
-          </div>
-          <el-input :model-value="fake2FASecret" readonly style="margin-bottom:8px;">
-            <template #prepend>密钥</template>
-            <template #append>
-              <el-button @click="copySecret">复制</el-button>
-            </template>
-          </el-input>
-          <p style="font-size:12px;color:#999;">
-            支持 Google Authenticator、Authy、Microsoft Authenticator 等
-          </p>
-          <div style="text-align:right;margin-top:12px;">
-            <el-button @click="show2FASetup = false; show2FADialog = false">取消</el-button>
-            <el-button type="primary" @click="twoFAStep = 2">我已绑定</el-button>
-          </div>
         </div>
 
         <div v-if="twoFAStep === 2">
@@ -345,28 +318,14 @@ const is2FAEnabled = ref(false);
 const disable2FADialogVisible = ref(false);
 const router = useRouter();
 
-// 2FA setup state
+// 2FA setup state (requires backend TOTP endpoint — currently not implemented)
 const show2FASetup = ref(false);
 const twoFAStep = ref(1);
 const verifying2FA = ref(false);
 const twoFACode = ref('');
-const fake2FASecret = ref('JBSWY3DPEHPK3PXP');
 
 function start2FASetup() {
-  show2FASetup.value = true;
-  twoFAStep.value = 1;
-  twoFACode.value = '';
-  // Generate a random-looking secret
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  fake2FASecret.value = Array.from({ length: 16 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
-function copySecret() {
-  navigator.clipboard.writeText(fake2FASecret.value).then(() => {
-    ElMessage.success('密钥已复制到剪贴板');
-  }).catch(() => {
-    ElMessage.warning('复制失败，请手动复制');
-  });
+  ElMessage.info('两步验证设置功能开发中，敬请期待');
 }
 
 function on2FACodeInput(value: string) {
@@ -374,22 +333,7 @@ function on2FACodeInput(value: string) {
 }
 
 async function verify2FA() {
-  if (twoFACode.value.length !== 6) {
-    ElMessage.warning('请输入完整的 6 位验证码');
-    return;
-  }
-  verifying2FA.value = true;
-  try {
-    // Simulate API verification
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    is2FAEnabled.value = true;
-    twoFAStep.value = 3;
-    ElMessage.success('双因素认证已启用');
-  } catch (error) {
-    ElMessage.error('验证失败，请重试');
-  } finally {
-    verifying2FA.value = false;
-  }
+  ElMessage.info('两步验证功能开发中，敬请期待');
 }
 
 function close2FADialog() {
@@ -502,9 +446,11 @@ async function changePassword() {
     changingPassword.value = true;
     try {
       // Call Tauri command to change password
+      const username = localStorage.getItem('username') || undefined;
       const result = await apiChangePassword(
         passwordForm.value.currentPassword,
-        passwordForm.value.newPassword
+        passwordForm.value.newPassword,
+        username
       );
       
       if (result) {
@@ -534,18 +480,8 @@ function disable2FA() {
 }
 
 async function confirmDisable2FA() {
-  try {
-    // In a real implementation, this would call a Tauri command to disable 2FA
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-
-    is2FAEnabled.value = false;
-    ElMessage.success('双因素认证已禁用');
-    show2FADialog.value = false;
-    disable2FADialogVisible.value = false;
-  } catch (error) {
-    console.error('Failed to disable 2FA:', error);
-    ElMessage.error('禁用双因素认证失败: ' + (error as Error).message);
-  }
+  ElMessage.info('两步验证功能开发中，敬请期待');
+  disable2FADialogVisible.value = false;
 }
 
 // Fetch profile data
@@ -557,7 +493,8 @@ async function fetchProfile() {
     accountInfo.value = accountData as any;
     
     // Fetch user profile
-    const userProfile = await getUserProfile();
+    const username = localStorage.getItem('username') || undefined;
+    const userProfile = await getUserProfile(username);
     profileForm.value = {
       account_id: String(accountData?.account_id ?? ''),
       username: String(userProfile?.username ?? ''),

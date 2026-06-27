@@ -416,14 +416,8 @@ async function fetchMetrics() {
     updateMetricsChart();
   } catch (error) {
     console.error('Failed to fetch metrics:', error);
-    metrics.value = {
-      orders_total: Math.floor(Math.random() * 1000),
-      orders_filled: Math.floor(Math.random() * 800),
-      orders_cancelled: Math.floor(Math.random() * 200),
-      account_balance: 1234567.89 + Math.random() * 10000,
-      position_value: 1000000 + Math.random() * 50000,
-      daily_pnl: 12345.67 + Math.random() * 1000
-    };
+    // Show empty state instead of mock data — the error message is visible via ElMessage
+    metrics.value = {};
   }
 }
 
@@ -432,24 +426,7 @@ async function fetchAlerts() {
     alerts.value = await getAlerts();
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
-    alerts.value = [
-      {
-        alert_id: 1,
-        level: 'Warning',
-        source: 'Risk Management',
-        message: 'Account margin ratio approaching limit',
-        timestamp: new Date().toISOString(),
-        acknowledged: false
-      },
-      {
-        alert_id: 2,
-        level: 'Critical',
-        source: 'Trading Engine',
-        message: 'Order execution latency exceeded threshold',
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        acknowledged: false
-      }
-    ];
+    alerts.value = [];
   }
 }
 
@@ -465,12 +442,6 @@ async function acknowledgeAlert(alertId: number) {
     }
   } catch (error) {
     console.error('Failed to acknowledge alert:', error);
-    const current = alerts.value;
-    const alert = current.find(a => a.alert_id === alertId);
-    if (alert) {
-      alert.acknowledged = true;
-      alerts.value = [...current];
-    }
   }
 }
 
@@ -479,26 +450,7 @@ async function fetchLogs() {
     logs.value = await getLogs(logLevel.value || undefined, 50);
   } catch (error) {
     console.error('Failed to fetch logs:', error);
-    logs.value = [
-      {
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'System started successfully',
-        module: 'system'
-      },
-      {
-        timestamp: new Date(Date.now() - 60000).toISOString(),
-        level: 'warning',
-        message: 'Account margin ratio approaching limit',
-        module: 'risk'
-      },
-      {
-        timestamp: new Date(Date.now() - 120000).toISOString(),
-        level: 'error',
-        message: 'Order execution failed for symbol 600519.SH',
-        module: 'trading'
-      }
-    ];
+    logs.value = [];
   }
 }
 

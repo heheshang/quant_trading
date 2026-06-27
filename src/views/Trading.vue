@@ -406,7 +406,7 @@ import {
   getAccountInfo, getPositions, getActiveOrders, getStrategies,
   getOkxBalance, getOkxPositions, placeOkxOrder, getOkxCandles,
   getOkxInstruments, checkOkxStatus, getOkxAnnouncements,
-  executeOkxOrder, getOkxRealtimeData, cancelOkxOrder,
+  cancelOkxOrder,
 } from '@/services/api';
 import { useOrderStore } from '@/stores/order';
 import * as echarts from 'echarts';
@@ -459,12 +459,12 @@ function exportOrdersCSV() {
 // ========== Paper trading state ==========
 const accountInfo = ref({
   account_id: 0,
-  total_assets: 1234567.91,
-  available_cash: 234567.99,
+  total_assets: 0,
+  available_cash: 0,
   frozen_cash: 0,
-  market_value: 1000000,
-  total_pnl: 12345.67,
-  daily_pnl: 12345.67,
+  market_value: 0,
+  total_pnl: 0,
+  daily_pnl: 0,
   margin: 0,
   margin_ratio: 0,
   updated_at: new Date()
@@ -583,7 +583,7 @@ function renderOkxCandleChart(candles: any[]) {
 async function fetchOkxAnnouncements() {
   okxAnnouncementsLoading.value = true
   try {
-    const raw = await getOkxAnnouncements()
+    const raw: any = await getOkxAnnouncements()
     okxAnnouncements.value = Array.isArray(raw) ? raw : raw?.data ? raw.data : []
   } catch { ElMessage.error('获取公告失败') }
   finally { okxAnnouncementsLoading.value = false }
@@ -594,8 +594,8 @@ async function submitOkxOrder() {
     if (!valid) return
     okxSubmitting.value = true
     try {
-      const result = await placeOkxOrder({ instId: okxOrderForm.value.instId, side: okxOrderForm.value.side, ordType: okxOrderForm.value.ordType, sz: okxOrderForm.value.sz.toString(), px: okxOrderForm.value.px.toString() })
-      ElMessage.success(`OKX 订单提交成功: ${result.ordId || result.orderId}`)
+      const result = await placeOkxOrder({ instId: okxOrderForm.value.instId, side: okxOrderForm.value.side as 'Buy' | 'Sell', ordType: okxOrderForm.value.ordType, sz: okxOrderForm.value.sz, px: okxOrderForm.value.px } as any)
+      ElMessage.success(`OKX 订单提交成功: ${result.ordId}`)
       fetchOkxBalance()
       fetchOkxPositions()
     } catch (err: any) {

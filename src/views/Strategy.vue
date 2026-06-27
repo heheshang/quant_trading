@@ -24,8 +24,8 @@
       <!-- Filters & batch actions -->
       <div class="table-toolbar">
         <FilterPanel
-          v-model:filters="activeFilters"
-          :filter-options="filterOptions"
+          v-model="activeFilters"
+          :filters="filterOptions"
           @change="onFilterChange"
         />
         <div class="batch-actions" v-if="selectedStrategies.length > 0">
@@ -279,8 +279,8 @@ const pageSize = ref(10)
 const selectedStrategies = ref<any[]>([])
 
 const filterOptions = [
-  { key: 'strategy_type', label: '策略类型', type: 'select' as const, options: ['TrendFollowing', 'MeanReversion', 'Arbitrage', 'MarketMaking', 'Statistical', 'MachineLearning', 'Custom'] },
-  { key: 'enabled', label: '状态', type: 'select' as const, options: ['enabled', 'disabled'] },
+  { key: 'strategy_type', label: '策略类型', type: 'select' as const, options: ['TrendFollowing', 'MeanReversion', 'Arbitrage', 'MarketMaking', 'Statistical', 'MachineLearning', 'Custom'].map(v => ({ label: v, value: v })) },
+  { key: 'enabled', label: '状态', type: 'select' as const, options: ['enabled', 'disabled'].map(v => ({ label: v, value: v })) },
 ]
 
 const filteredStrategies = computed(() => {
@@ -543,8 +543,8 @@ function initBacktestChart() {
 
   if (equity && equity.length > 0) {
     // Use real data from API
-    dates = equity.map(([date]) => new Date(date).toLocaleDateString('zh-CN'));
-    values = equity.map(([, val]) => val);
+    dates = equity.map(([date]: [string, number]) => new Date(date).toLocaleDateString('zh-CN'));
+    values = equity.map(([, val]: [string, number]) => val);
   } else {
     // No data to display
     chart.dispose();

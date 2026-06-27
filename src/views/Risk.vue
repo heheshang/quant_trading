@@ -265,7 +265,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue';
 import * as echarts from 'echarts';
-import { getAlerts, acknowledgeAlert as apiAcknowledgeAlert, preTradeCheck, updateRiskConfig, getRiskMetrics, getRiskConfig } from '@/services/api';
+import { getAlerts, getAccountInfo, getPositions, acknowledgeAlert as apiAcknowledgeAlert, preTradeCheck, updateRiskConfig, getRiskMetrics, getRiskConfig } from '@/services/api';
 import { ElMessage, FormInstance } from 'element-plus';
 import EmptyState from '@/components/common/EmptyState.vue';
 
@@ -462,40 +462,19 @@ async function runPreTradeCheck() {
     try {
       // Generate a new order ID
       testOrder.value.order_id = generateId();
-      
-      // Mock account and positions data for testing
-      const account = {
-        account_id: 0,
-        total_assets: 1000000,
-        available_cash: 500000,
-        frozen_cash: 0,
-        market_value: 500000,
-        total_pnl: 10000,
-        daily_pnl: 5000,
-        margin: 0,
-        margin_ratio: 0,
-        updated_at: new Date().toISOString()
-      };
-      
-      const positions = [
-        {
-          symbol: "600519.SH",
-          quantity: 1000,
-          available_quantity: 1000,
-          avg_price: 1650.00,
-          market_value: 1685000,
-          unrealized_pnl: 35000,
-          realized_pnl: 0,
-          updated_at: new Date().toISOString()
-        }
-      ];
-      
+
+      // Fetch real account and positions data from the backend
+      const [account, positions] = await Promise.all([
+        getAccountInfo(),
+        getPositions()
+      ]);
+
       const result = await preTradeCheck(
         testOrder.value as any,
         account as any,
         positions
       );
-      
+
       checkResult.value = result;
       ElMessage.success(result ? '风控检查通过' : '风控检查未通过');
     } catch (error) {
@@ -551,34 +530,22 @@ async function refreshAlerts() {
   ElMessage.success('刷新成功');
 }
 
-// Initialize risk trend chart
+// Initialize risk trend chart — shows empty state until backend provides historical data
 function initRiskChart() {
   const dom = document.getElementById('risk-trend-chart')
   if (!dom) return
   const chart = echarts.init(dom)
-  const now = Date.now()
-  const dates: string[] = []
-  const var95: number[] = []
-  const var99: number[] = []
-  const dd: number[] = []
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now - i * 86400000)
-    dates.push(d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }))
-    var95.push(riskMetrics.value.var_95 * (1 + Math.sin(i / 7) * 0.3))
-    var99.push(riskMetrics.value.var_99 * (1 + Math.sin(i / 5) * 0.3))
-    dd.push(riskMetrics.value.max_drawdown * (1 + Math.sin(i / 6) * 0.2))
-  }
   chart.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['VaR(95%)', 'VaR(99%)', '最大回撤'], bottom: 0 },
-    grid: { left: 60, right: 20, bottom: 40, top: 20 },
-    xAxis: { type: 'category', data: dates },
+    title: {
+      text: '暂无历史数据',
+      left: 'center',
+      top: 'center',
+      textStyle: { color: '#909399', fontSize: 14, fontWeight: 'normal' }
+    },
+    xAxis: { type: 'category', data: [] },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => (v * 100).toFixed(0) + '%' } },
-    series: [
-      { name: 'VaR(95%)', type: 'line', data: var95, smooth: true, lineStyle: { width: 2 }, itemStyle: { color: '#409EFF' } },
-      { name: 'VaR(99%)', type: 'line', data: var99, smooth: true, lineStyle: { width: 2 }, itemStyle: { color: '#E6A23C' } },
-      { name: '最大回撤', type: 'line', data: dd, smooth: true, lineStyle: { width: 2 }, itemStyle: { color: '#F56C6C' } },
-    ],
+    grid: { left: 60, right: 20, bottom: 40, top: 20 },
+    series: []
   })
   window.addEventListener('resize', () => chart.resize())
 }

@@ -28,6 +28,7 @@ const props = withDefaults(
     trend?: number
     loading?: boolean
     format?: 'currency' | 'number' | 'percentage' | 'raw'
+    to?: string
   }>(),
   {
     icon: undefined,

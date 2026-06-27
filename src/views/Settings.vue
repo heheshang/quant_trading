@@ -782,7 +782,7 @@ const config = ref<SystemConfig>({
     pool_size: 20,
   },
   trading: {
-    enable_paper_trading: true,
+    enable_paper_trading: false,
     max_orders_per_second: 100,
     default_commission_rate: 0.0003,
     default_slippage: 0.0001,
@@ -960,11 +960,9 @@ async function handleImport(e: Event) {
     config.value = {
       ...config.value,
       ...imported,
-      system: { ...config.value.system, ...imported.system },
       database: { ...config.value.database, ...imported.database },
       trading: { ...config.value.trading, ...imported.trading },
       risk: { ...config.value.risk, ...imported.risk },
-      okx: { ...config.value.okx, ...imported.okx },
     };
 
     ElMessage.success('配置已导入，请点击"保存配置"以生效');
