@@ -1,6 +1,6 @@
 use data_layer::{OkxDataSource, PostgresClient, RedisCache};
 use exchange_okx::websocket::OkxWebSocket;
-use exchange_okx::Client as OkxClient;
+use exchange_okx::ClientInterface;
 use monitor_layer::{AlertManager, LogBuffer};
 use quant_common::config::AppConfig;
 use quant_services::AppServices;
@@ -31,7 +31,7 @@ pub struct AppState {
     pub log_buffer: Arc<LogBuffer>,
     pub pg_client: Option<PostgresClient>,
     pub redis_cache: Option<RedisCache>,
-    pub okx_client: Arc<RwLock<Option<Arc<RwLock<OkxClient>>>>>,
+    pub okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
     pub okx_executor: Arc<RwLock<Option<OkxExecutor>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     pub order_manager: OrderManager,

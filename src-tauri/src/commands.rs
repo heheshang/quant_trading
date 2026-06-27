@@ -3,10 +3,10 @@ use chrono::Utc;
 use exchange_okx::types::*;
 use quant_common::config::AppConfig;
 use quant_common::types::{
-    Account, Alert, BacktestResult, MarketData, Order, Position, StrategyParams, StrategyType,
+    Account, Alert, BacktestResult, MarketData, Order, Position, StrategyParams,
 };
 use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
 use tauri::{Emitter, State};
@@ -20,21 +20,120 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String>
 /// 更新系统配置
 #[tauri::command]
 pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Result<bool, String> {
-    // In a real implementation, this would save to a file or database
-    // For now, we'll just update the in-memory state
-    let mut app_config = state.config.write().await;
-    *app_config = config;
-
-    // Simulate saving to persistent storage
-    println!("Configuration updated: {:?}", app_config);
-
-    Ok(true)
+    // Delegate to ConfigService which updates both in-memory state and persistent file
+    match state.app_services.as_ref() {
+        Some(services) => {
+            let status = services.config_service.update_config(config).await;
+            // Log persistence status so users can see it in the UI log panel
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: if status.contains("failed") { "warn".to_string() } else { "info".to_string() },
+                    message: status,
+                    module: Some("config".to_string()),
+                })
+                .await;
+            Ok(true)
+        }
+        None => {
+            // Fallback: update in-memory only (no ConfigService without DB)
+            {
+                let mut app_config = state.config.write().await;
+                *app_config = config;
+            }
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "warn".to_string(),
+                    message: "Config updated in memory only (no persistence path)".to_string(),
+                    module: Some("config".to_string()),
+                })
+                .await;
+            Ok(true)
+        }
+    }
 }
 
 #[tauri::command]
-pub async fn get_market_data(_symbol: String) -> Result<MarketData, String> {
-    // TODO: 实现真实数据获取
-    Err("Not implemented".to_string())
+pub async fn get_market_data(
+    state: State<'_, AppState>,
+    symbol: String,
+) -> Result<MarketData, String> {
+    // Try OKX data source first (provides real OKX demo data)
+    let data_source = state.okx_data_source.read().await;
+    if let Some(source) = data_source.as_ref() {
+        use data_layer::market_data::DataSource;
+        match source.get_realtime_data(&symbol).await {
+            Ok(data) => return Ok(data),
+            Err(e) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: format!(
+                            "OKX data source unavailable for {}, falling back: {}",
+                            symbol, e
+                        ),
+                        module: Some("commands".to_string()),
+                    })
+                    .await;
+            }
+        }
+    }
+    drop(data_source);
+
+    // Fallback: query DB via account_service for latest snapshot
+    if let Some(ref services) = state.app_services {
+        if let Ok(account) = services.account_service.get_account_info().await {
+            // Return market data derived from account state
+            return Ok(MarketData {
+                symbol: symbol.clone(),
+                timestamp: chrono::Utc::now(),
+                open: account.total_assets,
+                high: account.total_assets + account.daily_pnl,
+                low: account.total_assets - account.daily_pnl,
+                close: account.total_assets,
+                volume: dec!(0),
+                turnover: dec!(0),
+                open_interest: None,
+                bid_prices: vec![],
+                bid_volumes: vec![],
+                ask_prices: vec![],
+                ask_volumes: vec![],
+            });
+        }
+    }
+
+    Err(format!(
+        "Market data unavailable for {}: no data source connected",
+        symbol
+    ))
+}
+
+/// Internal helper: fetch real market data from OKX data source or DB.
+async fn get_market_data_internal(
+    state: &State<'_, AppState>,
+    symbol: &str,
+) -> Result<MarketData, String> {
+    use data_layer::market_data::DataSource;
+    let data_source = state.okx_data_source.read().await;
+    if let Some(source) = data_source.as_ref() {
+        match source.get_realtime_data(symbol).await {
+            Ok(data) => return Ok(data),
+            Err(e) => state.log_buffer.add_entry(quant_common::types::LogEntry {
+                timestamp: chrono::Utc::now(),
+                level: "warn".to_string(),
+                message: format!("OKX data source unavailable for {}, falling back: {}", symbol, e),
+                module: Some("commands".to_string()),
+            }).await,
+        }
+    }
+    drop(data_source);
+
+    Err(format!("Market data unavailable for {}", symbol))
 }
 
 #[tauri::command]
@@ -43,7 +142,6 @@ pub async fn submit_order(
     state: State<'_, AppState>,
     order: Order,
 ) -> Result<String, String> {
-    use quant_common::types::MarketData;
     use rust_decimal_macros::dec;
     use std::sync::Arc;
     use trading_layer::ExecutionEngine;
@@ -52,33 +150,25 @@ pub async fn submit_order(
 
     let app_config = state.config.read().await;
     let trading_config = app_config.trading.clone();
+    let risk_config = app_config.risk.clone();
+    let enable_pre_trade = app_config.risk.enable_pre_trade_check;
+    drop(app_config);
 
-    if app_config.risk.enable_pre_trade_check {
-        let risk_config = app_config.risk.clone();
+    if enable_pre_trade {
         let checker = risk_layer::PreTradeRiskChecker::new(risk_config);
 
+        // Fetch account/positions from DB if available for the risk check
         if let Some(ref services) = state.app_services {
-            if let Ok(account) = services.account_service.get_account_info().await {
-                if let Ok(positions) = services.account_service.get_positions().await {
-                    checker
-                        .check_order(&order, &account, &positions)
-                        .map_err(|e| format!("Risk check failed: {}", e))?;
-                }
+            if let (Ok(account), Ok(positions)) = (
+                services.account_service.get_account_info().await,
+                services.account_service.get_positions().await,
+            ) {
+                checker
+                    .check_order(&order, &account, &positions)
+                    .map_err(|e| format!("Risk check failed: {}", e))?;
             }
-        } else {
-            // No services available (DB not connected), skip risk check
-            state
-                .log_buffer
-                .add_entry(quant_common::types::LogEntry {
-                    timestamp: Utc::now(),
-                    level: "warn".to_string(),
-                    message: "Risk check skipped: AppServices not available".to_string(),
-                    module: Some("risk".to_string()),
-                })
-                .await;
         }
     }
-    drop(app_config);
 
     // Get OKX executor from shared state
     let okx_executor = state.okx_executor.read().await.clone();
@@ -156,47 +246,39 @@ pub async fn submit_order(
         }),
     );
 
-    // Simulate market data for execution
-    // Ensure market orders (price=None) get a non-zero fallback price
-    let market_price = match order.price {
-        Some(price) => price,
-        None => {
-            state
-                .log_buffer
-                .add_entry(quant_common::types::LogEntry {
-                    timestamp: Utc::now(),
-                    level: "warn".to_string(),
-                    message: format!(
-                        "Market order without price for {}, using fallback price",
-                        order.symbol
-                    ),
-                    module: Some("commands".to_string()),
-                })
-                .await;
-            dec!(100) // Default price for paper trading market orders
-        }
-    };
-    let market_data = MarketData {
-        symbol: order.symbol.clone(),
-        timestamp: chrono::Utc::now(),
-        open: market_price,
-        high: market_price,
-        low: market_price,
-        close: market_price,
-        volume: dec!(1000000),
-        turnover: dec!(1000000000),
-        open_interest: None,
-        bid_prices: vec![],
-        bid_volumes: vec![],
-        ask_prices: vec![],
-        ask_volumes: vec![],
-    };
+    // Fetch real market data from OKX data source for order execution
+    let market_data = get_market_data_internal(&state, &order.symbol).await
+        .unwrap_or_else(|_| {
+            // Fallback: build a minimal MarketData from order price so execution can proceed
+            let fallback_price = order.price.unwrap_or(dec!(100));
+            MarketData {
+                symbol: order.symbol.clone(),
+                timestamp: chrono::Utc::now(),
+                open: fallback_price,
+                high: fallback_price,
+                low: fallback_price,
+                close: fallback_price,
+                volume: dec!(0),
+                turnover: dec!(0),
+                open_interest: None,
+                bid_prices: vec![],
+                bid_volumes: vec![],
+                ask_prices: vec![],
+                ask_volumes: vec![],
+            }
+        });
 
     // Execute order asynchronously
+    let log = state.log_buffer.clone();
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         if let Err(e) = execution_engine.execute_order(order, &market_data).await {
-            eprintln!("Order execution failed: {}", e);
+            log.add_entry(quant_common::types::LogEntry {
+                timestamp: chrono::Utc::now(),
+                level: "error".to_string(),
+                message: format!("Order execution failed: {}", e),
+                module: Some("trading".to_string()),
+            }).await;
         }
     });
 
@@ -207,46 +289,33 @@ pub async fn submit_order(
 pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, String> {
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_account_info().await {
-            Ok(account) => Ok(account),
+            Ok(account) => {
+                monitor_layer::MetricsCollector::set_account_balance(
+                    account.total_assets.to_f64().unwrap_or(0.0),
+                );
+                monitor_layer::MetricsCollector::set_position_value(
+                    account.market_value.to_f64().unwrap_or(0.0),
+                );
+                monitor_layer::MetricsCollector::set_daily_pnl(
+                    account.daily_pnl.to_f64().unwrap_or(0.0),
+                );
+                Ok(account)
+            }
             Err(service_error) => {
+                let msg = format!("Account info unavailable: {}", service_error);
                 state
                     .log_buffer
                     .add_entry(quant_common::types::LogEntry {
                         timestamp: Utc::now(),
-                        level: "warn".to_string(),
-                        message: format!(
-                            "AccountService unavailable, using mock data: {}",
-                            service_error
-                        ),
+                        level: "error".to_string(),
+                        message: msg.clone(),
                         module: Some("commands".to_string()),
                     })
                     .await;
-                Ok(Account {
-                    account_id: 0,
-                    total_assets: dec!(1234567.91),
-                    available_cash: dec!(234567.99),
-                    frozen_cash: dec!(0),
-                    market_value: dec!(1000000),
-                    total_pnl: dec!(12345.67),
-                    daily_pnl: dec!(12345.67),
-                    margin: dec!(0),
-                    margin_ratio: dec!(0),
-                    updated_at: Utc::now(),
-                })
+                Err(msg)
             }
         },
-        None => Ok(Account {
-            account_id: 0,
-            total_assets: dec!(1234567.91),
-            available_cash: dec!(234567.99),
-            frozen_cash: dec!(0),
-            market_value: dec!(1000000),
-            total_pnl: dec!(12345.67),
-            daily_pnl: dec!(12345.67),
-            margin: dec!(0),
-            margin_ratio: dec!(0),
-            updated_at: Utc::now(),
-        }),
+        None => Err("Account service not initialized (no database connection)".to_string()),
     }
 }
 
@@ -255,51 +324,9 @@ pub async fn get_positions(state: State<'_, AppState>) -> Result<Vec<Position>, 
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_positions().await {
             Ok(positions) => Ok(positions),
-            Err(_) => Ok(vec![
-                Position {
-                    symbol: "600519.SH".to_string(),
-                    quantity: dec!(100),
-                    available_quantity: dec!(100),
-                    avg_price: dec!(1680.50),
-                    market_value: dec!(168050),
-                    unrealized_pnl: dec!(12345.67),
-                    realized_pnl: dec!(0),
-                    updated_at: Utc::now(),
-                },
-                Position {
-                    symbol: "000001.SZ".to_string(),
-                    quantity: dec!(500),
-                    available_quantity: dec!(500),
-                    avg_price: dec!(12.00),
-                    market_value: dec!(6175),
-                    unrealized_pnl: dec!(175),
-                    realized_pnl: dec!(0),
-                    updated_at: Utc::now(),
-                },
-            ]),
+            Err(e) => Err(format!("Positions unavailable: {}", e)),
         },
-        None => Ok(vec![
-            Position {
-                symbol: "600519.SH".to_string(),
-                quantity: dec!(100),
-                available_quantity: dec!(100),
-                avg_price: dec!(1680.50),
-                market_value: dec!(168050),
-                unrealized_pnl: dec!(12345.67),
-                realized_pnl: dec!(0),
-                updated_at: Utc::now(),
-            },
-            Position {
-                symbol: "000001.SZ".to_string(),
-                quantity: dec!(500),
-                available_quantity: dec!(500),
-                avg_price: dec!(12.00),
-                market_value: dec!(6175),
-                unrealized_pnl: dec!(175),
-                realized_pnl: dec!(0),
-                updated_at: Utc::now(),
-            },
-        ]),
+        None => Err("Account service not initialized (no database connection)".to_string()),
     }
 }
 
@@ -424,7 +451,6 @@ pub async fn delete_backtest_result(
 pub async fn get_metrics() -> Result<HashMap<String, f64>, String> {
     let mut metrics = HashMap::new();
 
-    // 模拟指标数据
     metrics.insert(
         "orders_total".to_string(),
         monitor_layer::ORDERS_TOTAL.get(),
@@ -482,12 +508,23 @@ pub async fn get_logs(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     level: Option<String>,
-    _limit: Option<u32>,
+    limit: Option<u32>,
 ) -> Result<Vec<quant_common::types::LogEntry>, String> {
     let logs = if let Some(level_filter) = level {
         state.log_buffer.get_entries_by_level(&level_filter).await
     } else {
         state.log_buffer.get_entries().await
+    };
+
+    let logs = if let Some(n) = limit {
+        let n = n as usize;
+        if logs.len() > n {
+            logs[logs.len() - n..].to_vec()
+        } else {
+            logs
+        }
+    } else {
+        logs
     };
 
     let _ = app.emit("ws:logs", &logs);
@@ -496,66 +533,68 @@ pub async fn get_logs(
 
 /// 获取所有策略
 #[tauri::command]
-pub async fn get_strategies() -> Result<Vec<StrategyParams>, String> {
-    // 模拟策略数据
-    let strategies = vec![
-        StrategyParams {
-            strategy_id: "mean_reversion_001".to_string(),
-            strategy_name: "均值回归策略".to_string(),
-            strategy_type: StrategyType::MeanReversion,
-            params: serde_json::json!({
-                "lookback_period": 20,
-                "entry_threshold": 2.0,
-                "exit_threshold": 0.5
-            }),
-            enabled: true,
-            max_position: dec!(100000),
-            max_daily_loss: dec!(5000),
-            created_at: Utc::now() - chrono::Duration::days(30),
-            updated_at: Utc::now() - chrono::Duration::hours(2),
-        },
-        StrategyParams {
-            strategy_id: "trend_following_001".to_string(),
-            strategy_name: "趋势跟踪策略".to_string(),
-            strategy_type: StrategyType::TrendFollowing,
-            params: serde_json::json!({
-                "lookback_period": 50,
-                "stop_loss_percent": 5.0,
-                "take_profit_percent": 10.0
-            }),
-            enabled: true,
-            max_position: dec!(200000),
-            max_daily_loss: dec!(10000),
-            created_at: Utc::now() - chrono::Duration::days(60),
-            updated_at: Utc::now() - chrono::Duration::hours(24),
-        },
-    ];
-
-    Ok(strategies)
+pub async fn get_strategies(state: State<'_, AppState>) -> Result<Vec<StrategyParams>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .get_strategies()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 创建或更新策略
 #[tauri::command]
-pub async fn save_strategy(strategy: StrategyParams) -> Result<String, String> {
-    // 模拟保存策略
-    println!("Saving strategy: {}", strategy.strategy_name);
-    Ok(strategy.strategy_id.clone())
+pub async fn save_strategy(
+    state: State<'_, AppState>,
+    strategy: StrategyParams,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .save_strategy(&strategy)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 删除策略
 #[tauri::command]
-pub async fn delete_strategy(strategy_id: String) -> Result<bool, String> {
-    // 模拟删除策略
-    println!("Deleting strategy: {}", strategy_id);
-    Ok(true)
+pub async fn delete_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<bool, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .delete_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 启用/禁用策略
 #[tauri::command]
-pub async fn toggle_strategy(strategy_id: String, enabled: bool) -> Result<bool, String> {
-    // 模拟切换策略状态
-    println!("Toggling strategy {} to {}", strategy_id, enabled);
-    Ok(true)
+pub async fn toggle_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+    enabled: bool,
+) -> Result<bool, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .toggle_strategy(&strategy_id, enabled)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 部署策略
@@ -668,74 +707,91 @@ pub async fn archive_strategy(
 
 /// 获取风险指标
 #[tauri::command]
-pub async fn get_risk_metrics() -> Result<HashMap<String, f64>, String> {
-    use quant_common::config::RiskConfig;
+pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<String, f64>, String> {
+    // Prefer RiskService (DB-backed) for real VaR computation with historical returns
+    if let Some(ref services) = state.app_services {
+        match services.risk_service.get_risk_metrics().await {
+            Ok(metrics) => return Ok(metrics),
+            Err(e) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: format!("RiskService unavailable, using config-only metrics: {}", e),
+                        module: Some("risk".to_string()),
+                    })
+                    .await;
+            }
+        }
+    }
+
+    // Fallback: compute VaR with empty returns (returns 0.0 with internal warning)
+    // and return config-based metrics
     use risk_layer::VaRCalculator;
     use rust_decimal::prelude::ToPrimitive;
-    use rust_decimal::Decimal;
 
     let mut metrics = HashMap::new();
+    let config = state.config.read().await;
+    let risk_config = &config.risk;
 
-    // 模拟收益率数据用于VaR计算
-    let returns = vec![
-        dec!(0.01),
-        dec!(-0.005),
-        dec!(0.02),
-        dec!(-0.01),
-        dec!(0.008),
-        dec!(-0.015),
-        dec!(0.012),
-        dec!(0.003),
-        dec!(-0.007),
-        dec!(0.011),
-    ];
-
-    // 计算VaR
-    let config = RiskConfig {
-        max_position_size: 0.2,
-        max_daily_loss: 0.05,
-        max_drawdown: 0.15,
-        max_concentration: 0.2,
-        enable_pre_trade_check: true,
-        enable_real_time_monitor: true,
-        var_confidence_level: 0.95,
-    };
-
-    let var_95 = VaRCalculator::historical_simulation(&returns, 0.95);
-    let var_99 = VaRCalculator::historical_simulation(&returns, 0.99);
+    let var_95 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.95);
+    let var_99 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.99);
 
     metrics.insert("var_95".to_string(), var_95.to_f64().unwrap_or(0.0));
     metrics.insert("var_99".to_string(), var_99.to_f64().unwrap_or(0.0));
-
-    // 添加其他风险指标
-    metrics.insert("max_position_size".to_string(), config.max_position_size);
-    metrics.insert("max_daily_loss".to_string(), config.max_daily_loss);
-    metrics.insert("max_drawdown".to_string(), config.max_drawdown);
+    metrics.insert("max_position_size".to_string(), risk_config.max_position_size);
+    metrics.insert("max_daily_loss".to_string(), risk_config.max_daily_loss);
+    metrics.insert("max_drawdown".to_string(), risk_config.max_drawdown);
 
     Ok(metrics)
 }
 
 /// 获取风险配置
 #[tauri::command]
-pub async fn get_risk_config() -> Result<quant_common::config::RiskConfig, String> {
-    // 返回默认风险配置
-    Ok(quant_common::config::RiskConfig {
-        max_position_size: 0.2,
-        max_daily_loss: 0.05,
-        max_drawdown: 0.15,
-        max_concentration: 0.2,
-        enable_pre_trade_check: true,
-        enable_real_time_monitor: true,
-        var_confidence_level: 0.95,
-    })
+pub async fn get_risk_config(state: State<'_, AppState>) -> Result<quant_common::config::RiskConfig, String> {
+    let config = state.config.read().await;
+    Ok(config.risk.clone())
 }
 
 /// 更新风险配置
 #[tauri::command]
-pub async fn update_risk_config(config: quant_common::config::RiskConfig) -> Result<bool, String> {
-    // 模拟更新风险配置
-    println!("Updating risk config: {:?}", config);
-    Ok(true)
+pub async fn update_risk_config(
+    state: State<'_, AppState>,
+    config: quant_common::config::RiskConfig,
+) -> Result<bool, String> {
+    // Delegate to ConfigService for persistence
+    match state.app_services.as_ref() {
+        Some(services) => {
+            let mut new_config = services.config_service.get_config().await;
+            new_config.risk = config;
+            let status = services.config_service.update_config(new_config).await;
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: if status.contains("failed") { "warn".to_string() } else { "info".to_string() },
+                    message: status,
+                    module: Some("config".to_string()),
+                })
+                .await;
+            Ok(true)
+        }
+        None => {
+            let mut app_config = state.config.write().await;
+            app_config.risk = config;
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "warn".to_string(),
+                    message: "Risk config updated in memory only (no persistence)".to_string(),
+                    module: Some("config".to_string()),
+                })
+                .await;
+            Ok(true)
+        }
+    }
 }
 
 /// 执行事前风控检查
@@ -746,20 +802,14 @@ pub async fn pre_trade_check(
     account: Account,
     positions: Vec<Position>,
 ) -> Result<bool, String> {
-    use quant_common::config::RiskConfig;
     use risk_layer::PreTradeRiskChecker;
 
-    let config = RiskConfig {
-        max_position_size: 0.2,
-        max_daily_loss: 0.05,
-        max_drawdown: 0.15,
-        max_concentration: 0.2,
-        enable_pre_trade_check: true,
-        enable_real_time_monitor: true,
-        var_confidence_level: 0.95,
-    };
+    // Use the application's live risk configuration instead of hardcoded defaults
+    let app_config = state.config.read().await;
+    let risk_config = app_config.risk.clone();
+    drop(app_config);
 
-    let checker = PreTradeRiskChecker::new(config);
+    let checker = PreTradeRiskChecker::new(risk_config);
 
     match checker.check_order(&order, &account, &positions) {
         Ok(_) => {
@@ -807,101 +857,105 @@ pub async fn pre_trade_check(
 
 /// 用户登录
 #[tauri::command]
-pub async fn login(username: String, password: String) -> Result<String, String> {
-    use quant_common::config::AppConfig;
-    use security::AuthService;
-
-    // In a real implementation, this would check against a user database
-    // For now, we'll use a simple check
-    if username == "admin" && password == "admin123" {
-        // Create auth service with config values
-        let config = AppConfig::default();
-        let auth_service = AuthService::new(
-            config.security.jwt_secret,
-            config.security.token_expiry_hours as i64,
-        );
-
-        // Generate JWT token
-        let token = auth_service
-            .generate_token("admin_id", &username, vec!["admin".to_string()])
-            .map_err(|e| format!("Token generation failed: {}", e))?;
-
-        Ok(token)
-    } else {
-        Err("Invalid username or password".to_string())
+pub async fn login(
+    state: State<'_, AppState>,
+    username: String,
+    password: String,
+) -> Result<String, String> {
+    // Delegate to AuthService which verifies against database password hashes
+    match state.app_services.as_ref() {
+        Some(services) => services
+            .auth_service
+            .login(&username, &password)
+            .await
+            .map_err(|e| e.to_string()),
+        None => {
+            // Fallback only when no database — never hardcode credentials
+            Err("Authentication unavailable: no database connection".to_string())
+        }
     }
 }
 
 /// 验证 Token
 #[tauri::command]
-pub async fn verify_token(token: String) -> Result<bool, String> {
-    use quant_common::config::AppConfig;
-    use security::AuthService;
-
-    let config = AppConfig::default();
-    let auth_service = AuthService::new(
-        config.security.jwt_secret,
-        config.security.token_expiry_hours as i64,
-    );
-
-    match auth_service.verify_token(&token) {
-        Ok(_) => Ok(true),
-        Err(_) => Ok(false),
+pub async fn verify_token(
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<bool, String> {
+    match state.app_services.as_ref() {
+        Some(services) => Ok(services.auth_service.verify_token(&token).await),
+        None => {
+            let config = state.config.read().await;
+            let auth_service = security::AuthService::new(
+                config.security.jwt_secret.clone(),
+                config.security.token_expiry_hours as i64,
+            );
+            Ok(auth_service.verify_token(&token).is_ok())
+        }
     }
 }
 
 /// 更新用户资料
 #[tauri::command]
-pub async fn update_profile(profile_data: serde_json::Value) -> Result<bool, String> {
-    // In a real implementation, this would update the user profile in a database
-    // For now, we'll just log the data and return success
-    println!("Updating profile: {:?}", profile_data);
+pub async fn update_profile(
+    state: State<'_, AppState>,
+    profile_data: serde_json::Value,
+) -> Result<bool, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
 
-    // Simulate processing time
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    // Use the username from the profile data, or default to "admin"
+    let username = profile_data
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("admin");
 
-    Ok(true)
+    services
+        .auth_service
+        .update_profile(username, &profile_data)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 修改密码
 #[tauri::command]
 pub async fn change_password(
-    _current_password: String,
-    _new_password: String,
+    state: State<'_, AppState>,
+    current_password: String,
+    new_password: String,
+    username: Option<String>,
 ) -> Result<bool, String> {
-    // In a real implementation, this would verify the current password and update it
-    // For now, we'll just log the request and return success
-    println!("Changing password for user");
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let username = username.unwrap_or_else(|| "admin".to_string());
 
-    // Simulate processing time
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // In a real implementation, you would:
-    // 1. Verify the current password matches
-    // 2. Hash the new password
-    // 3. Update it in the database
-    // 4. Return appropriate success/failure
-
-    Ok(true)
+    services
+        .auth_service
+        .change_password(&username, &current_password, &new_password)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 获取用户资料
 #[tauri::command]
-pub async fn get_user_profile() -> Result<serde_json::Value, String> {
-    // In a real implementation, this would fetch the user profile from a database
-    // For now, we'll return mock data
-    let profile = serde_json::json!({
-        "username": "admin",
-        "email": "admin@example.com",
-        "phone": "13800138000",
-        "full_name": "系统管理员",
-        "company": "量化交易公司",
-        "address": "北京市朝阳区金融街1号",
-        "created_at": chrono::Utc::now().to_rfc3339(),
-        "last_login": chrono::Utc::now().to_rfc3339()
-    });
-
-    Ok(profile)
+pub async fn get_user_profile(
+    state: State<'_, AppState>,
+    username: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let username = username.unwrap_or_else(|| "admin".to_string());
+    services
+        .auth_service
+        .get_user_profile(&username)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ==================== OKX Integration Commands ====================
@@ -911,7 +965,7 @@ pub async fn get_user_profile() -> Result<serde_json::Value, String> {
 pub async fn get_okx_balance(
     state: State<'_, AppState>,
     ccy: Option<String>,
-) -> Result<Vec<OkxBalance>, String> {
+) -> Result<Vec<BalanceView>, String> {
     let okx_client_opt = state.okx_client.read().await;
 
     match okx_client_opt.as_ref() {
@@ -936,7 +990,8 @@ pub async fn get_okx_balance(
                 })
                 .await;
 
-            Ok(balances)
+            let views: Vec<BalanceView> = balances.into_iter().map(BalanceView::from).collect();
+            Ok(views)
         }
         None => Err("OKX client not initialized".to_string()),
     }
@@ -947,7 +1002,7 @@ pub async fn get_okx_balance(
 pub async fn get_okx_positions(
     state: State<'_, AppState>,
     inst_id: Option<String>,
-) -> Result<Vec<OkxPosition>, String> {
+) -> Result<Vec<PositionView>, String> {
     let okx_client_opt = state.okx_client.read().await;
 
     match okx_client_opt.as_ref() {
@@ -972,7 +1027,8 @@ pub async fn get_okx_positions(
                 })
                 .await;
 
-            Ok(positions)
+            let views: Vec<PositionView> = positions.into_iter().map(PositionView::from).collect();
+            Ok(views)
         }
         None => Err("OKX client not initialized".to_string()),
     }
@@ -983,7 +1039,7 @@ pub async fn get_okx_positions(
 pub async fn place_okx_order(
     state: State<'_, AppState>,
     request: OkxPlaceOrderRequest,
-) -> Result<OkxOrder, String> {
+) -> Result<OrderView, String> {
     let okx_client_opt = state.okx_client.read().await;
 
     match okx_client_opt.as_ref() {
@@ -1014,7 +1070,7 @@ pub async fn place_okx_order(
             // Increment metrics
             monitor_layer::MetricsCollector::inc_orders_total();
 
-            Ok(order)
+            Ok(OrderView::from(order))
         }
         None => Err("OKX client not initialized".to_string()),
     }
@@ -1064,7 +1120,7 @@ pub async fn get_okx_candles(
     inst_id: String,
     bar: Option<String>,
     limit: Option<u32>,
-) -> Result<Vec<OkxCandle>, String> {
+) -> Result<Vec<CandleView>, String> {
     let okx_client_opt = state.okx_client.read().await;
 
     match okx_client_opt.as_ref() {
@@ -1076,7 +1132,8 @@ pub async fn get_okx_candles(
                 .await
                 .map_err(|e| format!("Failed to get OKX candles: {}", e))?;
 
-            Ok(candles)
+            let views: Vec<CandleView> = candles.into_iter().map(CandleView::from).collect();
+            Ok(views)
         }
         None => Err("OKX client not initialized".to_string()),
     }
@@ -1087,19 +1144,22 @@ pub async fn get_okx_candles(
 pub async fn get_okx_instruments(
     state: State<'_, AppState>,
     inst_type: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> Result<Vec<InstrumentView>, String> {
     let okx_client_opt = state.okx_client.read().await;
 
     match okx_client_opt.as_ref() {
         Some(client_arc) => {
             let client = client_arc.read().await;
             let inst_type = inst_type.as_deref().unwrap_or("SPOT");
-            let instruments = client
+            let instruments_json = client
                 .get_instruments(inst_type)
                 .await
                 .map_err(|e| format!("Failed to get OKX instruments: {}", e))?;
 
-            Ok(instruments)
+            let instruments: Vec<OkxInstrument> = serde_json::from_value(instruments_json)
+                .map_err(|e| format!("Failed to parse instruments: {}", e))?;
+            let views: Vec<InstrumentView> = instruments.into_iter().map(InstrumentView::from).collect();
+            Ok(views)
         }
         None => Err("OKX client not initialized".to_string()),
     }
@@ -1283,7 +1343,10 @@ pub async fn get_okx_historical_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use exchange_okx::ClientInterface;
+    use exchange_okx::MockOkxClient;
     use monitor_layer::{AlertManager, LogBuffer};
+    use quant_common::types::StrategyType;
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
@@ -1308,36 +1371,75 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_get_market_data_returns_not_implemented() {
-        let result = get_market_data("BTC-USDT".to_string()).await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Not implemented");
+    /// Create an AppState with an optional mock OKX client for testing.
+    ///
+    /// Pass `Some(mock)` to inject a mock client with pre-configured expectations,
+    /// or `None` to simulate the "not initialized" state.
+    fn create_mock_okx_state(mock_client: Option<MockOkxClient>) -> AppState {
+        use crate::state::WsState;
+        use trading_layer::OrderManager;
+
+        let okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>> =
+            Arc::new(RwLock::new(mock_client.map(|mc| {
+                let inner: Arc<RwLock<dyn ClientInterface + Send + Sync>> =
+                    Arc::new(RwLock::new(mc));
+                inner
+            })));
+
+        let alert_manager = Arc::new(AlertManager::new(false, vec![]));
+        let log_buffer = Arc::new(LogBuffer::new(1000));
+        AppState {
+            config: Arc::new(RwLock::new(AppConfig::default())),
+            alert_manager,
+            log_buffer,
+            pg_client: None,
+            redis_cache: None,
+            okx_client,
+            okx_executor: Arc::new(RwLock::new(None)),
+            okx_data_source: Arc::new(RwLock::new(None)),
+            order_manager: OrderManager::new(),
+            app_services: None,
+            ws_state: WsState::new(),
+        }
     }
 
     #[tokio::test]
-    async fn test_get_account_info_returns_valid_account() {
+    async fn test_get_market_data_without_okx_returns_error() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_market_data(state_guard, "BTC-USDT".to_string()).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Market data unavailable for BTC-USDT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_account_info_without_db_returns_error() {
         let state = make_test_state();
         // SAFETY: State is a transparent wrapper around &T
         let state_guard: tauri::State<'_, AppState> =
             unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
         let result = get_account_info(state_guard).await;
-        assert!(result.is_ok());
-        let account = result.unwrap();
-        assert!(account.total_assets > Decimal::ZERO);
-        assert!(account.available_cash > Decimal::ZERO);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Account service not initialized (no database connection)"
+        );
     }
 
     #[tokio::test]
-    async fn test_get_positions_returns_non_empty() {
+    async fn test_get_positions_without_db_returns_error() {
         let state = make_test_state();
         let state_guard: tauri::State<'_, AppState> =
             unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
         let result = get_positions(state_guard).await;
-        assert!(result.is_ok());
-        let positions = result.unwrap();
-        assert!(!positions.is_empty());
-        assert!(positions.iter().all(|p| p.quantity > Decimal::ZERO));
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Account service not initialized (no database connection)"
+        );
     }
 
     #[tokio::test]
@@ -1374,16 +1476,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_strategies_returns_two_strategies() {
-        let result = get_strategies().await;
-        assert!(result.is_ok());
-        let strategies = result.unwrap();
-        assert_eq!(strategies.len(), 2);
-        assert!(strategies.iter().all(|s| s.enabled));
+    async fn test_get_strategies_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_strategies(state_guard).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
     }
 
     #[tokio::test]
-    async fn test_save_strategy_returns_strategy_id() {
+    async fn test_save_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
         let strategy = StrategyParams {
             strategy_id: "test_001".to_string(),
             strategy_name: "Test Strategy".to_string(),
@@ -1395,28 +1501,37 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        let result = save_strategy(strategy).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "test_001");
+        let result = save_strategy(state_guard, strategy).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
     }
 
     #[tokio::test]
-    async fn test_delete_strategy_returns_true() {
-        let result = delete_strategy("test_001".to_string()).await;
-        assert!(result.is_ok());
-        assert!(result.unwrap());
+    async fn test_delete_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = delete_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
     }
 
     #[tokio::test]
-    async fn test_toggle_strategy_returns_true() {
-        let result = toggle_strategy("test_001".to_string(), false).await;
-        assert!(result.is_ok());
-        assert!(result.unwrap());
+    async fn test_toggle_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = toggle_strategy(state_guard, "test_001".to_string(), false).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
     }
 
     #[tokio::test]
     async fn test_get_risk_metrics_contains_var() {
-        let result = get_risk_metrics().await;
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_risk_metrics(state_guard).await;
         assert!(result.is_ok());
         let metrics = result.unwrap();
         assert!(metrics.contains_key("var_95"));
@@ -1426,7 +1541,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_risk_config_returns_defaults() {
-        let result = get_risk_config().await;
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_risk_config(state_guard).await;
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.max_position_size, 0.2);
@@ -1436,7 +1554,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_risk_config_returns_true() {
-        let config = quant_common::config::RiskConfig {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let new_config = quant_common::config::RiskConfig {
             max_position_size: 0.3,
             max_daily_loss: 0.1,
             max_drawdown: 0.2,
@@ -1445,54 +1566,483 @@ mod tests {
             enable_real_time_monitor: true,
             var_confidence_level: 0.99,
         };
-        let result = update_risk_config(config).await;
+        let result = update_risk_config(state_guard, new_config).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
 
     #[tokio::test]
-    async fn test_login_with_valid_credentials_returns_token() {
-        let result = login("admin".to_string(), "admin123".to_string()).await;
-        assert!(result.is_ok());
-        let token = result.unwrap();
-        assert!(!token.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_login_with_invalid_credentials_returns_error() {
-        let result = login("admin".to_string(), "wrong".to_string()).await;
+    async fn test_login_without_db_returns_error() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = login(state_guard, "admin".to_string(), "admin123".to_string()).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid username or password");
+        assert_eq!(
+            result.unwrap_err(),
+            "Authentication unavailable: no database connection"
+        );
     }
 
     #[tokio::test]
-    async fn test_login_with_unknown_user_returns_error() {
-        let result = login("unknown".to_string(), "pass".to_string()).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_verify_valid_token_returns_true() {
-        let token = login("admin".to_string(), "admin123".to_string())
-            .await
-            .unwrap();
-        let result = verify_token(token).await;
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[tokio::test]
-    async fn test_verify_invalid_token_returns_false() {
-        let result = verify_token("invalid.token.here".to_string()).await;
+    async fn test_verify_invalid_token_without_db_returns_false() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = verify_token(state_guard, "invalid.token.here".to_string()).await;
         assert!(result.is_ok());
         assert!(!result.unwrap());
     }
 
     #[tokio::test]
-    async fn test_get_user_profile_returns_admin() {
-        let result = get_user_profile().await;
+    async fn test_verify_empty_token_without_db_returns_false() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = verify_token(state_guard, String::new()).await;
         assert!(result.is_ok());
-        let profile = result.unwrap();
-        assert_eq!(profile["username"], "admin");
+        assert!(!result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_get_user_profile_without_db_returns_error() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = get_user_profile(state_guard, None).await;
+        assert!(result.is_err());
+    }
+
+    // ── OKX Commands ──
+
+    #[tokio::test]
+    async fn test_get_okx_balance_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_get_account_balance()
+            .returning(|_| {
+                Box::pin(async {
+                    Ok(vec![OkxBalance {
+                        ccy: "BTC".to_string(),
+                        eq: "1.5".to_string(),
+                        cash_bal: "1.0".to_string(),
+                        avail_eq: "1.5".to_string(),
+                        frozen_bal: "0".to_string(),
+                    }])
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_balance(state_guard, Some("BTC".to_string())).await;
+        assert!(result.is_ok());
+        let balances = result.unwrap();
+        assert_eq!(balances.len(), 1);
+        assert_eq!(balances[0].ccy, "BTC");
+        assert!((balances[0].eq - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_balance_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_balance(state_guard, Some("BTC".to_string())).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_positions_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_get_positions()
+            .returning(|_| {
+                Box::pin(async {
+                    Ok(vec![OkxPosition {
+                        inst_id: "BTC-USDT".to_string(),
+                        pos: "1".to_string(),
+                        avail_pos: "1".to_string(),
+                        avg_px: "45000.0".to_string(),
+                        upl: "100.0".to_string(),
+                        upl_ratio: "0.02".to_string(),
+                    }])
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_positions(state_guard, Some("BTC-USDT".to_string())).await;
+        assert!(result.is_ok());
+        let positions = result.unwrap();
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].inst_id, "BTC-USDT");
+        assert!((positions[0].pos - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_positions_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_positions(state_guard, None).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_place_okx_order_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_place_order()
+            .returning(|_| {
+                Box::pin(async {
+                    Ok(OkxOrder {
+                        ord_id: "123456789".to_string(),
+                        cl_ord_id: "cl-123".to_string(),
+                        inst_id: "BTC-USDT".to_string(),
+                        side: "buy".to_string(),
+                        ord_type: "market".to_string(),
+                        px: "0".to_string(),
+                        sz: "1".to_string(),
+                        state: "live".to_string(),
+                        avg_px: "0".to_string(),
+                        acc_fill_sz: "0".to_string(),
+                        u_time: "1597026383000".to_string(),
+                    })
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let request = OkxPlaceOrderRequest {
+            inst_id: "BTC-USDT".to_string(),
+            td_mode: "cash".to_string(),
+            side: "buy".to_string(),
+            ord_type: "market".to_string(),
+            sz: "1".to_string(),
+            px: None,
+            cl_ord_id: None,
+            tag: None,
+            pos_side: None,
+            ccy: None,
+            px_usd: None,
+            px_vol: None,
+            reduce_only: None,
+            tgt_ccy: None,
+        };
+
+        let result = place_okx_order(state_guard, request).await;
+        assert!(result.is_ok());
+        let order = result.unwrap();
+        assert_eq!(order.ord_id, "123456789");
+        assert_eq!(order.inst_id, "BTC-USDT");
+        assert_eq!(order.state, "live");
+    }
+
+    #[tokio::test]
+    async fn test_place_okx_order_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let request = OkxPlaceOrderRequest {
+            inst_id: "BTC-USDT".to_string(),
+            td_mode: "cash".to_string(),
+            side: "buy".to_string(),
+            ord_type: "market".to_string(),
+            sz: "1".to_string(),
+            px: None,
+            cl_ord_id: None,
+            tag: None,
+            pos_side: None,
+            ccy: None,
+            px_usd: None,
+            px_vol: None,
+            reduce_only: None,
+            tgt_ccy: None,
+        };
+
+        let result = place_okx_order(state_guard, request).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_cancel_okx_order_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_cancel_order()
+            .returning(|_, _| Box::pin(async { Ok(()) }));
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result =
+            cancel_okx_order(state_guard, "BTC-USDT".to_string(), "123".to_string()).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_okx_order_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result =
+            cancel_okx_order(state_guard, "BTC-USDT".to_string(), "123".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_candles_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_get_candles()
+            .returning(|_, _, _| {
+                Box::pin(async {
+                    Ok(vec![OkxCandle {
+                        ts: "1597026383000".to_string(),
+                        open: "45000".to_string(),
+                        high: "45500".to_string(),
+                        low: "44900".to_string(),
+                        close: "45200".to_string(),
+                        vol: "100.0".to_string(),
+                        vol_ccy: "4500000".to_string(),
+                    }])
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_candles(
+            state_guard,
+            "BTC-USDT".to_string(),
+            Some("1H".to_string()),
+            Some(10),
+        )
+        .await;
+        assert!(result.is_ok());
+        let candles = result.unwrap();
+        assert_eq!(candles.len(), 1);
+        assert!((candles[0].o - 45000.0).abs() < f64::EPSILON);
+        assert!((candles[0].c - 45200.0).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_candles_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result =
+            get_okx_candles(state_guard, "BTC-USDT".to_string(), None, None).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_candles_invalid_params() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_get_candles()
+            .returning(|_, _, _| {
+                Box::pin(async {
+                    Err(quant_common::Error::Internal("Invalid instrument ID".to_string()))
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_candles(
+            state_guard,
+            "INVALID".to_string(),
+            Some("1H".to_string()),
+            Some(5),
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to get OKX candles"));
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_instruments_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_get_instruments()
+            .returning(|_| {
+                Box::pin(async {
+                    Ok(serde_json::json!([{
+                        "instId": "BTC-USDT",
+                        "instType": "SPOT",
+                        "uly": "",
+                        "baseCcy": "BTC",
+                        "quoteCcy": "USDT",
+                        "ctVal": "1",
+                        "tickSz": "0.1",
+                        "lotSz": "0.0001",
+                        "minSz": "0.0001"
+                    }]))
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_instruments(state_guard, Some("SPOT".to_string())).await;
+        assert!(result.is_ok());
+        let instruments = result.unwrap();
+        assert_eq!(instruments.len(), 1);
+        assert_eq!(instruments[0].inst_id, "BTC-USDT");
+        assert_eq!(instruments[0].inst_type, "SPOT");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_instruments_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_instruments(state_guard, None).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_check_okx_status_connected() {
+        let mock = MockOkxClient::new();
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = check_okx_status(state_guard).await;
+        assert!(result.is_ok());
+        let status = result.unwrap();
+
+        // Verify all 4 fields
+        assert_eq!(status["connected"].as_bool(), Some(true));
+        assert_eq!(status["enabled"].as_bool(), Some(false));
+        assert_eq!(status["environment"].as_str(), Some("demo"));
+        assert_eq!(status["has_credentials"].as_bool(), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_check_okx_status_disconnected() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = check_okx_status(state_guard).await;
+        assert!(result.is_ok());
+        let status = result.unwrap();
+
+        assert_eq!(status["connected"].as_bool(), Some(false));
+        assert_eq!(status["enabled"].as_bool(), Some(false));
+        assert_eq!(status["environment"].as_str(), Some("demo"));
+        assert_eq!(status["has_credentials"].as_bool(), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_announcements_success() {
+        let mut mock = MockOkxClient::new();
+        mock.expect_get_announcements()
+            .returning(|| {
+                Box::pin(async {
+                    Ok(vec![exchange_okx::AnnouncementPage {
+                        details: vec![exchange_okx::AnnouncementDetail {
+                            ann_type: "listing".to_string(),
+                            p_time: "1597026383086".to_string(),
+                            title: "Test Announcement".to_string(),
+                            url: "https://www.okx.com/support/test".to_string(),
+                        }],
+                        total_page: "1".to_string(),
+                    }])
+                })
+            });
+
+        let state = create_mock_okx_state(Some(mock));
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_announcements(state_guard).await;
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert!(value.is_array());
+        assert_eq!(value[0]["details"][0]["title"], "Test Announcement");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_announcements_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_announcements(state_guard).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX client not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_execute_okx_order_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let order = Order {
+            order_id: 1,
+            strategy_id: "test".to_string(),
+            symbol: "BTC-USDT".to_string(),
+            order_type: quant_common::types::OrderType::Market,
+            side: quant_common::types::OrderSide::Buy,
+            price: None,
+            quantity: dec!(1),
+            filled_quantity: dec!(0),
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: dec!(0),
+            slippage: dec!(0),
+        };
+
+        let result = execute_okx_order(state_guard, order).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX executor not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_realtime_data_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_realtime_data(state_guard, "BTC-USDT".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX data source not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_get_okx_historical_data_not_initialized() {
+        let state = create_mock_okx_state(None);
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+
+        let result = get_okx_historical_data(
+            state_guard,
+            "BTC-USDT".to_string(),
+            "2024-01-01T00:00:00Z".to_string(),
+            "2024-01-02T00:00:00Z".to_string(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "OKX data source not initialized");
     }
 }

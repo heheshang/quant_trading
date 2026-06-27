@@ -13,7 +13,7 @@ mod ws_commands;
 
 use data_layer::{market_data_repo::MarketDataRepository, OkxDataSource, RedisCache};
 use data_puller::DataPuller;
-use exchange_okx::{types::OkxEnvironment, Client as OkxClient};
+use exchange_okx::{types::OkxEnvironment, Client, ClientInterface};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
 use quant_services::AppServices;
 use state::AppState;
@@ -42,10 +42,24 @@ async fn main() {
 
     info!("Starting Quant Trading System...");
 
+    // 初始化应用状态（在 OKX 客户端初始化之前，以便日志记录可用）
+    let alert_manager = Arc::new(AlertManager::new(false, vec![]));
+    let log_buffer = Arc::new(LogBuffer::new(1000));
+
+    // 添加初始日志条目
+    log_buffer
+        .add_entry(quant_common::types::LogEntry {
+            timestamp: Utc::now(),
+            level: "info".to_string(),
+            message: "Quant Trading System initialized successfully".to_string(),
+            module: Some("main".to_string()),
+        })
+        .await;
+
     // 初始化 OKX 客户端
     let (okx_client, okx_executor, okx_data_source, okx_executor_arc) =
         if config.okx.enable && !config.okx.api_key.is_empty() {
-            match OkxClient::new(
+            match Client::new(
                 config.okx.api_key.clone(),
                 config.okx.api_secret.clone(),
                 config.okx.passphrase.clone(),
@@ -70,9 +84,11 @@ async fn main() {
                     // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
                     let executor_arc = Arc::new(OkxExecutor::new(client_arc.clone()));
 
-                    // Keep a reference to the client for direct API calls
+                    // Coerce to trait object for the shared state (enables mocking in tests)
+                    let client_trait: Arc<RwLock<dyn ClientInterface + Send + Sync>> = client_arc;
+
                     (
-                        Some(client_arc),
+                        Some(client_trait),
                         Some(executor),
                         Some(data_source),
                         Some(executor_arc),
@@ -80,6 +96,14 @@ async fn main() {
                 }
                 Err(e) => {
                     warn!("Failed to initialize OKX client: {}", e);
+                    log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "error".to_string(),
+                            message: format!("OKX client init failed: {}. OKX-dependent features will be unavailable.", e),
+                            module: Some("okx".to_string()),
+                        })
+                        .await;
                     (None, None, None, None)
                 }
             }
@@ -133,20 +157,6 @@ async fn main() {
         info!("Data puller skipped: OKX client not initialized");
     }
 
-    // 初始化应用状态
-    let alert_manager = Arc::new(AlertManager::new(false, vec![]));
-    let log_buffer = Arc::new(LogBuffer::new(1000));
-
-    // 添加初始日志条目
-    log_buffer
-        .add_entry(quant_common::types::LogEntry {
-            timestamp: Utc::now(),
-            level: "info".to_string(),
-            message: "Quant Trading System initialized successfully".to_string(),
-            module: Some("main".to_string()),
-        })
-        .await;
-
     // Create shared OrderManager
     let order_manager = OrderManager::new();
 
@@ -156,9 +166,11 @@ async fn main() {
     let okx_executor_shared = Arc::new(RwLock::new(okx_executor));
     let okx_data_source_shared = Arc::new(RwLock::new(okx_data_source));
 
-    // Create AppServices (wires services to shared infrastructure)
-    let app_services = AppServices::new(
+    // Create AppServices with config file path for persistence
+    let config_path = std::path::PathBuf::from("config.toml");
+    let app_services = AppServices::with_config_path(
         config_arc.clone(),
+        config_path,
         repo_pg.clone(),
         None,
         None,
@@ -184,10 +196,10 @@ async fn main() {
     // 初始化指标收集
     monitor_layer::MetricsCollector::init();
 
-    // 初始化一些默认指标值
-    ACCOUNT_BALANCE.set(1234567.89);
-    POSITION_VALUE.set(1000000.0);
-    DAILY_PNL.set(12345.67);
+    // Metrics start at 0 — actual values are set by the data poller / account service
+    ACCOUNT_BALANCE.set(0.0);
+    POSITION_VALUE.set(0.0);
+    DAILY_PNL.set(0.0);
 
     info!("Application initialized successfully");
 

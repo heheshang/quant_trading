@@ -44,6 +44,9 @@ uuid = { workspace = true }
 rust_decimal = { workspace = true, features = ["maths"] }
 rust_decimal_macros = { workspace = true, features = ["reexportable"] }
 
+[dev-dependencies]
+exchange-okx = { path = "../crates/exchange-okx", features = ["test-utils"] }
+
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
