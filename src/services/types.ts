@@ -81,6 +81,133 @@ export interface StrategyParams {
   enabled: boolean
   max_position: number
   max_daily_loss: number
+  status: StrategyStatus
+  description?: string
+  tags: string[]
+  symbols: string[]
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 策略状态枚举
+ */
+export type StrategyStatus = 
+  | 'Draft'
+  | 'Backtesting'
+  | 'Deployed'
+  | 'Running'
+  | 'Paused'
+  | 'Archived'
+
+/**
+ * 策略详细信息，扩展自 StrategyParams 并包含状态信息
+ */
+export interface StrategyDetail extends StrategyParams {
+  status: StrategyStatus
+  performance?: StrategyPerformance
+  stats?: StrategyStatsResponse
+}
+
+/**
+ * 策略性能指标
+ */
+export interface StrategyPerformance {
+  total_pnl: number
+  sharpe_ratio: number
+  max_drawdown: number
+  win_rate: number
+  profit_loss_ratio: number
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  average_win: number
+  average_loss: number
+  expectancy: number
+  calmar_ratio: number
+  sortino_ratio: number
+  omega_ratio: number
+  recovery_factor: number
+  risk_adjusted_return: number
+  information_ratio: number
+  tracking_error: number
+  volatility: number
+  var_95: number
+  var_99: number
+  beta: number
+  alpha: number
+  updated_at: string
+}
+
+/**
+ * 策略统计响应，包含聚合统计信息
+ */
+export interface StrategyStatsResponse {
+  strategy_id: string
+  strategy_name: string
+  total_pnl: number
+  total_return: number
+  sharpe_ratio: number
+  max_drawdown: number
+  win_rate: number
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  average_win: number
+  average_loss: number
+  expectancy: number
+  calmar_ratio: number
+  sortino_ratio: number
+  omega_ratio: number
+  recovery_factor: number
+  risk_adjusted_return: number
+  information_ratio: number
+  tracking_error: number
+  volatility: number
+  var_95: number
+  var_99: number
+  beta: number
+  alpha: number
+  start_date: string
+  end_date: string
+  initial_capital: number
+  final_capital: number
+  annual_return: number
+  total_trades_count: number
+  winning_trades_count: number
+  losing_trades_count: number
+  average_win_amount: number
+  average_loss_amount: number
+  profit_loss_ratio: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 批量操作结果
+ */
+export interface BatchOperationResult<T> {
+  success: boolean
+  message: string
+  data?: T
+  errors?: string[]
+  affected_count: number
+  timestamp: string
+}
+
+/**
+ * 策略类型信息，注册表元数据
+ */
+export interface StrategyTypeInfo {
+  strategy_type: StrategyType
+  name: string
+  description: string
+  category: string
+  version: string
+  author: string
+  parameters: Record<string, unknown>
+  is_builtin: boolean
+  is_active: boolean
   created_at: string
   updated_at: string
 }

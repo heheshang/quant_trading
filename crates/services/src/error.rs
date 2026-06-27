@@ -65,7 +65,12 @@ pub enum ServiceError {
         to: String,
     },
 
-    #[error("Strategy is already running: {0}")]
+    #[error("Pagination invalid: {reason}")]
+    PaginationInvalid {
+        reason: String,
+    },
+
+    #[error("Strategy already running: {0}")]
     StrategyAlreadyRunning(String),
 
     #[error("Scheduler error: {0}")]
@@ -76,4 +81,17 @@ pub enum ServiceError {
 
     #[error("{0}")]
     Other(String),
+}
+
+impl From<quant_domain::types::StrategyError> for ServiceError {
+    fn from(e: quant_domain::types::StrategyError) -> Self {
+        match e {
+            quant_domain::types::StrategyError::InvalidTransition { from, to } => {
+                Self::InvalidStatusTransition {
+                    from: format!("{:?}", from),
+                    to: format!("{:?}", to),
+                }
+            }
+        }
+    }
 }

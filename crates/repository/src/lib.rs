@@ -12,8 +12,12 @@ pub mod backtest;
 pub mod error;
 pub mod market_data;
 pub mod postgres;
+pub mod strategy_repository;
 
 pub use backtest::{BacktestRepository, BacktestResultSummaryRow, PgBacktestRepository};
 pub use error::RepoError;
 pub use market_data::MarketDataRepository;
 pub use postgres::PostgresClient;
+pub use strategy_repository::{
+    PgStrategyRepository, StrategyRepository, StrategyStats, StrategySummaryRow,
+};

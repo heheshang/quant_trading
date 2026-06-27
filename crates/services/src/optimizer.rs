@@ -77,6 +77,10 @@ impl ParamOptimizer {
                 max_daily_loss: initial_capital * Decimal::from_f64(0.1).unwrap_or(Decimal::ZERO),
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
+                status: Default::default(),
+                description: None,
+                tags: vec![],
+                symbols: vec![],
             };
 
             let mut strategy = self

@@ -14,36 +14,8 @@ use quant_common::types::MarketData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Abstraction over historical market data access.
-///
-/// The minimal interface needed by backtesting and strategy execution.
-#[async_trait]
-pub trait MarketDataProvider: Send + Sync {
-    /// Fetch historical market data for the given symbol and date range.
-    async fn get_historical_data(
-        &self,
-        symbol: &str,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Result<Vec<MarketData>, String>;
-}
-
-// ─── OkxDataSource implementation ───────────────────────────────────────
-
-#[async_trait]
-impl MarketDataProvider for OkxDataSource {
-    async fn get_historical_data(
-        &self,
-        symbol: &str,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Result<Vec<MarketData>, String> {
-        use data_layer::market_data::DataSource;
-        <Self as DataSource>::get_historical_data(self, symbol, start, end)
-            .await
-            .map_err(|e| e.to_string())
-    }
-}
+// Re-export the trait from quant-common to avoid cyclic dependencies.
+pub use quant_common::MarketDataProvider;
 
 // ─── LockingProvider: bridges Arc<RwLock<Option<OkxDataSource>>> ───────
 

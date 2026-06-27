@@ -292,6 +292,10 @@ mod tests {
             max_daily_loss: rust_decimal::Decimal::new(5000, 0),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
         };
 
         let strategy = registry.create("MeanReversion", params).await;
@@ -312,6 +316,10 @@ mod tests {
             max_daily_loss: rust_decimal::Decimal::ZERO,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
         };
         let result = registry.create("NonExistent", params).await;
         assert!(result.is_err());

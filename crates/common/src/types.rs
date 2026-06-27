@@ -8,7 +8,9 @@
 
 pub use quant_domain::types::{
     Account, Alert, AlertLevel, BacktestResult, Exchange, Instrument, InstrumentType, MarketData,
-    Order, OrderSide, OrderStatus, OrderType, Position, RiskMetrics, StrategyParams, StrategyType,
+    Order, OrderSide, OrderStatus, OrderType, Position, RiskMetrics,
+    SchedulerTaskInfo, StrategyError, StrategyGuard, StrategyParams, StrategyStatus,
+    StrategyType, StatusTransition, allowed_transitions,
 };
 
 // ─── LogEntry ────────────────────────────────────────────────────────────
@@ -42,73 +44,8 @@ impl LogEntry {
     }
 }
 
-// ─── Strategy Lifecycle ────────────────────────────────────────────────────
-// These types support the strategy lifecycle management, scheduling, and
-// signal pipeline features. Defined here rather than in quant_domain because
-// they are coordination concepts unique to this application's runtime layer.
-
-/// Strategy lifecycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StrategyStatus {
-    Draft,
-    Backtesting,
-    Deployed,
-    Running,
-    Paused,
-    Archived,
-}
-
-impl StrategyStatus {
-    /// Check whether a transition from `self` to `to` is allowed.
-    #[must_use]
-    pub fn can_transition_to(&self, to: StrategyStatus) -> bool {
-        matches!(
-            (*self, to),
-            (Self::Draft, Self::Backtesting | Self::Archived)
-                | (Self::Backtesting, Self::Deployed | Self::Draft)
-                | (Self::Deployed, Self::Running | Self::Draft)
-                | (Self::Running, Self::Paused | Self::Archived)
-                | (Self::Paused, Self::Running | Self::Archived)
-        )
-    }
-}
-
-/// Guard predicate for status transitions.
-pub type StrategyGuard = Box<dyn Fn(&StrategyParams) -> bool + Send + Sync>;
-
-/// A permitted status transition with an optional guard predicate.
-pub struct StatusTransition {
-    pub from: StrategyStatus,
-    pub to: StrategyStatus,
-    pub guard: Option<StrategyGuard>,
-}
-
-impl std::fmt::Debug for StatusTransition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StatusTransition")
-            .field("from", &self.from)
-            .field("to", &self.to)
-            .finish()
-    }
-}
-
-/// All allowed status transitions (without guards).
-#[must_use]
-pub fn allowed_transitions() -> Vec<StatusTransition> {
-    use StrategyStatus::*;
-    vec![
-        StatusTransition { from: Draft, to: Backtesting, guard: None },
-        StatusTransition { from: Draft, to: Archived, guard: None },
-        StatusTransition { from: Backtesting, to: Deployed, guard: None },
-        StatusTransition { from: Backtesting, to: Draft, guard: None },
-        StatusTransition { from: Deployed, to: Running, guard: None },
-        StatusTransition { from: Deployed, to: Draft, guard: None },
-        StatusTransition { from: Running, to: Paused, guard: None },
-        StatusTransition { from: Running, to: Archived, guard: None },
-        StatusTransition { from: Paused, to: Running, guard: None },
-        StatusTransition { from: Paused, to: Archived, guard: None },
-    ]
-}
+// ─── Strategy Lifecycle Types ──────────────────────────────────────────────
+// Re-exported from quant_domain::types (single source of truth).
 
 /// Performance scorecard computed for a strategy run or backtest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,17 +99,6 @@ pub struct PipelineStepDef {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalPipelineConfig {
     pub steps: Vec<PipelineStepDef>,
-}
-
-/// Information about a running scheduler task.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SchedulerTaskInfo {
-    pub strategy_id: String,
-    pub strategy_name: String,
-    pub status: StrategyStatus,
-    pub interval_secs: u64,
-    pub last_run_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub error_count: u32,
 }
 
 #[cfg(test)]

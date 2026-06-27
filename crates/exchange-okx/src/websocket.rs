@@ -282,10 +282,7 @@ impl OkxWebSocket {
         let mut rx = self.message_rx.write().await;
         let (_new_tx, new_rx) = mpsc::unbounded_channel();
 
-        // 替换旧的接收器
-        let old_rx = std::mem::replace(&mut *rx, new_rx);
-
-        old_rx
+        std::mem::replace(&mut *rx, new_rx)
     }
 }
 

@@ -295,6 +295,98 @@ impl Account {
     }
 }
 
+// ─── Strategy Lifecycle Status ──────────────────────────────────────────────
+
+/// Strategy lifecycle status.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StrategyStatus {
+    #[default]
+    Draft,
+    Backtesting,
+    Deployed,
+    Running,
+    Paused,
+    Archived,
+}
+
+impl std::str::FromStr for StrategyStatus {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "Backtesting" => Ok(Self::Backtesting),
+            "Deployed" => Ok(Self::Deployed),
+            "Running" => Ok(Self::Running),
+            "Paused" => Ok(Self::Paused),
+            "Archived" => Ok(Self::Archived),
+            _ => Ok(Self::Draft),
+        }
+    }
+}
+
+impl StrategyStatus {
+    /// Check whether a transition from `self` to `to` is allowed.
+    #[must_use]
+    pub fn can_transition_to(&self, to: StrategyStatus) -> bool {
+        matches!(
+            (*self, to),
+            (Self::Draft, Self::Backtesting | Self::Archived)
+                | (Self::Backtesting, Self::Deployed | Self::Draft)
+                | (Self::Deployed, Self::Running | Self::Draft)
+                | (Self::Running, Self::Paused | Self::Archived)
+                | (Self::Paused, Self::Running | Self::Archived)
+        )
+    }
+}
+
+/// Guard predicate for status transitions.
+pub type StrategyGuard = Box<dyn Fn(&StrategyParams) -> bool + Send + Sync>;
+
+/// A permitted status transition with an optional guard predicate.
+pub struct StatusTransition {
+    pub from: StrategyStatus,
+    pub to: StrategyStatus,
+    pub guard: Option<StrategyGuard>,
+}
+
+impl std::fmt::Debug for StatusTransition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StatusTransition")
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .finish()
+    }
+}
+
+/// All allowed status transitions (without guards).
+#[must_use]
+pub fn allowed_transitions() -> Vec<StatusTransition> {
+    use StrategyStatus::*;
+    vec![
+        StatusTransition { from: Draft, to: Backtesting, guard: None },
+        StatusTransition { from: Draft, to: Archived, guard: None },
+        StatusTransition { from: Backtesting, to: Deployed, guard: None },
+        StatusTransition { from: Backtesting, to: Draft, guard: None },
+        StatusTransition { from: Deployed, to: Running, guard: None },
+        StatusTransition { from: Deployed, to: Draft, guard: None },
+        StatusTransition { from: Running, to: Paused, guard: None },
+        StatusTransition { from: Running, to: Archived, guard: None },
+        StatusTransition { from: Paused, to: Running, guard: None },
+        StatusTransition { from: Paused, to: Archived, guard: None },
+    ]
+}
+
+/// Information about a running scheduler task.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerTaskInfo {
+    pub strategy_id: String,
+    pub strategy_name: String,
+    pub status: StrategyStatus,
+    pub interval_secs: u64,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub error_count: u32,
+}
+
 // ─── Strategy ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,6 +400,18 @@ pub struct StrategyParams {
     pub max_daily_loss: Decimal,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Current lifecycle status.
+    #[serde(default)]
+    pub status: StrategyStatus,
+    /// Human-readable description of the strategy purpose.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Tags for categorization.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Trading symbols this strategy operates on.
+    #[serde(default)]
+    pub symbols: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -339,6 +443,30 @@ impl StrategyParams {
         self.enabled = false;
         self.updated_at = Utc::now();
     }
+
+    /// Transition to a new status if allowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StrategyError::InvalidTransition` if the transition is not permitted.
+    pub fn transition_to(&mut self, target: StrategyStatus) -> Result<StrategyStatus, StrategyError> {
+        if !self.status.can_transition_to(target) {
+            return Err(StrategyError::InvalidTransition {
+                from: self.status,
+                to: target,
+            });
+        }
+        self.status = target;
+        self.updated_at = Utc::now();
+        Ok(self.status)
+    }
+}
+
+/// Strategy lifecycle error.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum StrategyError {
+    #[error("Invalid status transition: {from:?} → {to:?} is not allowed")]
+    InvalidTransition { from: StrategyStatus, to: StrategyStatus },
 }
 
 // ─── Backtest Result ─────────────────────────────────────────────────────────
@@ -1112,6 +1240,10 @@ mod tests {
             enabled: true,
             max_position: dec!(1000),
             max_daily_loss: dec!(50000),
+            status: StrategyStatus::Draft,
+            description: Some("Test".into()),
+            tags: vec![],
+            symbols: vec![],
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -1378,5 +1510,130 @@ mod tests {
         assert!(!alert.acknowledged);
         alert.acknowledge();
         assert!(alert.acknowledged);
+    }
+
+    // ── StrategyStatus ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_strategy_status_from_str_all_variants() {
+        assert_eq!("Draft".parse::<StrategyStatus>().unwrap(), StrategyStatus::Draft);
+        assert_eq!("Backtesting".parse::<StrategyStatus>().unwrap(), StrategyStatus::Backtesting);
+        assert_eq!("Deployed".parse::<StrategyStatus>().unwrap(), StrategyStatus::Deployed);
+        assert_eq!("Running".parse::<StrategyStatus>().unwrap(), StrategyStatus::Running);
+        assert_eq!("Paused".parse::<StrategyStatus>().unwrap(), StrategyStatus::Paused);
+        assert_eq!("Archived".parse::<StrategyStatus>().unwrap(), StrategyStatus::Archived);
+    }
+
+    #[test]
+    fn test_strategy_status_from_str_unknown_defaults_to_draft() {
+        assert_eq!("unknown".parse::<StrategyStatus>().unwrap(), StrategyStatus::Draft);
+        assert_eq!("".parse::<StrategyStatus>().unwrap(), StrategyStatus::Draft);
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_draft_to_backtesting() {
+        assert!(StrategyStatus::Draft.can_transition_to(StrategyStatus::Backtesting));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_draft_to_archived() {
+        assert!(StrategyStatus::Draft.can_transition_to(StrategyStatus::Archived));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_draft_to_running_blocked() {
+        assert!(!StrategyStatus::Draft.can_transition_to(StrategyStatus::Running));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_backtesting_to_deployed() {
+        assert!(StrategyStatus::Backtesting.can_transition_to(StrategyStatus::Deployed));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_backtesting_to_draft() {
+        assert!(StrategyStatus::Backtesting.can_transition_to(StrategyStatus::Draft));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_deployed_to_running() {
+        assert!(StrategyStatus::Deployed.can_transition_to(StrategyStatus::Running));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_running_to_paused() {
+        assert!(StrategyStatus::Running.can_transition_to(StrategyStatus::Paused));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_running_to_archived() {
+        assert!(StrategyStatus::Running.can_transition_to(StrategyStatus::Archived));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_paused_to_running() {
+        assert!(StrategyStatus::Paused.can_transition_to(StrategyStatus::Running));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_paused_to_archived() {
+        assert!(StrategyStatus::Paused.can_transition_to(StrategyStatus::Archived));
+    }
+
+    #[test]
+    fn test_strategy_status_transition_to_valid() {
+        let mut sp = make_strategy_params();
+        assert_eq!(sp.status, StrategyStatus::Draft);
+        let new_status = sp.transition_to(StrategyStatus::Backtesting).unwrap();
+        assert_eq!(new_status, StrategyStatus::Backtesting);
+        assert_eq!(sp.status, StrategyStatus::Backtesting);
+    }
+
+    #[test]
+    fn test_strategy_status_transition_to_invalid() {
+        let mut sp = make_strategy_params();
+        sp.status = StrategyStatus::Draft;
+        let result = sp.transition_to(StrategyStatus::Running);
+        assert!(result.is_err());
+        assert_eq!(sp.status, StrategyStatus::Draft);
+    }
+
+    // ── StrategyParams new fields ─────────────────────────────────────────────
+
+    #[test]
+    fn test_strategy_params_with_tags_and_symbols() {
+        let sp = StrategyParams {
+            tags: vec!["momentum".into(), "trend".into()],
+            symbols: vec!["BTC-USDT".into(), "ETH-USDT".into()],
+            ..make_strategy_params()
+        };
+        assert_eq!(sp.tags.len(), 2);
+        assert_eq!(sp.symbols.len(), 2);
+    }
+
+    #[test]
+    fn test_strategy_params_serialization_roundtrip() {
+        let sp = StrategyParams {
+            status: StrategyStatus::Running,
+            description: Some("Test strategy".into()),
+            tags: vec!["tag1".into()],
+            symbols: vec!["SYM-USDT".into()],
+            ..make_strategy_params()
+        };
+        let json = serde_json::to_string(&sp).unwrap();
+        let deserialized: StrategyParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, StrategyStatus::Running);
+        assert_eq!(deserialized.description, Some("Test strategy".into()));
+        assert_eq!(deserialized.tags, vec![String::from("tag1")]);
+        assert_eq!(deserialized.symbols, vec![String::from("SYM-USDT")]);
+    }
+
+    #[test]
+    fn test_strategy_params_default_status_is_draft() {
+        let json = r#"{"strategy_id":"x","strategy_name":"X","strategy_type":"Custom","params":{},"enabled":false,"max_position":0,"max_daily_loss":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
+        let sp: StrategyParams = serde_json::from_str(json).unwrap();
+        assert_eq!(sp.status, StrategyStatus::Draft);
+        assert!(sp.tags.is_empty());
+        assert!(sp.symbols.is_empty());
     }
 }

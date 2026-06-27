@@ -8,6 +8,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, instrument};
 
+type SharedClient = Arc<RwLock<dyn ClientInterface + Send + Sync>>;
+
 /// Executes a block with a borrowed OKX client, handling the double-RwLock guard boilerplate.
 /// Returns `Err(ServiceError::OkxNotInitialized)` when the client is absent.
 macro_rules! with_okx_client {
@@ -25,14 +27,14 @@ macro_rules! with_okx_client {
 
 /// OKX exchange operations service.
 pub struct OkxService {
-    okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+    okx_client: Arc<RwLock<Option<SharedClient>>>,
     okx_executor: Arc<RwLock<Option<Arc<trading_engine::OkxExecutor>>>>,
     okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
 }
 
 impl OkxService {
     pub fn new(
-        okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+        okx_client: Arc<RwLock<Option<SharedClient>>>,
         okx_executor: Arc<RwLock<Option<Arc<trading_engine::OkxExecutor>>>>,
         okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     ) -> Self {

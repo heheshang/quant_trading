@@ -7,12 +7,15 @@ use data_layer::OkxDataSource;
 use exchange_okx::ClientInterface;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
-use quant_repository::{MarketDataRepository, PgBacktestRepository, PostgresClient};
+use quant_repository::{MarketDataRepository, PgBacktestRepository, PgStrategyRepository, PostgresClient};
 use std::path::PathBuf;
 use std::sync::Arc;
+use strategy_engine::scheduler::StrategyScheduler;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
 use trading_engine::OkxExecutor;
+
+type SharedClient = Arc<RwLock<dyn ClientInterface + Send + Sync>>;
 
 use crate::account_service::AccountService;
 use crate::auth_service::AuthService;
@@ -33,7 +36,7 @@ pub struct AppServices {
     pub postgres: Option<Arc<PostgresClient>>,
     pub redis: Option<Arc<RedisCache>>,
     pub market_data: Option<Arc<MarketDataRepository>>,
-    pub okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+    pub okx_client: Arc<RwLock<Option<SharedClient>>>,
     pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
 
@@ -57,11 +60,14 @@ impl AppServices {
         postgres: Option<Arc<PostgresClient>>,
         redis: Option<Arc<RedisCache>>,
         market_data: Option<Arc<MarketDataRepository>>,
-        okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+        okx_client: Arc<RwLock<Option<SharedClient>>>,
         okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
         okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     ) -> Self {
         info!("Initializing AppServices");
+        let scheduler = Arc::new(StrategyScheduler::new(
+            config.blocking_read().scheduler.clone(),
+        ));
         Self {
             config_service: ConfigService::new(config.clone()),
             auth_service: AuthService::new(config.clone(), postgres.clone()),
@@ -74,6 +80,11 @@ impl AppServices {
                     .as_ref()
                     .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
                         as Arc<dyn quant_repository::BacktestRepository>),
+                postgres
+                    .as_ref()
+                    .map(|pg| Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
+                        as Arc<dyn quant_repository::StrategyRepository>),
+                Some(scheduler),
             ),
             okx_service: OkxService::new(
                 okx_client.clone(),
@@ -99,11 +110,13 @@ impl AppServices {
         postgres: Option<Arc<PostgresClient>>,
         redis: Option<Arc<RedisCache>>,
         market_data: Option<Arc<MarketDataRepository>>,
-        okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+        okx_client: Arc<RwLock<Option<SharedClient>>>,
         okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
         okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     ) -> Self {
         info!("Initializing AppServices with config path: {}", config_path.display());
+        let scheduler_config = config.try_read().map(|c| c.scheduler.clone()).unwrap_or_default();
+        let scheduler = Arc::new(StrategyScheduler::new(scheduler_config));
         Self {
             config_service: ConfigService::with_path(config.clone(), config_path),
             auth_service: AuthService::new(config.clone(), postgres.clone()),
@@ -116,6 +129,11 @@ impl AppServices {
                     .as_ref()
                     .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
                         as Arc<dyn quant_repository::BacktestRepository>),
+                postgres
+                    .as_ref()
+                    .map(|pg| Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
+                        as Arc<dyn quant_repository::StrategyRepository>),
+                Some(scheduler),
             ),
             okx_service: OkxService::new(
                 okx_client.clone(),

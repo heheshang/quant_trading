@@ -9,6 +9,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use trading_layer::{OkxExecutor, OrderManager};
 
+type SharedClient = Arc<RwLock<dyn ClientInterface + Send + Sync>>;
+
 /// WebSocket 连接状态
 pub struct WsState {
     pub running: Arc<AtomicBool>,
@@ -31,7 +33,7 @@ pub struct AppState {
     pub log_buffer: Arc<LogBuffer>,
     pub pg_client: Option<PostgresClient>,
     pub redis_cache: Option<RedisCache>,
-    pub okx_client: Arc<RwLock<Option<Arc<RwLock<dyn ClientInterface + Send + Sync>>>>>,
+    pub okx_client: Arc<RwLock<Option<SharedClient>>>,
     pub okx_executor: Arc<RwLock<Option<OkxExecutor>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     pub order_manager: OrderManager,

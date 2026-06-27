@@ -1346,7 +1346,7 @@ mod tests {
     use exchange_okx::ClientInterface;
     use exchange_okx::MockOkxClient;
     use monitor_layer::{AlertManager, LogBuffer};
-    use quant_common::types::StrategyType;
+    use quant_common::types::{StrategyStatus, StrategyType};
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
@@ -1498,6 +1498,10 @@ mod tests {
             enabled: true,
             max_position: dec!(100000),
             max_daily_loss: dec!(5000),
+            status: StrategyStatus::Draft,
+            description: Some("Test".to_string()),
+            tags: vec![],
+            symbols: vec![],
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

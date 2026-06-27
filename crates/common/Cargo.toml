@@ -19,6 +19,7 @@ redis = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 okx = { workspace = true }
 quant-domain = { path = "../domain" }
+async-trait = "0.1"
 [dev-dependencies]
 rust_decimal_macros = "1.36"
 

@@ -105,6 +105,10 @@ impl MeanReversionStrategy {
                 max_daily_loss: rust_decimal::Decimal::new(5000, 0),
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
+                status: Default::default(),
+                description: None,
+                tags: vec![],
+                symbols: vec![],
             },
             lookback_period: 20,
             entry_threshold: DEFAULT_ENTRY_THRESHOLD,
@@ -423,6 +427,10 @@ mod tests {
             max_daily_loss: Decimal::from(5000),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
         };
         strategy.initialize(params).await.unwrap();
 
@@ -458,6 +466,10 @@ mod tests {
             max_daily_loss: Decimal::from(5000),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
         };
         strategy.initialize(params).await.unwrap();
 

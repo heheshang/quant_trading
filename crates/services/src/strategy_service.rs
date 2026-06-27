@@ -4,19 +4,23 @@ use quant_common::types::{
     BacktestResult, StrategyParams, StrategyStatus, StrategyType,
 };
 use quant_repository::{BacktestRepository, BacktestResultSummaryRow, PostgresClient};
+use quant_repository::StrategyRepository as StRepo;
 use rust_decimal::Decimal;
-use sqlx::Row;
 use std::sync::Arc;
 use std::time::Instant;
 use strategy_engine::registry::StrategyRegistry;
+use strategy_engine::scheduler::StrategyScheduler;
 use strategy_engine::{BacktestEngine, Strategy};
 use tracing::{error, info, instrument, warn};
 
 /// 策略服务 — 管理策略注册、生命周期、回测与调度
 pub struct StrategyService {
+    #[allow(dead_code)]
     postgres: Option<Arc<PostgresClient>>,
     market_data_provider: Option<Arc<dyn MarketDataProvider>>,
     backtest_repo: Option<Arc<dyn BacktestRepository>>,
+    strategy_repo: Option<Arc<dyn StRepo>>,
+    scheduler: Option<Arc<StrategyScheduler>>,
     registry: Option<Arc<StrategyRegistry>>,
 }
 
@@ -26,11 +30,15 @@ impl StrategyService {
         postgres: Option<Arc<PostgresClient>>,
         market_data_provider: Option<Arc<dyn MarketDataProvider>>,
         backtest_repo: Option<Arc<dyn BacktestRepository>>,
+        strategy_repo: Option<Arc<dyn StRepo>>,
+        scheduler: Option<Arc<StrategyScheduler>>,
     ) -> Self {
         Self {
             postgres,
             market_data_provider,
             backtest_repo,
+            strategy_repo,
+            scheduler,
             registry: None,
         }
     }
@@ -58,117 +66,132 @@ impl StrategyService {
 
     // ── CRUD ───────────────────────────────────────────────────────────────
 
+    /// List all strategies (unpaginated, no status filter).
     #[instrument(skip_all)]
     pub async fn get_strategies(&self) -> ServiceResult<Vec<StrategyParams>> {
-        let client = self
-            .postgres
+        let repo = self
+            .strategy_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let pool = client.pool();
+        let (rows, _total) = repo.find_all(None, None, None, None, 10000, 0).await.map_err(|e| {
+            error!("Failed to query strategies: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
 
-        let rows = sqlx::query(
-            r#"
-            SELECT strategy_id, strategy_name, strategy_type, params,
-                   enabled, max_position, max_daily_loss, created_at, updated_at
-            FROM strategies
-            ORDER BY created_at DESC
-            "#,
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(ServiceError::from)?;
-
-        let strategies: Vec<StrategyParams> = rows
-            .iter()
-            .map(|row| {
-                let ty_str: String = row.get("strategy_type");
-                let strategy_type: StrategyType =
-                    serde_json::from_value(serde_json::Value::String(ty_str))
-                        .unwrap_or(StrategyType::MeanReversion);
-                StrategyParams {
-                    strategy_id: row.get("strategy_id"),
-                    strategy_name: row.get("strategy_name"),
-                    strategy_type,
-                    params: row.get("params"),
-                    enabled: row.get("enabled"),
-                    max_position: row.get("max_position"),
-                    max_daily_loss: row.get("max_daily_loss"),
-                    created_at: row.get("created_at"),
-                    updated_at: row.get("updated_at"),
+        let strategies: Vec<StrategyParams> = rows.iter().filter_map(|row| {
+            match row.to_domain() {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    error!("Failed to convert strategy row {}: {}", row.strategy_id, e);
+                    None
                 }
-            })
-            .collect();
-
+            }
+        }).collect();
         info!(count = strategies.len(), "Strategies retrieved");
+        Ok(strategies)
+    }
+
+    /// List strategies with status filter and pagination.
+    #[instrument(skip(self), fields(page, page_size))]
+    pub async fn list_strategies(
+        &self,
+        status_filter: Option<StrategyStatus>,
+        page: i64,
+        page_size: i64,
+    ) -> ServiceResult<Vec<StrategyParams>> {
+        if !(1..=100).contains(&page_size) || page < 1 {
+            return Err(ServiceError::PaginationInvalid {
+                reason: format!("Page must be >= 1, page_size must be 1-100 (got page={}, page_size={})", page, page_size)
+            });
+        }
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let offset = (page - 1) * page_size;
+        let (rows, _total) = repo.find_all(None, None, status_filter, None, page_size, offset).await.map_err(|e| {
+            error!("Failed to query strategies: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
+        let strategies: Vec<StrategyParams> = rows.iter().filter_map(|row| {
+            match row.to_domain() {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    error!("Failed to convert strategy row {}: {}", row.strategy_id, e);
+                    None
+                }
+            }
+        }).collect();
+        info!(count = strategies.len(), "Strategies listed");
         Ok(strategies)
     }
 
     #[instrument(skip(self, strategy), fields(strategy_id = %strategy.strategy_id))]
     pub async fn save_strategy(&self, strategy: &StrategyParams) -> ServiceResult<String> {
-        let client = self
-            .postgres
+        let repo = self
+            .strategy_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let pool = client.pool();
 
-        let type_str = serde_json::to_value(&strategy.strategy_type)
-            .ok()
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "MeanReversion".to_string());
-
-        sqlx::query(
-            r#"
-            INSERT INTO strategies (strategy_id, strategy_name, strategy_type, params,
-                                    enabled, max_position, max_daily_loss, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (strategy_id) DO UPDATE SET
-                strategy_name = EXCLUDED.strategy_name,
-                strategy_type = EXCLUDED.strategy_type,
-                params = EXCLUDED.params,
-                enabled = EXCLUDED.enabled,
-                max_position = EXCLUDED.max_position,
-                max_daily_loss = EXCLUDED.max_daily_loss,
-                updated_at = NOW()
-            "#,
-        )
-        .bind(&strategy.strategy_id)
-        .bind(&strategy.strategy_name)
-        .bind(&type_str)
-        .bind(&strategy.params)
-        .bind(strategy.enabled)
-        .bind(strategy.max_position)
-        .bind(strategy.max_daily_loss)
-        .bind(strategy.created_at)
-        .bind(strategy.updated_at)
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to save strategy {}: {}", strategy.strategy_id, e);
-            ServiceError::from(e)
+        let existing = repo.find_by_id(&strategy.strategy_id).await.map_err(|e| {
+            error!("Failed to check strategy {}: {}", strategy.strategy_id, e);
+            ServiceError::Other(e.to_string())
         })?;
 
-        info!(strategy_id = %strategy.strategy_id, strategy_name = %strategy.strategy_name, "Strategy saved");
+        if existing.is_some() {
+            repo.update(strategy).await.map_err(|e| {
+                error!("Failed to update strategy {}: {}", strategy.strategy_id, e);
+                ServiceError::Other(e.to_string())
+            })?;
+            info!(strategy_id = %strategy.strategy_id, "Strategy updated");
+        } else {
+            repo.insert(strategy).await.map_err(|e| {
+                error!("Failed to insert strategy {}: {}", strategy.strategy_id, e);
+                ServiceError::Other(e.to_string())
+            })?;
+            info!(strategy_id = %strategy.strategy_id, "Strategy inserted");
+        }
+
+        Ok(strategy.strategy_id.clone())
+    }
+
+    /// Update an existing strategy. Returns the strategy_id.
+    #[instrument(skip(self, strategy), fields(strategy_id = %strategy.strategy_id))]
+    pub async fn update_strategy(&self, strategy: &StrategyParams) -> ServiceResult<String> {
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+
+        let updated = repo.update(strategy).await.map_err(|e| {
+            error!("Failed to update strategy {}: {}", strategy.strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?;
+
+        if !updated {
+            return Err(ServiceError::NotFound(format!(
+                "Strategy '{}' not found",
+                strategy.strategy_id
+            )));
+        }
+
+        info!(strategy_id = %strategy.strategy_id, "Strategy updated");
         Ok(strategy.strategy_id.clone())
     }
 
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn delete_strategy(&self, strategy_id: &str) -> ServiceResult<bool> {
-        let client = self
-            .postgres
+        let repo = self
+            .strategy_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let pool = client.pool();
 
-        let affected = sqlx::query("DELETE FROM strategies WHERE strategy_id = $1")
-            .bind(strategy_id)
-            .execute(pool)
-            .await
-            .map_err(|e| {
-                error!("Failed to delete strategy {}: {}", strategy_id, e);
-                ServiceError::from(e)
-            })?;
+        let deleted = repo.delete_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to delete strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?;
 
-        let deleted = affected.rows_affected() > 0;
         if deleted {
             info!(strategy_id = %strategy_id, "Strategy deleted");
         } else {
@@ -179,27 +202,27 @@ impl StrategyService {
 
     #[instrument(skip(self), fields(strategy_id = %strategy_id, enabled))]
     pub async fn toggle_strategy(&self, strategy_id: &str, enabled: bool) -> ServiceResult<bool> {
-        let client = self
-            .postgres
+        let repo = self
+            .strategy_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let pool = client.pool();
 
-        let affected = sqlx::query(
-            "UPDATE strategies SET enabled = $1, updated_at = NOW() WHERE strategy_id = $2",
-        )
-        .bind(enabled)
-        .bind(strategy_id)
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to toggle strategy {}: {}", strategy_id, e);
-            ServiceError::from(e)
-        })?;
-
-        let toggled = affected.rows_affected() > 0;
-        info!(strategy_id = %strategy_id, enabled, "Strategy toggled");
-        Ok(toggled)
+        if let Some(mut params) = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy for toggle {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })? {
+            params.enabled = enabled;
+            params.updated_at = chrono::Utc::now();
+            repo.update(&params).await.map_err(|e| {
+                error!("Failed to toggle strategy {}: {}", strategy_id, e);
+                ServiceError::Other(e.to_string())
+            })?;
+            info!(strategy_id = %strategy_id, enabled, "Strategy toggled");
+            Ok(true)
+        } else {
+            warn!(strategy_id = %strategy_id, "Strategy not found for toggle");
+            Ok(false)
+        }
     }
 
     // ── Backtest ────────────────────────────────────────────────────────────
@@ -209,66 +232,33 @@ impl StrategyService {
         &self,
         strategy_id: &str,
     ) -> ServiceResult<(String, Box<dyn Strategy>, StrategyParams)> {
-        let client = self
-            .postgres
+        let repo = self
+            .strategy_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let pool = client.pool();
 
-        let row = sqlx::query(
-            r#"
-            SELECT strategy_type, params, strategy_name, max_position, max_daily_loss
-            FROM strategies
-            WHERE strategy_id = $1
-            "#,
-        )
-        .bind(strategy_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::from(e)
-        })?
-        .ok_or_else(|| {
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| {
             error!("Strategy '{}' not found", strategy_id);
             ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
         })?;
 
-        let db_type: String = row.get("strategy_type");
-        let db_params: serde_json::Value = row.get("params");
-        let db_name: String = row.get("strategy_name");
-        let db_max_pos: Decimal = row.get("max_position");
-        let db_max_loss: Decimal = row.get("max_daily_loss");
-
-        let strategy_type: StrategyType =
-            serde_json::from_value(serde_json::Value::String(db_type.clone()))
-                .unwrap_or(StrategyType::MeanReversion);
-
-        let params = StrategyParams {
-            strategy_id: strategy_id.to_string(),
-            strategy_name: db_name,
-            strategy_type: strategy_type.clone(),
-            params: db_params,
-            enabled: true,
-            max_position: db_max_pos,
-            max_daily_loss: db_max_loss,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
+        let type_str = format!("{:?}", params.strategy_type);
 
         // 通过注册中心创建策略实例，回退到硬编码
         let strategy: Box<dyn Strategy> = match self.registry.as_ref() {
-            Some(reg) if reg.has_type(&db_type) => {
-                reg.create(&db_type, params.clone()).await.map_err(|e| {
-                    ServiceError::Strategy(format!("Failed to create strategy '{}': {}", db_type, e))
+            Some(reg) if reg.has_type(&type_str) => {
+                reg.create(&type_str, params.clone()).await.map_err(|e| {
+                    ServiceError::Strategy(format!("Failed to create strategy '{}': {}", type_str, e))
                 })?
             }
             _ => {
-                // 回退：仅支持 MeanReversion
-                if strategy_type != StrategyType::MeanReversion {
+                if params.strategy_type != StrategyType::MeanReversion {
                     return Err(ServiceError::Strategy(format!(
                         "Strategy type '{:?}' is not supported. Registry not initialized or type not registered.",
-                        strategy_type
+                        params.strategy_type
                     )));
                 }
                 let mut s = strategy_engine::strategy::MeanReversionStrategy::new();
@@ -279,7 +269,7 @@ impl StrategyService {
             }
         };
 
-        Ok((db_type, strategy, params))
+        Ok((type_str, strategy, params))
     }
 
     #[instrument(skip(self), fields(strategy_id = %strategy_id, initial_capital, symbols = ?symbols))]
@@ -374,74 +364,270 @@ impl StrategyService {
     /// 部署策略（Draft → Deployed）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn deploy_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let (_db_type, mut strategy, _params) = self.build_strategy_from_db(strategy_id).await?;
-        strategy
-            .on_deploy()
-            .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+
+        let target = StrategyStatus::Deployed;
+        params.transition_to(target).map_err(|_| {
+            ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", params.status),
+                to: format!("{:?}", target),
+            }
+        })?;
+
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_deploy().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+
+        params.status = target;
+        params.updated_at = chrono::Utc::now();
+        repo.update(&params).await.map_err(|e| {
+            error!("Failed to persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
         info!(strategy_id = %strategy_id, "Strategy deployed");
-        // 注意：状态持久化由调用侧（Tauri command）写到 DB status 字段
-        Ok(StrategyStatus::Deployed)
+        Ok(target)
     }
 
     /// 启动策略（Deployed → Running）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn start_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let (_db_type, mut strategy, _params) = self.build_strategy_from_db(strategy_id).await?;
-        strategy
-            .on_start()
-            .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+
+        let target = StrategyStatus::Running;
+        params.transition_to(target).map_err(|_| {
+            ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", params.status),
+                to: format!("{:?}", target),
+            }
+        })?;
+
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_start().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+
+        params.status = target;
+        params.updated_at = chrono::Utc::now();
+        repo.update(&params).await.map_err(|e| {
+            error!("Failed to persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
+        // Register with scheduler for periodic signal generation
+        if let Some(ref scheduler) = self.scheduler {
+            let interval_secs = scheduler.config().default_interval_secs;
+            scheduler.start_strategy(
+                strategy_id.to_string(),
+                params.strategy_name.clone(),
+                strategy,
+                interval_secs,
+            ).await.map_err(|e| {
+                error!("Failed to start scheduler for {}: {}", strategy_id, e);
+                ServiceError::Scheduler(e.to_string())
+            })?;
+        }
+
         info!(strategy_id = %strategy_id, "Strategy started");
-        Ok(StrategyStatus::Running)
+        Ok(target)
     }
 
-    /// 停止策略（Running → Stopped）
+    /// 停止策略（Running → Archived）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn stop_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let (_db_type, mut strategy, _params) = self.build_strategy_from_db(strategy_id).await?;
-        strategy
-            .on_stop()
-            .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+
+        let target = StrategyStatus::Archived;
+        params.transition_to(target).map_err(|_| {
+            ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", params.status),
+                to: format!("{:?}", target),
+            }
+        })?;
+
+        // Unregister from scheduler first (before status change to avoid race)
+        if let Some(ref scheduler) = self.scheduler {
+            scheduler.stop_strategy(strategy_id).await.map_err(|e| {
+                error!("Failed to stop scheduler for {}: {}", strategy_id, e);
+                ServiceError::Scheduler(e.to_string())
+            })?;
+        }
+
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_stop().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+
+        params.status = target;
+        params.updated_at = chrono::Utc::now();
+        repo.update(&params).await.map_err(|e| {
+            error!("Failed to persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
         info!(strategy_id = %strategy_id, "Strategy stopped");
-        Ok(StrategyStatus::Archived)
+        Ok(target)
     }
 
     /// 暂停策略（Running → Paused）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn pause_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let (_db_type, mut strategy, _params) = self.build_strategy_from_db(strategy_id).await?;
-        strategy
-            .on_pause()
-            .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+
+        let target = StrategyStatus::Paused;
+        params.transition_to(target).map_err(|_| {
+            ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", params.status),
+                to: format!("{:?}", target),
+            }
+        })?;
+
+        // Unregister from scheduler
+        if let Some(ref scheduler) = self.scheduler {
+            scheduler.stop_strategy(strategy_id).await.map_err(|e| {
+                error!("Failed to pause scheduler for {}: {}", strategy_id, e);
+                ServiceError::Scheduler(e.to_string())
+            })?;
+        }
+
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_pause().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+
+        params.status = target;
+        params.updated_at = chrono::Utc::now();
+        repo.update(&params).await.map_err(|e| {
+            error!("Failed to persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
         info!(strategy_id = %strategy_id, "Strategy paused");
-        Ok(StrategyStatus::Paused)
+        Ok(target)
     }
 
     /// 恢复策略（Paused → Running）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn resume_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let (_db_type, mut strategy, _params) = self.build_strategy_from_db(strategy_id).await?;
-        strategy
-            .on_resume()
-            .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+
+        let target = StrategyStatus::Running;
+        params.transition_to(target).map_err(|_| {
+            ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", params.status),
+                to: format!("{:?}", target),
+            }
+        })?;
+
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_resume().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+
+        params.status = target;
+        params.updated_at = chrono::Utc::now();
+        repo.update(&params).await.map_err(|e| {
+            error!("Failed to persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
+        // Re-register with scheduler
+        if let Some(ref scheduler) = self.scheduler {
+            let interval_secs = scheduler.config().default_interval_secs;
+            scheduler.start_strategy(
+                strategy_id.to_string(),
+                params.strategy_name.clone(),
+                strategy,
+                interval_secs,
+            ).await.map_err(|e| {
+                error!("Failed to start scheduler for {}: {}", strategy_id, e);
+                ServiceError::Scheduler(e.to_string())
+            })?;
+        }
+
         info!(strategy_id = %strategy_id, "Strategy resumed");
-        Ok(StrategyStatus::Running)
+        Ok(target)
     }
 
     /// 归档策略（任何状态 → Archived）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn archive_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let (_db_type, mut strategy, _params) = self.build_strategy_from_db(strategy_id).await?;
-        strategy
-            .on_archive()
-            .await
-            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+            error!("Failed to fetch strategy {}: {}", strategy_id, e);
+            ServiceError::Other(e.to_string())
+        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+
+        let target = StrategyStatus::Archived;
+        params.transition_to(target).map_err(|_| {
+            ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", params.status),
+                to: format!("{:?}", target),
+            }
+        })?;
+
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_archive().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+
+        params.status = target;
+        params.updated_at = chrono::Utc::now();
+        repo.update(&params).await.map_err(|e| {
+            error!("Failed to persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+
         info!(strategy_id = %strategy_id, "Strategy archived");
-        Ok(StrategyStatus::Archived)
+        Ok(target)
+    }
+
+    /// Build strategy instance from params via registry or fallback.
+    async fn build_strategy_from_params(
+        &self,
+        params: &StrategyParams,
+    ) -> ServiceResult<(String, Box<dyn Strategy>)> {
+        let type_str = format!("{:?}", params.strategy_type);
+        let strategy: Box<dyn Strategy> = match self.registry.as_ref() {
+            Some(reg) if reg.has_type(&type_str) => {
+                reg.create(&type_str, params.clone()).await.map_err(|e| {
+                    ServiceError::Strategy(format!("Failed to create strategy '{}': {}", type_str, e))
+                })?
+            }
+            _ => {
+                if params.strategy_type != StrategyType::MeanReversion {
+                    return Err(ServiceError::Strategy(format!(
+                        "Strategy type '{:?}' is not supported",
+                        params.strategy_type
+                    )));
+                }
+                let mut s = strategy_engine::strategy::MeanReversionStrategy::new();
+                s.initialize(params.clone())
+                    .await
+                    .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+                Box::new(s)
+            }
+        };
+        Ok((type_str, strategy))
+    }
+
+    // ── Scheduler Queries ──────────────────────────────────────────────────
+
+    /// Return the list of currently running strategies from the scheduler.
+    pub async fn get_running_strategies(&self) -> ServiceResult<Vec<quant_common::types::SchedulerTaskInfo>> {
+        let scheduler = self.scheduler.as_ref().ok_or_else(|| {
+            ServiceError::Other("Scheduler not initialized".into())
+        })?;
+        Ok(scheduler.list_running().await)
     }
 
     // ── Backtest Results Queries ──────────────────────────────────────────
@@ -505,7 +691,7 @@ mod tests {
     use rust_decimal::prelude::FromPrimitive;
 
     fn make_service_no_db() -> StrategyService {
-        StrategyService::new(None, None, None)
+        StrategyService::new(None, None, None, None, None)
     }
 
     #[tokio::test]
@@ -530,6 +716,10 @@ mod tests {
             enabled: true,
             max_position: Decimal::ZERO,
             max_daily_loss: Decimal::ZERO,
+            status: Default::default(),
+            description: None,
+            tags: vec![],
+            symbols: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };

@@ -48,7 +48,7 @@ impl ConfigService {
             let toml_str = toml::to_string(&new_config)
                 .unwrap_or_else(|e| {
                     warn!("Failed to serialize config: {}", e);
-                    return String::new();
+                    String::new()
                 });
             if toml_str.is_empty() {
                 return "Config updated in memory, but serialization failed".to_string();

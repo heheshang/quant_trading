@@ -190,7 +190,7 @@ impl DataPuller {
         bar: String,
         config: CandlePullConfig,
     ) {
-        let interval = Duration::from_secs(config.interval_secs as u64);
+        let interval = Duration::from_secs(config.interval_secs);
         info!("Starting candle pull: {} / {} every {:?}", symbol, bar, interval);
 
         loop {
@@ -247,7 +247,7 @@ impl DataPuller {
         symbol: String,
         config: TickerPullConfig,
     ) {
-        let interval = Duration::from_secs(config.interval_secs as u64);
+        let interval = Duration::from_secs(config.interval_secs);
         info!("Starting ticker pull: {} every {:?}", symbol, interval);
 
         loop {
@@ -302,7 +302,7 @@ impl DataPuller {
         symbol: String,
         config: IntervalConfig,
     ) {
-        let interval = Duration::from_secs(config.interval_secs as u64);
+        let interval = Duration::from_secs(config.interval_secs);
         info!("Starting funding rate pull: {} every {:?}", symbol, interval);
 
         loop {
@@ -345,7 +345,7 @@ impl DataPuller {
         symbol: String,
         config: IntervalConfig,
     ) {
-        let interval = Duration::from_secs(config.interval_secs as u64);
+        let interval = Duration::from_secs(config.interval_secs);
         info!("Starting mark price pull: {} every {:?}", symbol, interval);
 
         loop {
@@ -386,7 +386,7 @@ impl DataPuller {
         repo: Arc<MarketDataRepository>,
         config: IntervalConfig,
     ) {
-        let interval = Duration::from_secs(config.interval_secs as u64);
+        let interval = Duration::from_secs(config.interval_secs);
         info!("Starting account balance pull every {:?}", interval);
 
         loop {
@@ -429,7 +429,7 @@ impl DataPuller {
         repo: Arc<MarketDataRepository>,
         config: IntervalConfig,
     ) {
-        let interval = Duration::from_secs(config.interval_secs as u64);
+        let interval = Duration::from_secs(config.interval_secs);
         info!("Starting position pull every {:?}", interval);
 
         loop {

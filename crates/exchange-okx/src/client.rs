@@ -72,7 +72,7 @@ impl Client {
                 "0"
             },
         );
-        let api = OkxClient::new(credentials).map_err(|e| Error::OKX(e))?;
+        let api = OkxClient::new(credentials).map_err(Error::OKX)?;
 
         let account_api = OkxAccount::new(api.clone());
         let market_api = OkxMarket::new(api.clone());
@@ -105,7 +105,7 @@ impl ClientInterface for Client {
             .account_api
             .get_balance(ccy)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         // Convert to our internal type
         let mut okx_balances: Vec<OkxBalance> = Vec::new();
@@ -130,7 +130,7 @@ impl ClientInterface for Client {
             .account_api
             .get_positions(None, inst_id, None)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         // Convert to our internal type
         let okx_positions: Vec<OkxPosition> = positions
@@ -192,7 +192,7 @@ impl ClientInterface for Client {
             .trade_api
             .place_order(order_req)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         if let Some(order) = orders.first() {
             Ok(OkxOrder {
@@ -218,7 +218,7 @@ impl ClientInterface for Client {
         self.trade_api
             .cancel_order(inst_id, Some(ord_id), None)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
         Ok(())
     }
 
@@ -234,7 +234,7 @@ impl ClientInterface for Client {
             .market_api
             .get_candles(inst_id, bar, None, None, limit_str.as_deref())
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         // Convert to our internal type
         let okx_candles: Vec<OkxCandle> = candles
@@ -259,7 +259,7 @@ impl ClientInterface for Client {
             .market_api
             .get_instruments(inst_type, None, None)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
         serde_json::to_value(instruments).map_err(|e| Error::Internal(e.to_string()))
     }
 
@@ -269,7 +269,7 @@ impl ClientInterface for Client {
             .market_api
             .get_ticker(inst_id)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         data.into_iter()
             .next()
@@ -298,7 +298,7 @@ impl ClientInterface for Client {
             .api
             .send_request::<Vec<OkxFundingRate>>(Method::GET, &path, "")
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         data.into_iter()
             .next()
@@ -312,7 +312,7 @@ impl ClientInterface for Client {
             .api
             .send_request::<Vec<OkxMarkPrice>>(Method::GET, &path, "")
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         data.into_iter()
             .next()
@@ -326,7 +326,7 @@ impl ClientInterface for Client {
             .api
             .send_request::<Vec<OkxIndexPrice>>(Method::GET, &path, "")
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         data.into_iter()
             .next()
@@ -340,7 +340,7 @@ impl ClientInterface for Client {
             .api
             .send_request::<Vec<OkxOpenInterest>>(Method::GET, &path, "")
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         data.into_iter()
             .next()
@@ -356,7 +356,7 @@ impl ClientInterface for Client {
         self.api
             .send_request::<Vec<OkxTrade>>(Method::GET, &path, "")
             .await
-            .map_err(|e| Error::OKX(e))
+            .map_err(Error::OKX)
     }
 
     /// 获取订单薄
@@ -365,7 +365,7 @@ impl ClientInterface for Client {
             .market_api
             .get_books(inst_id, sz)
             .await
-            .map_err(|e| Error::OKX(e))?;
+            .map_err(Error::OKX)?;
 
         Ok(OkxOrderBook {
             asks: depth.asks,

@@ -11,7 +11,9 @@ pub use task::SchedulerTaskHandle;
 
 use quant_common::config::SchedulerConfig;
 use quant_common::types::SchedulerTaskInfo;
+use quant_common::MarketDataProvider;
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, instrument, warn};
@@ -31,6 +33,8 @@ pub struct StrategyScheduler {
     config: SchedulerConfig,
     /// 信号流水线执行器
     pipeline: Option<Arc<PipelineExecutor>>,
+    /// 市场数据提供者
+    market_data_provider: Option<Arc<dyn MarketDataProvider>>, 
 }
 
 impl StrategyScheduler {
@@ -44,12 +48,18 @@ impl StrategyScheduler {
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
             config,
             pipeline: None,
+            market_data_provider: None,
         }
     }
 
     /// 设置信号流水线执行器
     pub fn set_pipeline(&mut self, pipeline: Arc<PipelineExecutor>) {
         self.pipeline = Some(pipeline);
+    }
+
+    /// 设置市场数据提供者
+    pub fn set_market_data_provider(&mut self, provider: Arc<dyn MarketDataProvider>) {
+        self.market_data_provider = Some(provider);
     }
 
     /// 获取调度配置
@@ -69,6 +79,7 @@ impl StrategyScheduler {
     pub async fn start_strategy(
         &self,
         strategy_id: String,
+        strategy_name: String,
         strategy: Box<dyn Strategy>,
         interval_secs: u64,
     ) -> Result<(), SchedulerError> {
@@ -86,6 +97,16 @@ impl StrategyScheduler {
         let tasks = Arc::clone(&self.tasks);
         let cbs = Arc::clone(&self.circuit_breakers);
         let pipeline = self.pipeline.clone();
+        let market_data_provider = self.market_data_provider.clone();
+
+        // Shared metadata updated by the task loop.
+        let meta = Arc::new(std::sync::Mutex::new(task::SchedulerTaskMeta {
+            strategy_name: strategy_name.clone(),
+            interval_secs,
+            last_run_at: None,
+            error_count: 0,
+        }));
+        let error_counter = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
         // 初始化熔断器
         {
@@ -101,6 +122,8 @@ impl StrategyScheduler {
 
         let task_sid = sid.clone();
         let interval = tokio::time::Duration::from_secs(interval_secs);
+        let task_meta = Arc::clone(&meta);
+        let task_error_counter = Arc::clone(&error_counter);
 
         let handle: tokio::task::JoinHandle<()> = tokio::spawn(async move {
             info!(strategy_id = %task_sid, interval_secs, "Scheduler task started");
@@ -121,7 +144,7 @@ impl StrategyScheduler {
                         let is_tripped = {
                             let cbs = cbs.read().await;
                             cbs.get(&task_sid)
-                                .map_or(false, |cb| cb.is_tripped())
+                                .is_some_and(|cb| cb.is_tripped())
                         };
 
                         if is_tripped {
@@ -132,11 +155,31 @@ impl StrategyScheduler {
                         // 执行信号生成
                         info!(strategy_id = %task_sid, "Executing scheduled signal generation");
 
-                        // 构造简单上下文（实际使用时会传入实时数据）
+                        // 构造上下文，获取真实市场数据
+                        let mut market_data = Vec::new();
+                        if let Some(ref provider) = market_data_provider {
+                            // 获取当前策略的符号（从策略参数中获取）
+                            // 注意：这里需要从策略中获取符号信息，暂时使用空实现
+                            // TODO: 从策略中获取 symbols
+                            let symbols: Vec<String> = vec![];
+                            for symbol in symbols {
+                                match provider.get_historical_data(
+                                    &symbol,
+                                    chrono::Utc::now() - chrono::Duration::hours(24),
+                                    chrono::Utc::now(),
+                                ).await {
+                                    Ok(data) => market_data.extend(data),
+                                    Err(e) => {
+                                        warn!(strategy_id = %task_sid, symbol = %symbol, error = %e, "Failed to fetch market data");
+                                    }
+                                }
+                            }
+                        }
+
                         let context = crate::strategy::StrategyContext {
                             current_time: chrono::Utc::now(),
                             positions: Vec::new(),
-                            market_data: Vec::new(),
+                            market_data,
                         };
 
                         match strategy.generate_signals(&context).await {
@@ -167,6 +210,14 @@ impl StrategyScheduler {
                                         cb.reset();
                                     }
                                 }
+
+                                // Update shared metadata on success.
+                                {
+                                    let mut m = task_meta.lock().unwrap();
+                                    m.last_run_at = Some(chrono::Utc::now());
+                                    m.error_count = 0;
+                                }
+                                task_error_counter.store(0, Ordering::Release);
                             }
                             Err(e) => {
                                 error!(
@@ -179,8 +230,15 @@ impl StrategyScheduler {
                                 let should_pause = {
                                     let mut cbs = cbs.write().await;
                                     cbs.get_mut(&task_sid)
-                                        .map_or(false, |cb| cb.record_error())
+                                        .is_some_and(|cb| cb.record_error())
                                 };
+
+                                // Update error count in shared metadata.
+                                let err_count = task_error_counter.fetch_add(1, Ordering::AcqRel) + 1;
+                                {
+                                    let mut m = task_meta.lock().unwrap();
+                                    m.error_count = err_count;
+                                }
 
                                 if should_pause {
                                     error!(
@@ -212,9 +270,11 @@ impl StrategyScheduler {
             let mut tasks = self.tasks.write().await;
             tasks.insert(
                 sid,
-                SchedulerTaskHandle {
-                    join_handle: Some(handle),
-                },
+                SchedulerTaskHandle::new(
+                    strategy_name,
+                    interval_secs,
+                    handle,
+                ),
             );
         }
 
@@ -262,16 +322,18 @@ impl StrategyScheduler {
     #[must_use]
     pub async fn list_running(&self) -> Vec<SchedulerTaskInfo> {
         let tasks = self.tasks.read().await;
-        // 返回简单信息（实际完整信息需要从外部传入）
         tasks
-            .keys()
-            .map(|id| SchedulerTaskInfo {
-                strategy_id: id.clone(),
-                strategy_name: String::new(),
-                status: quant_common::types::StrategyStatus::Running,
-                interval_secs: self.config.default_interval_secs,
-                last_run_at: None,
-                error_count: 0,
+            .iter()
+            .map(|(id, handle)| {
+                let m = handle.meta.lock().unwrap();
+                SchedulerTaskInfo {
+                    strategy_id: id.clone(),
+                    strategy_name: m.strategy_name.clone(),
+                    status: quant_common::types::StrategyStatus::Running,
+                    interval_secs: m.interval_secs,
+                    last_run_at: m.last_run_at,
+                    error_count: handle.error_counter.load(std::sync::atomic::Ordering::Acquire),
+                }
             })
             .collect()
     }
@@ -336,6 +398,10 @@ mod tests {
             max_daily_loss: rust_decimal::Decimal::new(5000, 0),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
         };
         // 忽略 initialize 错误
         let _ = s.initialize(params);
@@ -353,7 +419,7 @@ mod tests {
     async fn test_start_and_stop_strategy() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("test_001".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy("test_001".to_string(), "Test Strategy".to_string(), make_dummy_strategy(), 3600)
             .await
             .unwrap();
         assert_eq!(scheduler.running_count().await, 1);
@@ -366,12 +432,12 @@ mod tests {
     async fn test_start_twice_returns_error() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("dup".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy("dup".to_string(), "Dup Strategy".to_string(), make_dummy_strategy(), 3600)
             .await
             .unwrap();
 
         let result = scheduler
-            .start_strategy("dup".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy("dup".to_string(), "Dup Strategy".to_string(), make_dummy_strategy(), 3600)
             .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), SchedulerError::AlreadyRunning(_)));
@@ -389,11 +455,11 @@ mod tests {
     async fn test_shutdown_all() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("s1".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy("s1".to_string(), "Strategy 1".to_string(), make_dummy_strategy(), 3600)
             .await
             .unwrap();
         scheduler
-            .start_strategy("s2".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy("s2".to_string(), "Strategy 2".to_string(), make_dummy_strategy(), 3600)
             .await
             .unwrap();
         assert_eq!(scheduler.running_count().await, 2);
@@ -406,7 +472,7 @@ mod tests {
     async fn test_circuit_breaker_initialized() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("cb_test".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy("cb_test".to_string(), "CB Test".to_string(), make_dummy_strategy(), 3600)
             .await
             .unwrap();
 

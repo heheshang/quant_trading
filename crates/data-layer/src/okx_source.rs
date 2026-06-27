@@ -118,3 +118,17 @@ impl DataSource for OkxDataSource {
         Ok(())
     }
 }
+
+#[async_trait::async_trait]
+impl quant_common::MarketDataProvider for OkxDataSource {
+    async fn get_historical_data(
+        &self,
+        symbol: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> std::result::Result<Vec<MarketData>, String> {
+        <Self as DataSource>::get_historical_data(self, symbol, start, end)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}

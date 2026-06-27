@@ -1,9 +1,12 @@
 pub mod config;
 pub mod error;
+pub mod market_data_provider;
 pub mod types;
 pub mod utils;
 
 pub use error::{Error, Result};
+
+pub use market_data_provider::MarketDataProvider;
 
 pub use types::{
     allowed_transitions, LogEntry, ParamRange, ParamType, ParameterSchema, PipelineStepDef,
