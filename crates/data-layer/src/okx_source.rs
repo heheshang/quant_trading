@@ -1,6 +1,6 @@
 use crate::market_data::DataSource;
 use chrono::{DateTime, Utc};
-use exchange_okx::Client as OkxClient;
+use exchange_okx::{Client as OkxClient, ClientInterface};
 use quant_common::types::MarketData;
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;

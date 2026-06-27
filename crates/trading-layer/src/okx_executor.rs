@@ -1,5 +1,5 @@
 use exchange_okx::types::OkxPlaceOrderRequest;
-use exchange_okx::Client as OkxClient;
+use exchange_okx::{Client as OkxClient, ClientInterface};
 use quant_common::types::{Order, OrderSide, OrderStatus, OrderType};
 use quant_common::{Error, Result};
 use rust_decimal::prelude::ToPrimitive;

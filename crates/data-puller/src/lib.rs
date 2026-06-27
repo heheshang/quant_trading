@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use exchange_okx::Client as OkxClient;
+use exchange_okx::ClientInterface;
 use data_layer::market_data_repo::{
     MarketDataRepository, NewAccountSnapshot, NewFundingRate, NewMarkPrice,
     NewMarketDataRecord, NewPositionSnapshot, NewTickerSnapshot,
@@ -56,14 +56,14 @@ where
 /// Background task that periodically pulls market data from OKX and persists it.
 pub struct DataPuller {
     config: DataPullerConfig,
-    client: Arc<RwLock<OkxClient>>,
+    client: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
     repo: Arc<MarketDataRepository>,
 }
 
 impl DataPuller {
     pub fn new(
         config: DataPullerConfig,
-        client: Arc<RwLock<OkxClient>>,
+        client: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
     ) -> Self {
         Self {
@@ -184,7 +184,7 @@ impl DataPuller {
 
     /// Periodic candle pull loop for one symbol + bar combination.
     async fn run_candle_pull(
-        client_lock: Arc<RwLock<OkxClient>>,
+        client_lock: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
         symbol: String,
         bar: String,
@@ -242,7 +242,7 @@ impl DataPuller {
 
     /// Periodic ticker pull loop for one symbol.
     async fn run_ticker_pull(
-        client_lock: Arc<RwLock<OkxClient>>,
+        client_lock: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
         symbol: String,
         config: TickerPullConfig,
@@ -297,7 +297,7 @@ impl DataPuller {
 
     /// Periodic funding rate pull loop for one swap symbol.
     async fn run_funding_rate_pull(
-        client_lock: Arc<RwLock<OkxClient>>,
+        client_lock: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
         symbol: String,
         config: IntervalConfig,
@@ -340,7 +340,7 @@ impl DataPuller {
 
     /// Periodic mark price pull loop for one symbol.
     async fn run_mark_price_pull(
-        client_lock: Arc<RwLock<OkxClient>>,
+        client_lock: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
         symbol: String,
         config: IntervalConfig,
@@ -382,7 +382,7 @@ impl DataPuller {
 
     /// Periodic account balance snapshot pull.
     async fn run_account_pull(
-        client_lock: Arc<RwLock<OkxClient>>,
+        client_lock: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
         config: IntervalConfig,
     ) {
@@ -425,7 +425,7 @@ impl DataPuller {
 
     /// Periodic position snapshot pull.
     async fn run_position_pull(
-        client_lock: Arc<RwLock<OkxClient>>,
+        client_lock: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
         repo: Arc<MarketDataRepository>,
         config: IntervalConfig,
     ) {
