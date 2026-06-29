@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use quant_common::types::{ParameterSchema, StrategyParams};
 use quant_common::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::strategy::{MeanReversionStrategy, Strategy};
@@ -25,7 +26,7 @@ pub trait StrategyFactory: Send + Sync {
 // ─── StrategyTypeInfo ─────────────────────────────────────────────────────
 
 /// 已注册策略类型的元数据
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrategyTypeInfo {
     /// 策略类型标识（如 "MeanReversion"）
     pub type_name: String,
@@ -296,6 +297,8 @@ mod tests {
             description: None,
             tags: vec![],
             symbols: vec![],
+            instance_label: None,
+            user_id: 0,
         };
 
         let strategy = registry.create("MeanReversion", params).await;
@@ -317,9 +320,11 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             status: quant_common::types::StrategyStatus::Draft,
+            instance_label: None,
             description: None,
             tags: vec![],
             symbols: vec![],
+            user_id: 0,
         };
         let result = registry.create("NonExistent", params).await;
         assert!(result.is_err());

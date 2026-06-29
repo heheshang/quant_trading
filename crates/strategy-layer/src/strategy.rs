@@ -109,6 +109,8 @@ impl MeanReversionStrategy {
                 description: None,
                 tags: vec![],
                 symbols: vec![],
+                instance_label: None,
+                user_id: 0,
             },
             lookback_period: 20,
             entry_threshold: DEFAULT_ENTRY_THRESHOLD,
@@ -431,6 +433,8 @@ mod tests {
             description: None,
             tags: vec![],
             symbols: vec![],
+            instance_label: None,
+            user_id: 0,
         };
         strategy.initialize(params).await.unwrap();
 
@@ -470,6 +474,8 @@ mod tests {
             description: None,
             tags: vec![],
             symbols: vec![],
+            instance_label: None,
+            user_id: 0,
         };
         strategy.initialize(params).await.unwrap();
 

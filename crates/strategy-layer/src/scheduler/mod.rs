@@ -402,6 +402,8 @@ mod tests {
             description: None,
             tags: vec![],
             symbols: vec![],
+            instance_label: None,
+            user_id: 0,
         };
         // 忽略 initialize 错误
         let _ = s.initialize(params);
