@@ -188,3 +188,22 @@ impl From<quant_domain::types::StrategyError> for ServiceError {
         }
     }
 }
+
+impl From<strategy_engine::registry::FactoryError> for ServiceError {
+    /// Map factory/registry errors to typed service errors.
+    ///
+    /// Preserves the three-way split (`UnknownType` / `InvalidParameters` /
+    /// `Initialize`) so service callers can `match` on the specific failure
+    /// mode instead of degrading everything to a string.
+    fn from(err: strategy_engine::registry::FactoryError) -> Self {
+        use strategy_engine::registry::FactoryError as F;
+        match err {
+            F::UnknownType(name) => Self::NotFound(format!("Unknown strategy type '{name}'")),
+            F::InvalidParameters(msg) => Self::Validation {
+                field: "strategy_params".to_string(),
+                reason: msg,
+            },
+            F::Initialize(msg) => Self::Strategy(format!("factory initialize failed: {msg}")),
+        }
+    }
+}

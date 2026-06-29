@@ -35,8 +35,24 @@ pub trait Strategy: Send + Sync {
     /// 策略参数
     fn params(&self) -> &StrategyParams;
 
-    /// 更新策略参数
-    async fn update_params(&mut self, params: StrategyParams) -> Result<()>;
+    /// 策略参数的可变访问器。`update_params` 的默认实现依赖此方法。
+    fn params_mut(&mut self) -> &mut StrategyParams;
+
+    /// 更新策略参数（仅元数据，不重置运行时状态）
+    ///
+    /// 默认实现只替换 `self.params`，不会重新解析已派生的运行时阈值。
+    /// 若策略需要更复杂的热更新语义，可重写此方法。
+    async fn update_params(&mut self, params: StrategyParams) -> Result<()> {
+        *self.params_mut() = params;
+        Ok(())
+    }
+
+    /// 显式重新初始化：完整重置策略状态并应用新参数。
+    ///
+    /// 默认实现直接转发给 `initialize`，调用方需自行承担重置带来的状态丢失。
+    async fn reinitialize(&mut self, params: StrategyParams) -> Result<()> {
+        self.initialize(params).await
+    }
 
     // ── 生命周期钩子（默认空实现） ─────────────────────────────────────
 
@@ -268,10 +284,8 @@ impl Strategy for MeanReversionStrategy {
         &self.params
     }
 
-    #[instrument(skip(self), fields(strategy_id = %params.strategy_id))]
-    async fn update_params(&mut self, params: StrategyParams) -> Result<()> {
-        info!(strategy_id = %params.strategy_id, "Updating strategy params");
-        self.initialize(params).await
+    fn params_mut(&mut self) -> &mut StrategyParams {
+        &mut self.params
     }
 
     fn parameter_schema(&self) -> Vec<ParameterSchema> {
@@ -492,5 +506,134 @@ mod tests {
             orders.iter().any(|o| o.side == OrderSide::Sell),
             "Expected Sell signal: price surged from 100 to 199 after stable period"
         );
+    }
+
+    /// P0-1: `update_params` must NOT reset runtime state.
+    /// It should only update `self.params` (metadata) so hot-parameter updates
+    /// do not wipe parsed numeric thresholds or other state.
+    #[tokio::test]
+    async fn test_update_params_preserves_runtime_state() {
+        let mut strategy = MeanReversionStrategy::new();
+        let initial_params = StrategyParams {
+            strategy_id: "orig-001".to_string(),
+            strategy_name: "Original".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({
+                "lookback_period": 10,
+                "entry_threshold": 1.5,
+                "exit_threshold": 0.3,
+            }),
+            enabled: true,
+            max_position: Decimal::from(100000),
+            max_daily_loss: Decimal::from(5000),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            instance_label: None,
+            user_id: 0,
+        };
+        strategy.initialize(initial_params).await.unwrap();
+
+        assert_eq!(strategy.lookback_period, 10);
+        assert!((strategy.entry_threshold - 1.5).abs() < f64::EPSILON);
+
+        let new_params = StrategyParams {
+            strategy_id: "orig-001".to_string(),
+            strategy_name: "Original".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({
+                "lookback_period": 50,
+                "entry_threshold": 4.0,
+                "exit_threshold": 1.0,
+            }),
+            enabled: true,
+            max_position: Decimal::from(100000),
+            max_daily_loss: Decimal::from(5000),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            instance_label: None,
+            user_id: 0,
+        };
+        strategy.update_params(new_params.clone()).await.unwrap();
+
+        assert_eq!(strategy.params().strategy_id, "orig-001");
+        assert_eq!(strategy.params().params, new_params.params);
+
+        assert_eq!(
+            strategy.lookback_period, 10,
+            "update_params must not reset parsed lookback_period"
+        );
+        assert!(
+            (strategy.entry_threshold - 1.5).abs() < f64::EPSILON,
+            "update_params must not reset parsed entry_threshold"
+        );
+        assert!(
+            (strategy.exit_threshold - 0.3).abs() < f64::EPSILON,
+            "update_params must not reset parsed exit_threshold"
+        );
+    }
+
+    /// P0-1: `reinitialize` is the explicit full-reset path. It should re-parse
+    /// all numeric thresholds from the new params, exactly like `initialize`.
+    #[tokio::test]
+    async fn test_reinitialize_resets_state_with_new_params() {
+        let mut strategy = MeanReversionStrategy::new();
+        let initial_params = StrategyParams {
+            strategy_id: "orig-002".to_string(),
+            strategy_name: "Original".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({
+                "lookback_period": 10,
+                "entry_threshold": 1.5,
+                "exit_threshold": 0.3,
+            }),
+            enabled: true,
+            max_position: Decimal::from(100000),
+            max_daily_loss: Decimal::from(5000),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            instance_label: None,
+            user_id: 0,
+        };
+        strategy.initialize(initial_params).await.unwrap();
+        assert_eq!(strategy.lookback_period, 10);
+
+        let new_params = StrategyParams {
+            strategy_id: "orig-002".to_string(),
+            strategy_name: "Original".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({
+                "lookback_period": 50,
+                "entry_threshold": 4.0,
+                "exit_threshold": 1.0,
+            }),
+            enabled: true,
+            max_position: Decimal::from(100000),
+            max_daily_loss: Decimal::from(5000),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            instance_label: None,
+            user_id: 0,
+        };
+        strategy.reinitialize(new_params).await.unwrap();
+
+        assert_eq!(strategy.lookback_period, 50, "reinitialize must re-parse lookback_period");
+        assert!((strategy.entry_threshold - 4.0).abs() < f64::EPSILON);
+        assert!((strategy.exit_threshold - 1.0).abs() < f64::EPSILON);
     }
 }

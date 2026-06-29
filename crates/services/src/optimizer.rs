@@ -35,6 +35,17 @@ impl ParamOptimizer {
         Self { registry, config }
     }
 
+    /// 将注册中心使用的 `&str` 策略类型名解析为 `StrategyType` 枚举。
+    ///
+    /// 注册中心使用 `format!("{:?}", strategy_type)` 作为 key（即 Rust 变体名），
+    /// 所以这里通过 `serde_json` 反序列化来完成与 `Debug` 输出一致的解析，
+    /// 避免维护两套字符串映射。
+    fn parse_strategy_type(s: &str) -> ServiceResult<quant_common::types::StrategyType> {
+        serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| {
+            ServiceError::InvalidParameter(format!("Unknown strategy type '{s}': {e}"))
+        })
+    }
+
     /// 执行网格搜索参数优化
     ///
     /// 对指定策略类型生成所有参数组合，并为每个组合运行回测，
@@ -65,12 +76,13 @@ impl ParamOptimizer {
         }
 
         // 为每个参数组合创建策略实例
+        let parsed_type = Self::parse_strategy_type(strategy_type)?;
         let mut strategies = Vec::new();
         for (i, params) in param_grid.iter().enumerate() {
             let sp = StrategyParams {
                 strategy_id: format!("opt-{}-{}", strategy_type, i),
                 strategy_name: format!("{}-opt-{}", strategy_type, i),
-                strategy_type: quant_common::types::StrategyType::MeanReversion,
+                strategy_type: parsed_type.clone(),
                 params: params.clone(),
                 enabled: true,
                 max_position: initial_capital,
@@ -85,16 +97,14 @@ impl ParamOptimizer {
                 user_id: 0,
             };
 
-            let mut strategy = self
-                .registry
-                .create(strategy_type, sp.clone())
-                .await
-                .map_err(|e| ServiceError::Other(format!("Failed to create strategy: {}", e)))?;
+            let strategy = match self.registry.create(strategy_type, sp.clone()).await {
+                Ok(s) => s,
+                Err(e) => {
+                    error!(combo = %i, error = %e, "Failed to create strategy");
+                    continue;
+                }
+            };
 
-            if let Err(e) = strategy.initialize(sp).await {
-                error!(combo = %i, error = %e, "Failed to initialize strategy");
-                continue;
-            }
             strategies.push((strategy, format!("combo-{}", i)));
         }
 
@@ -230,5 +240,88 @@ mod tests {
         let opt_result = result.unwrap();
         assert_eq!(opt_result.total_combinations, 2);
         assert!(opt_result.best.is_some());
+    }
+
+    /// P0-3: optimizer must dispatch by the `strategy_type: &str` parameter
+    /// rather than hardcoding `StrategyType::MeanReversion`. Register a mock
+    /// `TrendFollowing` factory and verify the optimizer routes through it.
+    #[tokio::test]
+    async fn test_optimizer_dispatches_by_dynamic_strategy_type() {
+        use strategy_engine::registry::{FactoryError, MeanReversionFactory, StrategyFactory};
+        use strategy_engine::strategy::{MeanReversionStrategy, Strategy};
+
+        struct TrendFollowingMockFactory;
+
+        #[async_trait::async_trait]
+        impl StrategyFactory for TrendFollowingMockFactory {
+            async fn create(
+                &self,
+                _params: quant_common::types::StrategyParams,
+            ) -> Result<Box<dyn Strategy>, FactoryError> {
+                let s = MeanReversionStrategy::new();
+                Ok(Box::new(s))
+            }
+
+            fn parameter_schema(&self) -> Vec<quant_common::types::ParameterSchema> {
+                Vec::new()
+            }
+        }
+
+        let mut registry = strategy_engine::registry::StrategyRegistry::new();
+        registry.register(
+            "TrendFollowing",
+            Box::new(TrendFollowingMockFactory),
+            "趋势跟随",
+            "mock trend-following factory",
+        );
+        registry.register(
+            "MeanReversion",
+            Box::new(MeanReversionFactory),
+            "均值回归",
+            "mr",
+        );
+
+        let config = ParamOptimizerConfig {
+            enabled: true,
+            max_iterations: 10,
+            timeout_secs: 60,
+            parallel_jobs: 4,
+        };
+        let optimizer = ParamOptimizer::new(Arc::new(registry), config);
+
+        let grid = vec![serde_json::json!({"fast": 10, "slow": 30})];
+        let result = optimizer
+            .optimize(
+                "TrendFollowing",
+                grid,
+                sample_market_data(),
+                rust_decimal::Decimal::new(10000, 0),
+                rust_decimal::Decimal::ZERO,
+                rust_decimal::Decimal::ZERO,
+            )
+            .await;
+        if let Err(ref e) = result {
+            eprintln!("Optimizer error: {:?}", e);
+        }
+        assert!(
+            result.is_ok(),
+            "optimizer must dispatch to TrendFollowing factory, got: {:?}",
+            result.err()
+        );
+        let opt_result = result.unwrap();
+        assert_eq!(opt_result.total_combinations, 1);
+        assert!(opt_result.best.is_some());
+
+        let result_mr = optimizer
+            .optimize(
+                "MeanReversion",
+                vec![serde_json::json!({"lookback_period": 10})],
+                sample_market_data(),
+                rust_decimal::Decimal::new(10000, 0),
+                rust_decimal::Decimal::ZERO,
+                rust_decimal::Decimal::ZERO,
+            )
+            .await;
+        assert!(result_mr.is_ok());
     }
 }
