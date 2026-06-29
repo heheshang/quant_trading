@@ -2,7 +2,6 @@
 //!
 //! 趋势强度指标。与 `atr` 共享底层辅助函数（Wilder EMA、真实波幅、OHLC 校验）。
 
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use tracing::instrument;
 

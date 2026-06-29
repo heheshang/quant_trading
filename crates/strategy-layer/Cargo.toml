@@ -9,6 +9,7 @@ license.workspace = true
 quant-common = { path = "../common" }
 
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }

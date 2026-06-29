@@ -31,6 +31,7 @@ struct StrategyRow {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     pub user_id: Option<i64>,
+    pub version: i64,
 }
 
 impl StrategyRow {
@@ -66,6 +67,7 @@ impl StrategyRow {
             created_at: self.created_at,
             updated_at: self.updated_at,
             user_id: self.user_id.unwrap_or(0),
+            version: self.version,
         })
     }
 }
@@ -88,6 +90,7 @@ pub struct StrategySummaryRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub user_id: Option<i64>,
+    pub version: i64,
 }
 
 impl StrategySummaryRow {
@@ -117,6 +120,7 @@ impl StrategySummaryRow {
             created_at: self.created_at,
             updated_at: self.updated_at,
             user_id: self.user_id.unwrap_or(0),
+            version: self.version,
         })
     }
 }
@@ -152,6 +156,17 @@ pub trait StrategyRepository: Send + Sync + 'static {
 
     /// Update an existing strategy (identified by `strategy_id`). Returns `true` if updated.
     async fn update(&self, params: &StrategyParams) -> Result<bool, RepoError>;
+
+    /// Atomically update a strategy only if its current version matches `expected_version`.
+    ///
+    /// Returns `Ok(true)` when exactly one row was updated (version matched).
+    /// Returns `Ok(false)` when the precondition did not hold (zero rows affected — a conflict).
+    async fn update_with_version(
+        &self,
+        strategy_id: &str,
+        params: &StrategyParams,
+        expected_version: i64,
+    ) -> Result<bool, RepoError>;
 
     /// Delete a strategy by `strategy_id`. Returns `true` if deleted.
     async fn delete_by_id(&self, strategy_id: &str) -> Result<bool, RepoError>;
@@ -237,7 +252,7 @@ impl StrategyRepository for PgStrategyRepository {
         let mut query = sqlx::QueryBuilder::new(
             "SELECT id, strategy_id, strategy_name, strategy_type, params, enabled, status, \
               max_position, max_daily_loss, description, tags, symbols, instance_label, created_at, updated_at, \
-              user_id FROM strategies WHERE 1=1"
+              user_id, version FROM strategies WHERE 1=1"
         );
 
         if let Some(ref pattern) = search_pattern {
@@ -340,7 +355,7 @@ impl StrategyRepository for PgStrategyRepository {
                    status, description, tags, symbols,
                    instance_label,
                    created_at, updated_at,
-                   user_id
+                   user_id, version
             FROM strategies
             WHERE strategy_id = $1
             "#,
@@ -373,14 +388,14 @@ impl StrategyRepository for PgStrategyRepository {
                 max_position, max_daily_loss,
                 status, description, tags, symbols,
                 instance_label,
-                created_at, updated_at
+                created_at, updated_at, version
             ) VALUES (
                 $1, $2, $3,
                 $4, $5,
                 $6, $7,
                 $8, $9, $10, $11,
                 $12,
-                $13, $14
+                $13, $14, $15
             )
             RETURNING id
             "#,
@@ -399,6 +414,7 @@ impl StrategyRepository for PgStrategyRepository {
         .bind(&params.instance_label)
         .bind(params.created_at)
         .bind(params.updated_at)
+        .bind(params.version)
         .fetch_one(&*self.pool)
         .await
         .map_err(|e| {
@@ -432,7 +448,8 @@ impl StrategyRepository for PgStrategyRepository {
                 tags = $9,
                 symbols = $10,
                 instance_label = $11,
-                updated_at = $12
+                updated_at = $12,
+                version = version + 1
             WHERE strategy_id = $13
             "#,
         )
@@ -453,6 +470,63 @@ impl StrategyRepository for PgStrategyRepository {
         .await
         .map_err(|e| {
             error!("Failed to update strategy {}: {}", params.strategy_id, e);
+            RepoError::from(e)
+        })?;
+
+        Ok(affected.rows_affected() > 0)
+    }
+
+    #[instrument(skip(self, params), fields(strategy_id = %strategy_id, expected_version))]
+    async fn update_with_version(
+        &self,
+        strategy_id: &str,
+        params: &StrategyParams,
+        expected_version: i64,
+    ) -> Result<bool, RepoError> {
+        let status_str = format!("{:?}", params.status);
+        let strategy_type_str = format!("{:?}", params.strategy_type);
+        let tags_json = serde_json::to_value(&params.tags)
+            .map_err(|e| RepoError::Database(format!("serialize tags: {}", e)))?;
+        let symbols_json = serde_json::to_value(&params.symbols)
+            .map_err(|e| RepoError::Database(format!("serialize symbols: {}", e)))?;
+
+        let affected = sqlx::query(
+            r#"
+            UPDATE strategies SET
+                strategy_name = $1,
+                strategy_type = $2,
+                params = $3,
+                enabled = $4,
+                max_position = $5,
+                max_daily_loss = $6,
+                status = $7,
+                description = $8,
+                tags = $9,
+                symbols = $10,
+                instance_label = $11,
+                updated_at = $12,
+                version = version + 1
+            WHERE strategy_id = $13 AND version = $14
+            "#,
+        )
+        .bind(&params.strategy_name)
+        .bind(&strategy_type_str)
+        .bind(&params.params)
+        .bind(params.enabled)
+        .bind(params.max_position)
+        .bind(params.max_daily_loss)
+        .bind(&status_str)
+        .bind(&params.description)
+        .bind(&tags_json)
+        .bind(&symbols_json)
+        .bind(&params.instance_label)
+        .bind(params.updated_at)
+        .bind(strategy_id)
+        .bind(expected_version)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to update strategy {} with version check: {}", strategy_id, e);
             RepoError::from(e)
         })?;
 

@@ -127,6 +127,7 @@ impl MeanReversionStrategy {
                 symbols: vec![],
                 instance_label: None,
                 user_id: 0,
+                version: 0,
             },
             lookback_period: 20,
             entry_threshold: DEFAULT_ENTRY_THRESHOLD,
@@ -449,6 +450,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
         strategy.initialize(params).await.unwrap();
 
@@ -490,6 +492,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
         strategy.initialize(params).await.unwrap();
 
@@ -534,6 +537,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
         strategy.initialize(initial_params).await.unwrap();
 
@@ -560,6 +564,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
         strategy.update_params(new_params.clone()).await.unwrap();
 
@@ -605,6 +610,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
         strategy.initialize(initial_params).await.unwrap();
         assert_eq!(strategy.lookback_period, 10);
@@ -629,6 +635,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
         strategy.reinitialize(new_params).await.unwrap();
 

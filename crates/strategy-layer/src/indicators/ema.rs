@@ -1,6 +1,5 @@
 //! 指数移动平均 (Exponential Moving Average, EMA)
 
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
 

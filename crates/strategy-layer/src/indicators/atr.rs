@@ -3,7 +3,6 @@
 //! 共享给 ADX 模块使用，所以 `validate_ohlc_equal` / `compute_true_range` /
 //! `ema_wilder` 都放在 `mod.rs` 中以避免 `atr.rs` 与 `adx.rs` 互相依赖。
 
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use tracing::instrument;
 

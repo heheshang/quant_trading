@@ -419,6 +419,10 @@ pub struct StrategyParams {
     /// 策略所有者用户 ID (可为空，与策略管理平台的模式保持一致)
     #[serde(default)]
     pub user_id: i64,
+    /// Optimistic lock version. Incremented on each update.
+    /// Used for concurrent-safe modifications in multi-session scenarios.
+    #[serde(default)]
+    pub version: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1268,6 +1272,7 @@ mod tests {
             status: StrategyStatus::Draft,
             description: Some("Test".into()),
             user_id: 0,
+            version: 0,
             tags: vec![],
             symbols: vec![],
             instance_label: None,
