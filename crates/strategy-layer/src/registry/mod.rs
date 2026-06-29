@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::strategy::{MeanReversionStrategy, Strategy};
+use crate::strategy::{MeanReversionStrategy, Strategy, TrendFollowingStrategy};
 
 // ─── FactoryError ─────────────────────────────────────────────────────────
 
@@ -257,6 +257,64 @@ impl StrategyFactory for MeanReversionFactory {
     }
 }
 
+// ─── TrendFollowingFactory ────────────────────────────────────────────────
+
+/// 趋势跟踪策略的工厂实现
+pub struct TrendFollowingFactory;
+
+#[async_trait]
+impl StrategyFactory for TrendFollowingFactory {
+    async fn create(
+        &self,
+        params: StrategyParams,
+    ) -> Result<Box<dyn Strategy>, FactoryError> {
+        let mut strategy = TrendFollowingStrategy::new();
+        strategy
+            .initialize(params)
+            .await
+            .map_err(|e| FactoryError::Initialize(e.to_string()))?;
+        Ok(Box::new(strategy))
+    }
+
+    fn parameter_schema(&self) -> Vec<ParameterSchema> {
+        vec![
+            ParameterSchema {
+                name: "short_period".into(),
+                param_type: quant_common::types::ParamType::Number,
+                default: serde_json::json!(12),
+                range: Some(quant_common::types::ParamRange {
+                    min: 5.0,
+                    max: 50.0,
+                    step: Some(1.0),
+                }),
+                description: "Short EMA period for crossover detection".into(),
+            },
+            ParameterSchema {
+                name: "long_period".into(),
+                param_type: quant_common::types::ParamType::Number,
+                default: serde_json::json!(26),
+                range: Some(quant_common::types::ParamRange {
+                    min: 20.0,
+                    max: 200.0,
+                    step: Some(1.0),
+                }),
+                description: "Long EMA period for crossover detection".into(),
+            },
+            ParameterSchema {
+                name: "signal_period".into(),
+                param_type: quant_common::types::ParamType::Number,
+                default: serde_json::json!(9),
+                range: Some(quant_common::types::ParamRange {
+                    min: 3.0,
+                    max: 30.0,
+                    step: Some(1.0),
+                }),
+                description: "MACD signal line period for trend confirmation".into(),
+            },
+        ]
+    }
+}
+
 // ─── Helper: build default registry ───────────────────────────────────────
 
 /// 创建预注册了内置策略类型的默认注册中心
@@ -268,6 +326,12 @@ pub fn default_registry() -> StrategyRegistry {
         Box::new(MeanReversionFactory),
         "均值回归策略",
         "基于布林带和 RSI 的均值回归策略，在价格偏离均值时反向开仓",
+    );
+    registry.register(
+        "TrendFollowing",
+        Box::new(TrendFollowingFactory),
+        "趋势跟踪策略",
+        "基于 EMA 交叉的趋势跟踪策略，短期 EMA 上穿长期 EMA 时买入，下穿时卖出",
     );
     registry
 }
@@ -424,10 +488,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_default_registry_has_mean_reversion() {
+    async fn test_default_registry_has_builtin_strategies() {
         let registry = default_registry();
-        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.len(), 2);
         assert!(registry.has_type("MeanReversion"));
+        assert!(registry.has_type("TrendFollowing"));
     }
 
     #[tokio::test]
