@@ -1583,6 +1583,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             user_id: 0,
+            version: 0,
         };
         let result = save_strategy(state_guard, strategy).await;
         assert!(result.is_err());

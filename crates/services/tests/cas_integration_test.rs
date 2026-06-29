@@ -31,6 +31,7 @@ impl StrategyRepository for MockStrategyRepo {
     async fn update(&self, _: &StrategyParams) -> Result<bool, RepoError> { stub("not used in CAS test") }
     async fn delete_by_id(&self, _: &str) -> Result<bool, RepoError> { stub("not used in CAS test") }
     async fn update_status(&self, _: &str, _: StrategyStatus, _: Option<&str>) -> Result<bool, RepoError> { stub("not used in CAS test") }
+    async fn update_with_version(&self, _: &str, _: &StrategyParams, _: i64) -> Result<bool, RepoError> { stub("not used in CAS test") }
     async fn update_status_if(&self, id: &str, new: StrategyStatus, expected: StrategyStatus, _: Option<&str>) -> Result<bool, RepoError> {
         let mut s = self.state.lock().await;
         match s.get(id).copied() {
