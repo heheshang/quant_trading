@@ -65,6 +65,12 @@ pub enum ServiceError {
         to: String,
     },
 
+    #[error("Concurrent modification detected for strategy {strategy_id}: expected status {expected:?}")]
+    ConcurrentModification {
+        strategy_id: String,
+        expected: quant_common::types::StrategyStatus,
+    },
+
     #[error("Pagination invalid: {reason}")]
     PaginationInvalid {
         reason: String,

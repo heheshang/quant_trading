@@ -559,32 +559,50 @@ impl StrategyService {
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
+    /// Atomic compare-and-set of strategy status. Returns
+    /// `ServiceError::ConcurrentModification` when the row's current status
+    /// does not match `expected` (i.e. another writer won the race).
+    async fn cas_status(
+        &self,
+        strategy_id: &str,
+        target: StrategyStatus,
+        expected: StrategyStatus,
+    ) -> ServiceResult<()> {
+        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
+        let updated = repo.update_status_if(strategy_id, target, expected, None).await.map_err(|e| {
+            error!("Failed to CAS-persist strategy status: {}", e);
+            ServiceError::Other(e.to_string())
+        })?;
+        if !updated {
+            return Err(ServiceError::ConcurrentModification {
+                strategy_id: strategy_id.to_string(),
+                expected,
+            });
+        }
+        Ok(())
+    }
+
     /// 部署策略（Draft → Deployed）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn deploy_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
             ServiceError::Other(e.to_string())
         })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Deployed;
-        params.transition_to(target).map_err(|_| {
-            ServiceError::InvalidStatusTransition {
-                from: format!("{:?}", params.status),
+        let current_status = params.status;
+        if !current_status.can_transition_to(target) {
+            return Err(ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", current_status),
                 to: format!("{:?}", target),
-            }
-        })?;
+            });
+        }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
         strategy.on_deploy().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
-
-        params.status = target;
-        params.updated_at = chrono::Utc::now();
-        repo.update(&params).await.map_err(|e| {
-            error!("Failed to persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        self.cas_status(strategy_id, target, current_status).await?;
 
         info!(strategy_id = %strategy_id, "Strategy deployed");
         Ok(target)
@@ -594,23 +612,25 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn start_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
             ServiceError::Other(e.to_string())
         })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Running;
-        params.transition_to(target).map_err(|_| {
-            ServiceError::InvalidStatusTransition {
-                from: format!("{:?}", params.status),
+        let current_status = params.status;
+        if !current_status.can_transition_to(target) {
+            return Err(ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", current_status),
                 to: format!("{:?}", target),
-            }
-        })?;
+            });
+        }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
         strategy.on_start().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        self.cas_status(strategy_id, target, current_status).await?;
 
-        // Register with scheduler BEFORE DB update — if scheduler fails, DB stays unchanged
+        // Register with scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             let interval_secs = scheduler.config().default_interval_secs;
             scheduler.start_strategy(
@@ -623,13 +643,6 @@ impl StrategyService {
                 ServiceError::Scheduler(e.to_string())
             })?;
         }
-
-        params.status = target;
-        params.updated_at = chrono::Utc::now();
-        repo.update(&params).await.map_err(|e| {
-            error!("Failed to persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
 
         info!(strategy_id = %strategy_id, "Strategy started");
         Ok(target)
@@ -639,20 +652,25 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn stop_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
             ServiceError::Other(e.to_string())
         })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Archived;
-        params.transition_to(target).map_err(|_| {
-            ServiceError::InvalidStatusTransition {
-                from: format!("{:?}", params.status),
+        let current_status = params.status;
+        if !current_status.can_transition_to(target) {
+            return Err(ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", current_status),
                 to: format!("{:?}", target),
-            }
-        })?;
+            });
+        }
 
-        // Unregister from scheduler first (before status change to avoid race)
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_stop().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        self.cas_status(strategy_id, target, current_status).await?;
+
+        // Unregister from scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             match scheduler.stop_strategy(strategy_id).await {
                 Ok(()) => {},
@@ -662,16 +680,6 @@ impl StrategyService {
             }
         }
 
-        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_stop().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
-
-        params.status = target;
-        params.updated_at = chrono::Utc::now();
-        repo.update(&params).await.map_err(|e| {
-            error!("Failed to persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
-
         info!(strategy_id = %strategy_id, "Strategy stopped");
         Ok(target)
     }
@@ -680,20 +688,25 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn pause_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
             ServiceError::Other(e.to_string())
         })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Paused;
-        params.transition_to(target).map_err(|_| {
-            ServiceError::InvalidStatusTransition {
-                from: format!("{:?}", params.status),
+        let current_status = params.status;
+        if !current_status.can_transition_to(target) {
+            return Err(ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", current_status),
                 to: format!("{:?}", target),
-            }
-        })?;
+            });
+        }
 
-        // Unregister from scheduler
+        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
+        strategy.on_pause().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        self.cas_status(strategy_id, target, current_status).await?;
+
+        // Unregister from scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             match scheduler.stop_strategy(strategy_id).await {
                 Ok(()) => {},
@@ -703,16 +716,6 @@ impl StrategyService {
             }
         }
 
-        let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_pause().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
-
-        params.status = target;
-        params.updated_at = chrono::Utc::now();
-        repo.update(&params).await.map_err(|e| {
-            error!("Failed to persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
-
         info!(strategy_id = %strategy_id, "Strategy paused");
         Ok(target)
     }
@@ -721,23 +724,25 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn resume_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
             ServiceError::Other(e.to_string())
         })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Running;
-        params.transition_to(target).map_err(|_| {
-            ServiceError::InvalidStatusTransition {
-                from: format!("{:?}", params.status),
+        let current_status = params.status;
+        if !current_status.can_transition_to(target) {
+            return Err(ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", current_status),
                 to: format!("{:?}", target),
-            }
-        })?;
+            });
+        }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
         strategy.on_resume().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        self.cas_status(strategy_id, target, current_status).await?;
 
-        // Re-register with scheduler BEFORE DB update
+        // Re-register with scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             let interval_secs = scheduler.config().default_interval_secs;
             scheduler.start_strategy(
@@ -751,13 +756,6 @@ impl StrategyService {
             })?;
         }
 
-        params.status = target;
-        params.updated_at = chrono::Utc::now();
-        repo.update(&params).await.map_err(|e| {
-            error!("Failed to persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
-
         info!(strategy_id = %strategy_id, "Strategy resumed");
         Ok(target)
     }
@@ -766,28 +764,23 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn archive_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let mut params = repo.find_by_id(strategy_id).await.map_err(|e| {
+        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
             error!("Failed to fetch strategy {}: {}", strategy_id, e);
             ServiceError::Other(e.to_string())
         })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Archived;
-        params.transition_to(target).map_err(|_| {
-            ServiceError::InvalidStatusTransition {
-                from: format!("{:?}", params.status),
+        let current_status = params.status;
+        if !current_status.can_transition_to(target) {
+            return Err(ServiceError::InvalidStatusTransition {
+                from: format!("{:?}", current_status),
                 to: format!("{:?}", target),
-            }
-        })?;
+            });
+        }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
         strategy.on_archive().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
-
-        params.status = target;
-        params.updated_at = chrono::Utc::now();
-        repo.update(&params).await.map_err(|e| {
-            error!("Failed to persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        self.cas_status(strategy_id, target, current_status).await?;
 
         info!(strategy_id = %strategy_id, "Strategy archived");
         Ok(target)
@@ -1099,6 +1092,15 @@ mod tests {
                 updated_by: Option<&str>,
             ) -> Result<bool, RepoError>;
 
+            #[mockall::concretize]
+            async fn update_status_if(
+                &self,
+                strategy_id: &str,
+                new_status: StrategyStatus,
+                expected_old_status: StrategyStatus,
+                updated_by: Option<&str>,
+            ) -> Result<bool, RepoError>;
+
             async fn stats(&self) -> Result<StrategyStats, RepoError>;
         }
     }
@@ -1142,7 +1144,7 @@ mod tests {
             symbols: serde_json::json!([]),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
-            user_id: 0,
+            user_id: Some(0),
         }
     }
 
@@ -1166,7 +1168,9 @@ mod tests {
             .expect_find_by_id()
             .withf(|s: &str| s == "test_001")
             .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Backtesting))));
-        mock_repo.expect_update().returning(|_| Ok(true));
+        mock_repo
+            .expect_update_status_if()
+            .returning(|_, _, _, _| Ok(true));
 
         let svc = make_mock_service(mock_repo, false);
         let result = svc.deploy_strategy("test_001").await;
@@ -1185,7 +1189,9 @@ mod tests {
             .expect_find_by_id()
             .withf(|s: &str| s == "test_001")
             .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Deployed))));
-        mock_repo.expect_update().returning(|_| Ok(true));
+        mock_repo
+            .expect_update_status_if()
+            .returning(|_, _, _, _| Ok(true));
 
         let svc = make_mock_service(mock_repo, true);
         let result = svc.start_strategy("test_001").await;
@@ -1204,7 +1210,9 @@ mod tests {
             .expect_find_by_id()
             .withf(|s: &str| s == "test_001")
             .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Running))));
-        mock_repo.expect_update().returning(|_| Ok(true));
+        mock_repo
+            .expect_update_status_if()
+            .returning(|_, _, _, _| Ok(true));
 
         let svc = make_mock_service(mock_repo, true);
         let result = svc.stop_strategy("test_001").await;
@@ -1223,7 +1231,9 @@ mod tests {
             .expect_find_by_id()
             .withf(|s: &str| s == "test_001")
             .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Running))));
-        mock_repo.expect_update().returning(|_| Ok(true));
+        mock_repo
+            .expect_update_status_if()
+            .returning(|_, _, _, _| Ok(true));
 
         let svc = make_mock_service(mock_repo, true);
         let result = svc.pause_strategy("test_001").await;
@@ -1242,7 +1252,9 @@ mod tests {
             .expect_find_by_id()
             .withf(|s: &str| s == "test_001")
             .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Paused))));
-        mock_repo.expect_update().returning(|_| Ok(true));
+        mock_repo
+            .expect_update_status_if()
+            .returning(|_, _, _, _| Ok(true));
 
         let svc = make_mock_service(mock_repo, true);
         let result = svc.resume_strategy("test_001").await;
@@ -1261,7 +1273,9 @@ mod tests {
             .expect_find_by_id()
             .withf(|s: &str| s == "test_001")
             .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Running))));
-        mock_repo.expect_update().returning(|_| Ok(true));
+        mock_repo
+            .expect_update_status_if()
+            .returning(|_, _, _, _| Ok(true));
 
         let svc = make_mock_service(mock_repo, false);
         let result = svc.archive_strategy("test_001").await;
@@ -1714,5 +1728,82 @@ mod tests {
             }
             other => panic!("Expected InvalidParameter, got: {:?}", other),
         }
+    }
+
+    // ── Concurrent Lifecycle (PR2: TOCTOU fix) ────────────────────────────────
+
+    #[tokio::test]
+    async fn test_update_status_if_returns_false_on_condition_mismatch() {
+        // CAS returning false must surface ConcurrentModification (not InvalidStatusTransition)
+        let mut mock_repo = MockStrategyRepo::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Backtesting))));
+        mock_repo
+            .expect_update_status_if()
+            .withf(|_id, _new, expected, _by| *expected == StrategyStatus::Backtesting)
+            .returning(|_, _, _, _| Ok(false));
+
+        let svc = make_mock_service(mock_repo, false);
+        let result = svc.deploy_strategy("test_001").await;
+
+        assert!(matches!(
+            result.unwrap_err(),
+            ServiceError::ConcurrentModification { ref strategy_id, expected: StrategyStatus::Backtesting }
+            if strategy_id == "test_001"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_deploy_strategy_concurrent_ac_a_simultaneous() {
+        // AC-A (同时到达): tokio::join! two deploy requests; the shared mock
+        // atomically grants "first writer wins" so one gets rows=1, the other rows=0.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let wins = Arc::new(AtomicUsize::new(0));
+        let wins_clone = wins.clone();
+        let mut mock_repo = MockStrategyRepo::new();
+        mock_repo
+            .expect_find_by_id()
+            .times(2)
+            .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Backtesting))));
+        mock_repo
+            .expect_update_status_if()
+            .times(2)
+            .returning(move |_, _, _, _| Ok(wins_clone.fetch_add(1, Ordering::SeqCst) == 0));
+
+        let svc = Arc::new(make_mock_service(mock_repo, false));
+        let svc_a = svc.clone();
+        let svc_b = svc.clone();
+        let (res_a, res_b) = tokio::join!(
+            async move { svc_a.deploy_strategy("test_001").await },
+            async move { svc_b.deploy_strategy("test_001").await },
+        );
+        let results = [&res_a, &res_b];
+        let oks = results.iter().filter(|r| r.is_ok()).count();
+        let conflicts = results.iter().filter(|r| matches!(r, Err(ServiceError::ConcurrentModification { .. }))).count();
+        assert_eq!(oks, 1, "results: {:?} / {:?}", res_a, res_b);
+        assert_eq!(conflicts, 1, "results: {:?} / {:?}", res_a, res_b);
+    }
+
+    #[tokio::test]
+    async fn test_deploy_strategy_concurrent_ac_b_sequential() {
+        // AC-B (顺序到达): first request moved the row to Deployed; the second
+        // reads Deployed, finds Deployed→Deployed is not valid, and surfaces
+        // InvalidStatusTransition (state moved on, not a race loss).
+        let mut mock_repo = MockStrategyRepo::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Deployed))));
+
+        let svc = make_mock_service(mock_repo, false);
+        let result = svc.deploy_strategy("test_001").await;
+
+        assert!(matches!(
+            result.unwrap_err(),
+            ServiceError::InvalidStatusTransition { ref from, ref to }
+            if from == "Deployed" && to == "Deployed"
+        ));
     }
 }
