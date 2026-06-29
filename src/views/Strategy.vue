@@ -47,7 +47,7 @@
       <StrategyDetailPanel
         v-if="detailStrategy"
         :strategy-id="detailStrategy.strategy_id"
-        :status="getStatusTag(detailStrategy)"
+        :status="detailStrategy.status"
         :description="detailStrategy.description || '暂无策略描述'"
         :tags="detailStrategy.tags || []"
         :symbols="detailStrategy.symbols || []"
@@ -224,11 +224,6 @@ async function executeDelete() {
     ElMessage.error('删除策略失败');
   }
 }
-
-function getStatusTag(strategy: StrategyParams) {
-  return (strategy.status || 'Draft') as 'active' | 'inactive' | 'pending' | 'error' | 'warning' | 'draft';
-}
-
 // --- Init ---
 onMounted(() => {
   store.fetchStrategies();

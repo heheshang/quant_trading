@@ -67,8 +67,6 @@ vi.mock('@/composables/useStrategyFormat', () => ({
   }),
 }));
 
-import { ref } from 'vue'
-
 const mockInvoke = vi.mocked(invoke)
 
 const mockStrategies = [

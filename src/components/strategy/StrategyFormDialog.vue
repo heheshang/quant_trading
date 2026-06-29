@@ -121,6 +121,7 @@ import { ref, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { InfoFilled, WarningFilled, EditPen, Setting } from '@element-plus/icons-vue';
 import { useStrategyStore } from '@/stores/strategy';
+import { useAuthStore } from '@/stores/auth';
 import StrategyParamEditor from './StrategyParamEditor.vue';
 import type { StrategyParams, StrategyStatus, ParameterSchema } from '@/services/types';
 
@@ -137,6 +138,7 @@ const emit = defineEmits<{
 }>();
 
 const store = useStrategyStore();
+const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
 const submitting = ref(false);
 const strategyParams = ref<Record<string, unknown>>({});
@@ -273,6 +275,10 @@ async function save() {
         status: formData.value.status as StrategyStatus,
       } as StrategyParams);
     } else {
+      if (!authStore.currentUser) {
+        ElMessage.error('请先登录');
+        return;
+      }
       await store.createNewStrategy(
         formData.value.strategy_type,
         formData.value.strategy_name,
@@ -280,7 +286,7 @@ async function save() {
         formData.value.enabled,
         formData.value.max_position,
         formData.value.max_daily_loss,
-        1, // TODO: replace with current user_id
+        authStore.currentUser.id,
         formData.value.instance_label || undefined,
         formData.value.description || undefined,
         formData.value.tags?.length ? formData.value.tags : undefined,

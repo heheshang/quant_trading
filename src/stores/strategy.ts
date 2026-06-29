@@ -17,6 +17,8 @@ import {
 } from '@/services/strategy'
 import type { StrategyParams, StrategyStatus, StrategyTypeInfo } from '@/services/types'
 
+const POLL_INTERVAL_MS = 5_000
+
 export const useStrategyStore = defineStore('strategy', () => {
   const strategies = ref<StrategyParams[]>([])
   const currentStrategy = ref<StrategyParams | null>(null)
@@ -24,6 +26,8 @@ export const useStrategyStore = defineStore('strategy', () => {
   const currentTypeInfo = ref<StrategyTypeInfo | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  let pollTimer: ReturnType<typeof setInterval> | null = null
 
   const runningStrategies = computed(() =>
     strategies.value.filter((s) => {
@@ -252,6 +256,20 @@ export const useStrategyStore = defineStore('strategy', () => {
     }
   }
 
+  function startPolling() {
+    if (pollTimer) return
+    pollTimer = setInterval(() => {
+      fetchStrategies(true)
+    }, POLL_INTERVAL_MS)
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
   return {
     strategies,
     currentStrategy,
@@ -277,5 +295,7 @@ export const useStrategyStore = defineStore('strategy', () => {
     listStrategyTypes,
     fetchStrategyTypeInfo,
     createNewStrategy,
+    startPolling,
+    stopPolling,
   }
 })

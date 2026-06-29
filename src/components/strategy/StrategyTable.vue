@@ -36,14 +36,14 @@
       </el-table-column>
       <el-table-column label="状态" width="120">
         <template #default="scope">
-          <StrategyStatusTag :status="getStatusTag(scope.row)" size="small" />
+          <StrategyStatusTag :status="scope.row.status" size="small" />
         </template>
       </el-table-column>
       <el-table-column label="启用" width="80">
         <template #default="scope">
           <el-switch
-            v-model="scope.row.enabled"
-            @change="() => emit('toggle', scope.row.strategy_id, scope.row.enabled)"
+            :model-value="scope.row.enabled"
+            @update:model-value="(v: boolean) => emit('toggle', scope.row.strategy_id, v)"
             active-text="是"
             inactive-text="否"
           />
@@ -105,7 +105,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
-import type { StrategyParams, StrategyStatus } from '@/services/types'
+import type { StrategyParams } from '@/services/types'
 import { useFormatting } from '@/composables/useFormatting'
 import StrategyStatusTag from '@/components/strategy/StrategyStatusTag.vue'
 import SearchBar from '@/components/common/SearchBar.vue'
@@ -178,17 +178,6 @@ const paginated = computed(() => {
 })
 
 const total = computed(() => filteredStrategies.value.length)
-
-function getStatusTag(strategy: StrategyParams): 'active' | 'inactive' | 'pending' | 'error' | 'warning' | 'draft' {
-  const status = strategy.status as StrategyStatus | undefined
-  if (!status || status === 'Draft') return 'draft'
-  if (status === 'Running') return 'active'
-  if (status === 'Paused') return 'warning'
-  if (status === 'Archived') return 'inactive'
-  if (status === 'Deployed') return 'pending'
-  if (status === 'Backtesting') return 'pending'
-  return 'draft'
-}
 
 function onSearch() { emit('update:currentPage', 1); emit('search', props.searchQuery) }
 function onFilterChange() { emit('update:currentPage', 1) }

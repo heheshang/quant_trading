@@ -1,6 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import StrategyDetailPanel from '@/components/strategy/StrategyDetailPanel.vue'
+import type { StrategyStatus } from '@/services/types'
+
+vi.mock('@element-plus/icons-vue', () => ({
+  Operation: { template: '<span class="mock-icon" />' },
+  EditPen: { template: '<span class="mock-icon" />' },
+  DataAnalysis: { template: '<span class="mock-icon" />' },
+  Upload: { template: '<span class="mock-icon" />' },
+  VideoPlay: { template: '<span class="mock-icon" />' },
+  VideoPause: { template: '<span class="mock-icon" />' },
+  Box: { template: '<span class="mock-icon" />' },
+}))
 
 // Register mock element-plus components globally via mount options
 const mockComponents = {
@@ -41,7 +52,7 @@ describe('StrategyDetailPanel', () => {
 
   it('renders default description when not provided', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active' },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus },
       ...defaults,
     })
     expect(wrapper.text()).toContain('暂无策略描述')
@@ -49,7 +60,7 @@ describe('StrategyDetailPanel', () => {
 
   it('renders with empty tags/symbols/metrics arrays by default', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active' },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus },
       ...defaults,
     })
     expect(wrapper.text()).toContain('s1')
@@ -58,21 +69,21 @@ describe('StrategyDetailPanel', () => {
 
   it('renders strategyId and status text', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 'test-123', status: 'active' },
+      props: { strategyId: 'test-123', status: 'Running' as StrategyStatus },
       ...defaults,
     })
     expect(wrapper.text()).toContain('test-123')
     expect(wrapper.text()).toContain('运行中')
   })
 
-  it('renders all 6 status texts correctly', () => {
-    const cases: Array<{ status: 'active' | 'inactive' | 'pending' | 'error' | 'warning' | 'draft'; text: string }> = [
-      { status: 'active', text: '运行中' },
-      { status: 'inactive', text: '已停止' },
-      { status: 'pending', text: '待运行' },
-      { status: 'error', text: '运行异常' },
-      { status: 'warning', text: '预警' },
-      { status: 'draft', text: '草稿' },
+  it('renders all 6 StrategyStatus texts correctly', () => {
+    const cases: Array<{ status: StrategyStatus; text: string }> = [
+      { status: 'Draft', text: '草稿' },
+      { status: 'Backtesting', text: '回测中' },
+      { status: 'Deployed', text: '已部署' },
+      { status: 'Running', text: '运行中' },
+      { status: 'Paused', text: '已暂停' },
+      { status: 'Archived', text: '已归档' },
     ]
     for (const { status, text } of cases) {
       const wrapper = mount(StrategyDetailPanel, {
@@ -85,7 +96,7 @@ describe('StrategyDetailPanel', () => {
 
   it('renders custom description', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', description: 'A custom description text' },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, description: 'A custom description text' },
       ...defaults,
     })
     expect(wrapper.text()).toContain('A custom description text')
@@ -93,7 +104,7 @@ describe('StrategyDetailPanel', () => {
 
   it('renders tags from props', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', tags: ['趋势策略', '高频交易'] },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, tags: ['趋势策略', '高频交易'] },
       ...defaults,
     })
     expect(wrapper.text()).toContain('趋势策略')
@@ -103,7 +114,7 @@ describe('StrategyDetailPanel', () => {
   it('renders symbols from props', () => {
     const wrapper = mount(StrategyDetailPanel, {
       props: {
-        strategyId: 's1', status: 'active',
+        strategyId: 's1', status: 'Running' as StrategyStatus,
         symbols: [
           '000001.SZ',
           '600519.SH',
@@ -117,7 +128,7 @@ describe('StrategyDetailPanel', () => {
 
   it('renders strategyType and isRunning props', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', strategyType: 'TrendFollowing', isRunning: true },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, strategyType: 'TrendFollowing', isRunning: true },
       ...defaults,
     })
     expect(wrapper.text()).toContain('TrendFollowing')
@@ -127,7 +138,7 @@ describe('StrategyDetailPanel', () => {
 
   it('formatDate shows with default timestamp', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active' },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus },
       ...defaults,
     })
     expect(wrapper.text()).toContain('创建时间')
@@ -135,7 +146,7 @@ describe('StrategyDetailPanel', () => {
 
   it('formatDate handles zero timestamp', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', createTime: 0 },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, createTime: 0 },
       ...defaults,
     })
     expect(wrapper.text()).toContain('1970')
@@ -143,7 +154,7 @@ describe('StrategyDetailPanel', () => {
 
   it('formatDate handles large timestamp', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', createTime: 1735689600000 },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, createTime: 1735689600000 },
       ...defaults,
     })
     expect(wrapper.text()).toContain('2025')
@@ -153,7 +164,7 @@ describe('StrategyDetailPanel', () => {
 
   it('emits edit event when edit button clicked', async () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active' },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus },
       ...defaults,
     })
     const btn = wrapper.findAll('button').find((b) => b.text().includes('编辑策略'))
@@ -164,7 +175,7 @@ describe('StrategyDetailPanel', () => {
 
   it('emits start event when start button clicked', async () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'inactive', isRunning: false },
+      props: { strategyId: 's1', status: 'Archived' as StrategyStatus, isRunning: false },
       ...defaults,
     })
     const btn = wrapper.findAll('button').find((b) => b.text().includes('启动'))
@@ -175,7 +186,7 @@ describe('StrategyDetailPanel', () => {
 
   it('emits stop event when stop button clicked', async () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', isRunning: true },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, isRunning: true },
       ...defaults,
     })
     const btn = wrapper.findAll('button').find((b) => b.text().includes('停止'))
@@ -186,7 +197,7 @@ describe('StrategyDetailPanel', () => {
 
   it('emits refresh event when button clicked', async () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active' },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus },
       ...defaults,
     })
     const btn = wrapper.findAll('button').find((b) => b.text().includes('刷新'))
@@ -199,7 +210,7 @@ describe('StrategyDetailPanel', () => {
 
   it('start disabled and stop enabled when isRunning=true', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'active', isRunning: true },
+      props: { strategyId: 's1', status: 'Running' as StrategyStatus, isRunning: true },
       ...defaults,
     })
     const startBtn = wrapper.findAll('button').find((b) => b.text().includes('启动'))
@@ -210,7 +221,7 @@ describe('StrategyDetailPanel', () => {
 
   it('start enabled and stop disabled when isRunning=false', () => {
     const wrapper = mount(StrategyDetailPanel, {
-      props: { strategyId: 's1', status: 'inactive', isRunning: false },
+      props: { strategyId: 's1', status: 'Archived' as StrategyStatus, isRunning: false },
       ...defaults,
     })
     const startBtn = wrapper.findAll('button').find((b) => b.text().includes('启动'))

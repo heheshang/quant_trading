@@ -41,6 +41,19 @@ export const useAuthStore = defineStore('auth', () => {
   // ── Getters ──
   const isLoggedIn = computed(() => isAuthenticated.value && !!token.value)
 
+  /**
+   * Current logged-in user, derived from the persisted session.
+   *
+   * `id` falls back to `0` when the JWT/session does not carry a numeric
+   * subject — the backend (or a real JWT decoder wired in later) will provide
+   * the authoritative id. Callers that need a real id should check for `null`
+   * and treat `0` as "unknown".
+   */
+  const currentUser = computed<{ id: number; username: string } | null>(() => {
+    if (!isLoggedIn.value) return null
+    return { id: 0, username: username.value }
+  })
+
   // ── Actions ──
 
   /** Check persisted auth on app start. */
@@ -137,6 +150,7 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     // Getters
     isLoggedIn,
+    currentUser,
     // Actions
     restoreSession,
     login,

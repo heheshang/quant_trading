@@ -104,9 +104,10 @@ function setupBackend(overrides: Record<string, unknown> = {}) {
     stop_strategy: true,
   }
   const merged = { ...defaults, ...overrides }
-  mockInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+  mockInvoke.mockImplementation(async (cmd: string, args?: Parameters<typeof invoke>[1]) => {
     if (cmd === 'get_strategy_type_info') {
-      const typeId = (args?.strategyType as string) || ''
+      const recordArgs = (args ?? {}) as Record<string, unknown>
+      const typeId = (recordArgs.strategyType as string) || ''
       const type = (sampleTypes as StrategyType[]).find((t) => t.id === typeId) || merged[cmd]
       return type
     }

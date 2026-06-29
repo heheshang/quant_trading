@@ -4,7 +4,7 @@
       <div class="panel-header">
         <el-icon class="header-icon"><Operation /></el-icon>
         <span>策略详情</span>
-        <el-tag :type="statusType" size="small" class="status-tag">{{ statusText }}</el-tag>
+        <el-tag :type="display.type" size="small" class="status-tag">{{ display.label }}</el-tag>
       </div>
     </template>
 
@@ -76,12 +76,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { toRef } from 'vue'
+import type { StrategyStatus } from '@/services/types'
+import { useStrategyStatus } from '@/composables/useStrategyStatus'
 
 const props = withDefaults(
   defineProps<{
     strategyId: string
-    status: 'active' | 'inactive' | 'pending' | 'error' | 'warning' | 'draft'
+    status: StrategyStatus
     description?: string
     tags?: string[]
     symbols?: string[]
@@ -112,35 +114,7 @@ const emit = defineEmits<{
   'refresh': []
 }>()
 
-const statusConfig = {
-  active: {
-    type: 'success' as const,
-    text: '运行中',
-  },
-  inactive: {
-    type: 'info' as const,
-    text: '已停止',
-  },
-  pending: {
-    type: 'warning' as const,
-    text: '待运行',
-  },
-  error: {
-    type: 'danger' as const,
-    text: '运行异常',
-  },
-  warning: {
-    type: 'warning' as const,
-    text: '预警',
-  },
-  draft: {
-    type: 'info' as const,
-    text: '草稿',
-  },
-}
-
-const statusType = computed(() => statusConfig[props.status].type)
-const statusText = computed(() => statusConfig[props.status].text)
+const display = useStrategyStatus(toRef(props, 'status'))
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleString('zh-CN', {

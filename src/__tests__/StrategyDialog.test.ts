@@ -241,7 +241,7 @@ describe('StrategyDialog', () => {
 
   it('has correct strategy type options from store', async () => {
     const StrategyView = (await import('@/views/Strategy.vue')).default
-    const wrapper = mount(StrategyView, {
+    mount(StrategyView, {
       global: { components: mockComponents, stubs: { teleport: true } },
     })
     await nextTick()
@@ -252,7 +252,7 @@ describe('StrategyDialog', () => {
 
   it('computes filterOptions from strategyTypes', async () => {
     const StrategyView = (await import('@/views/Strategy.vue')).default
-    const wrapper = mount(StrategyView, {
+    mount(StrategyView, {
       global: { components: mockComponents, stubs: { teleport: true } },
     })
     await nextTick()
@@ -272,7 +272,7 @@ describe('StrategyDialog', () => {
 
   it('dialog has strategy_param editor for schema parameters', async () => {
     const StrategyView = (await import('@/views/Strategy.vue')).default
-    const wrapper = mount(StrategyView, {
+    mount(StrategyView, {
       global: { components: mockComponents, stubs: { teleport: true } },
     })
     await nextTick()

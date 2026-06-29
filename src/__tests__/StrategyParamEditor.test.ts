@@ -14,7 +14,7 @@ const mockComponents = {
       '<input class="el-input-number" type="number" :value="modelValue" :min="min" :max="max" :step="step" :precision="precision" @input="onInput" />',
     props: ['modelValue', 'min', 'max', 'step', 'precision'],
     methods: {
-      onInput(e: Event) {
+      onInput(this: { $emit: (event: string, ...args: unknown[]) => void }, e: Event) {
         const val = Number((e.target as HTMLInputElement).value)
         this.$emit('update:modelValue', val)
         this.$emit('change')
@@ -26,7 +26,7 @@ const mockComponents = {
       '<input class="el-input" :value="modelValue" @input="onInput" />',
     props: ['modelValue', 'placeholder'],
     methods: {
-      onInput(e: Event) {
+      onInput(this: { $emit: (event: string, ...args: unknown[]) => void }, e: Event) {
         this.$emit('update:modelValue', (e.target as HTMLInputElement).value)
       },
     },
@@ -36,7 +36,7 @@ const mockComponents = {
       '<select class="el-select" :value="modelValue" @change="onChange"><slot /></select>',
     props: ['modelValue', 'placeholder'],
     methods: {
-      onChange(e: Event) {
+      onChange(this: { $emit: (event: string, ...args: unknown[]) => void }, e: Event) {
         this.$emit('update:modelValue', (e.target as HTMLSelectElement).value)
         this.$emit('change')
       },

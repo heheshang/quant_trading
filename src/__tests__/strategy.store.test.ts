@@ -450,7 +450,7 @@ describe('strategyStore', () => {
   it('createNewStrategy sets error on failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Create failed'))
     const store = useStrategyStore()
-    await expect(store.createNewStrategy('TrendFollowing', 'Fail', {}, true, 0, 0)).rejects.toThrow()
+    await expect(store.createNewStrategy('TrendFollowing', 'Fail', {}, true, 0, 0, 1)).rejects.toThrow()
     expect(store.error).toBe('创建策略失败')
   })
 
