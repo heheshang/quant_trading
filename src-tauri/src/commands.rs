@@ -705,6 +705,82 @@ pub async fn archive_strategy(
     Ok(format!("{:?}", status))
 }
 
+/// 列出所有已注册的策略类型元数据
+#[tauri::command]
+pub async fn list_strategy_types(
+    state: State<'_, AppState>,
+) -> Result<Vec<strategy_layer::registry::StrategyTypeInfo>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .list_strategy_types()
+        .map_err(|e| e.to_string())
+}
+
+/// 获取单个策略类型的元数据（含参数 Schema）
+#[tauri::command]
+pub async fn get_strategy_type_info(
+    state: State<'_, AppState>,
+    type_name: String,
+) -> Result<strategy_layer::registry::StrategyTypeInfo, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .get_strategy_type_info(&type_name)
+        .map_err(|e| e.to_string())
+}
+
+/// 创建新策略（自动生成 UUID v7 strategy_id，含参数验证）
+#[tauri::command]
+pub async fn create_strategy(
+    state: State<'_, AppState>,
+    type_name: String,
+    strategy_name: String,
+    params: serde_json::Value,
+    enabled: bool,
+    max_position: f64,
+    max_daily_loss: f64,
+    instance_label: Option<String>,
+    description: Option<String>,
+    tags: Vec<String>,
+    symbols: Vec<String>,
+    user_id: i64,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+
+    let max_pos = rust_decimal::Decimal::from_f64(max_position)
+        .ok_or_else(|| format!("Invalid max_position: {}", max_position))?;
+    let max_loss = rust_decimal::Decimal::from_f64(max_daily_loss)
+        .ok_or_else(|| format!("Invalid max_daily_loss: {}", max_daily_loss))?;
+
+    services
+        .strategy_service
+        .create_strategy(
+            &type_name,
+            &strategy_name,
+            params,
+            enabled,
+            max_pos,
+            max_loss,
+            instance_label,
+            description,
+            tags,
+            symbols,
+            user_id,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// 获取风险指标
 #[tauri::command]
 pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<String, f64>, String> {
@@ -1502,8 +1578,10 @@ mod tests {
             description: Some("Test".to_string()),
             tags: vec![],
             symbols: vec![],
+            instance_label: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            user_id: 0,
         };
         let result = save_strategy(state_guard, strategy).await;
         assert!(result.is_err());
@@ -2048,5 +2126,67 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "OKX data source not initialized");
+    }
+
+    // ── Strategy Lifecycle Commands ──
+
+    #[tokio::test]
+    async fn test_deploy_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = deploy_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_start_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = start_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_stop_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = stop_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_pause_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = pause_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_resume_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = resume_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
+    }
+
+    #[tokio::test]
+    async fn test_archive_strategy_requires_services() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = archive_strategy(state_guard, "test_001".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Application services not initialized");
     }
 }
