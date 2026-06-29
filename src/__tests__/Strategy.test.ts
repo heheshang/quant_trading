@@ -241,3 +241,134 @@ describe('Strategy.vue - 按钮测试', () => {
     expect(wrapper.vm.editingStrategy?.strategy_id).toBe('s1')
   }, 30000)
 })
+
+describe('Strategy.vue - 批量操作 (PR8 coverage)', () => {
+  let container: HTMLDivElement
+
+  beforeEach(async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    vi.clearAllMocks()
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case 'start_strategy': return 'started'
+        case 'stop_strategy': return 'stopped'
+        case 'delete_strategy': return true
+        default: return {}
+      }
+    })
+    const storeModule = await import('@/stores/strategy')
+    ;(storeModule as any).useStrategyStore = () => {
+      const startStrategy = vi.fn(async (id: string) => { await mockInvoke('start_strategy', { strategyId: id }) })
+      const stopStrategy = vi.fn(async (id: string) => { await mockInvoke('stop_strategy', { strategyId: id }) })
+      const deleteStrategy = vi.fn(async (id: string) => { await mockInvoke('delete_strategy', { strategyId: id }) })
+      return {
+        strategies: [],
+        strategyTypes: [],
+        loading: false,
+        error: null,
+        fetchStrategies: vi.fn(),
+        listStrategyTypes: vi.fn(),
+        startStrategy,
+        stopStrategy,
+        deleteStrategy,
+        deployStrategy: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        archive: vi.fn(),
+        toggleStrategy: vi.fn(),
+        fetchStrategyTypeInfo: vi.fn(),
+      }
+    }
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    container.remove()
+  })
+
+  it('batchStart - 串行调用 startStrategy，3 个策略都被启动', async () => {
+    const wrapper = await mountComponent()
+    const strategies = [
+      { ...mockStrategies[0], strategy_id: 's1' },
+      { ...mockStrategies[1], strategy_id: 's2' },
+      { ...mockStrategies[0], strategy_id: 's3', strategy_name: '策略三' },
+    ]
+
+    await wrapper.vm.batchStart(strategies as any)
+
+    const startCalls = mockInvoke.mock.calls.filter(c => c[0] === 'start_strategy')
+    expect(startCalls).toHaveLength(3)
+    expect(startCalls[0][1]).toEqual({ strategyId: 's1' })
+    expect(startCalls[1][1]).toEqual({ strategyId: 's2' })
+    expect(startCalls[2][1]).toEqual({ strategyId: 's3' })
+
+    expect((wrapper.vm.selectedStrategies as any[]).length).toBe(0)
+  }, 30000)
+
+  it('batchStop - 部分失败时继续执行剩余策略', async () => {
+    const wrapper = await mountComponent()
+    let callIndex = 0
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'stop_strategy') {
+        callIndex += 1
+        if (callIndex === 2) throw new Error('Backend error on s2')
+      }
+      return {}
+    })
+
+    const strategies = [
+      { ...mockStrategies[0], strategy_id: 's1' },
+      { ...mockStrategies[1], strategy_id: 's2' },
+      { ...mockStrategies[0], strategy_id: 's3' },
+    ]
+
+    await wrapper.vm.batchStop(strategies as any)
+
+    const stopCalls = mockInvoke.mock.calls.filter(c => c[0] === 'stop_strategy')
+    expect(stopCalls).toHaveLength(3)
+    expect(stopCalls[0][1]).toEqual({ strategyId: 's1' })
+    expect(stopCalls[1][1]).toEqual({ strategyId: 's2' })
+    expect(stopCalls[2][1]).toEqual({ strategyId: 's3' })
+  }, 30000)
+
+  it('batchDelete - 串行调用 deleteStrategy，失败时仍继续', async () => {
+    const wrapper = await mountComponent()
+    let callIndex = 0
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'delete_strategy') {
+        callIndex += 1
+        if (callIndex === 1) throw new Error('Cannot delete s1')
+      }
+      return true
+    })
+
+    const strategies = [
+      { ...mockStrategies[0], strategy_id: 's1' },
+      { ...mockStrategies[1], strategy_id: 's2' },
+      { ...mockStrategies[0], strategy_id: 's3' },
+    ]
+
+    await wrapper.vm.batchDelete(strategies as any)
+
+    const deleteCalls = mockInvoke.mock.calls.filter(c => c[0] === 'delete_strategy')
+    expect(deleteCalls).toHaveLength(3)
+    expect(deleteCalls[0][1]).toEqual({ strategyId: 's1' })
+    expect(deleteCalls[1][1]).toEqual({ strategyId: 's2' })
+    expect(deleteCalls[2][1]).toEqual({ strategyId: 's3' })
+
+    expect((wrapper.vm.selectedStrategies as any[]).length).toBe(0)
+  }, 30000)
+
+  it('batchStart - 空列表不调用任何 API', async () => {
+    const wrapper = await mountComponent()
+    mockInvoke.mockClear()
+
+    await wrapper.vm.batchStart([] as any)
+
+    const startCalls = mockInvoke.mock.calls.filter(c => c[0] === 'start_strategy')
+    expect(startCalls).toHaveLength(0)
+  }, 30000)
+})

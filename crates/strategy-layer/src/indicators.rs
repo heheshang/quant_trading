@@ -1033,4 +1033,100 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("mismatch"));
     }
+
+    // ---- I-7: Bollinger Bands tests (PR8 coverage) ----
+
+    #[test]
+    fn test_bollinger_bands_empty_data() {
+        let bands = bollinger_bands(&[], 20, dec!(2));
+        assert!(bands.upper.is_empty());
+        assert!(bands.middle.is_empty());
+        assert!(bands.lower.is_empty());
+    }
+
+    #[test]
+    fn test_bollinger_bands_insufficient_data() {
+        let data: Vec<Decimal> = (1..=5).map(Decimal::from).collect();
+        let bands = bollinger_bands(&data, 20, dec!(2));
+        assert!(bands.upper.is_empty());
+        assert!(bands.middle.is_empty());
+        assert!(bands.lower.is_empty());
+    }
+
+    #[test]
+    fn test_bollinger_bands_normal_data() {
+        let data: Vec<Decimal> = (1..=30).map(Decimal::from).collect();
+        let bands = bollinger_bands(&data, 20, dec!(2));
+
+        assert_eq!(bands.middle.len(), 11);
+        assert_eq!(bands.upper.len(), 11);
+        assert_eq!(bands.lower.len(), 11);
+
+        let last_middle = *bands.middle.last().expect("middle non-empty");
+        let last_upper = *bands.upper.last().expect("upper non-empty");
+        let last_lower = *bands.lower.last().expect("lower non-empty");
+
+        assert_eq!(last_middle, dec!(20.5));
+        assert!(last_upper > last_middle);
+        assert!(last_middle > last_lower);
+    }
+
+    #[test]
+    fn test_bollinger_bands_constant_data_zero_bandwidth() {
+        let data: Vec<Decimal> = vec![dec!(100); 25];
+        let bands = bollinger_bands(&data, 20, dec!(2));
+
+        assert_eq!(bands.middle.len(), 6);
+        for (i, &m) in bands.middle.iter().enumerate() {
+            assert_eq!(m, dec!(100), "middle[{}] should be 100", i);
+            assert_eq!(bands.upper[i], dec!(100));
+            assert_eq!(bands.lower[i], dec!(100));
+        }
+    }
+
+    #[test]
+    fn test_bollinger_bands_upper_breakout() {
+        let mut data: Vec<Decimal> = vec![dec!(100); 19];
+        data.push(dec!(200));
+        let bands = bollinger_bands(&data, 20, dec!(2));
+
+        assert_eq!(bands.middle.len(), 1);
+        let last_upper = *bands.upper.last().unwrap();
+        let last_close = *data.last().unwrap();
+
+        assert!(
+            last_close > last_upper,
+            "close {} should exceed upper band {} for breakout",
+            last_close,
+            last_upper
+        );
+    }
+
+    #[test]
+    fn test_bollinger_bands_lower_breakout() {
+        let mut data: Vec<Decimal> = vec![dec!(100); 19];
+        data.push(dec!(50));
+        let bands = bollinger_bands(&data, 20, dec!(2));
+
+        assert_eq!(bands.middle.len(), 1);
+        let last_lower = *bands.lower.last().unwrap();
+        let last_close = *data.last().unwrap();
+
+        assert!(
+            last_close < last_lower,
+            "close {} should fall below lower band {} for breakout",
+            last_close,
+            last_lower
+        );
+    }
+
+    #[test]
+    fn test_bollinger_bands_period_zero() {
+        let data: Vec<Decimal> = (1..=30).map(Decimal::from).collect();
+        let bands = bollinger_bands(&data, 0, dec!(2));
+
+        assert!(bands.upper.is_empty());
+        assert!(bands.middle.is_empty());
+        assert!(bands.lower.is_empty());
+    }
 }
