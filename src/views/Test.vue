@@ -60,6 +60,7 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column prop="detail" label="详情" min-width="180" show-overflow-tooltip />
             <el-table-column prop="duration" label="耗时" width="80" />
           </el-table>
           <EmptyState v-else-if="!testing" title="尚未运行测试" description="点击上方按钮执行系统测试" />
@@ -85,8 +86,11 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { Connection } from '@element-plus/icons-vue';
-import { getMetrics } from '@/services/api';
+import { getMetrics, getAccountInfo, verifyToken } from '@/services/api';
+import { useWebSocketStatus } from '@/composables/useWebSocketStatus';
 import EmptyState from '@/components/common/EmptyState.vue';
+
+const { status: wsStatus } = useWebSocketStatus();
 
 const apiStatus = reactive({
   api: false,
@@ -96,7 +100,7 @@ const apiStatus = reactive({
 });
 
 const testing = ref(false);
-const testResults = ref<Array<{name: string; status: string; duration: string}>>([]);
+const testResults = ref<Array<{name: string; status: string; duration: string; detail?: string}>>([]);
 
 // Check API connectivity on mount
 async function checkConnectivity() {
@@ -123,55 +127,61 @@ async function runSystemTests() {
 
   for (const t of tests) {
     const start = performance.now();
-    const passed = await t.fn();
+    const { passed, detail } = await t.fn();
     const duration = ((performance.now() - start) / 1000).toFixed(2) + 's';
-    testResults.value.push({ name: t.name, status: passed ? '通过' : '失败', duration });
+    testResults.value.push({ name: t.name, status: passed ? '通过' : '失败', duration, detail });
   }
 
   testing.value = false;
 }
 
-async function testAPI(): Promise<boolean> {
+async function testAPI(): Promise<{passed: boolean; detail?: string}> {
   try {
     await getMetrics();
     apiStatus.api = true;
-    return true;
-  } catch {
+    return { passed: true, detail: 'getMetrics() 成功' };
+  } catch (e: any) {
     apiStatus.api = false;
-    return false;
+    return { passed: false, detail: e?.message || '请求失败' };
   }
 }
 
-async function testDatabase(): Promise<boolean> {
+async function testDatabase(): Promise<{passed: boolean; detail?: string}> {
   try {
-    await getMetrics();
+    const result = await getAccountInfo();
     apiStatus.db = true;
-    return true;
-  } catch {
+    return { passed: true, detail: `account_id=${result.account_id}` };
+  } catch (e: any) {
     apiStatus.db = false;
-    return false;
+    return { passed: false, detail: e?.message || '数据库连接失败' };
   }
 }
 
-async function testRedis(): Promise<boolean> {
+async function testRedis(): Promise<{passed: boolean; detail?: string}> {
   try {
-    await getMetrics();
+    const result = await getMetrics();
     apiStatus.redis = true;
-    return true;
-  } catch {
+    return { passed: true, detail: `metrics_count=${Object.keys(result).length}` };
+  } catch (e: any) {
     apiStatus.redis = false;
-    return false;
+    return { passed: false, detail: e?.message || 'Redis 连接失败' };
   }
 }
 
-async function testWebSocket(): Promise<boolean> {
-  apiStatus.ws = true;
-  return true;
+async function testWebSocket(): Promise<{passed: boolean; detail?: string}> {
+  apiStatus.ws = wsStatus.value === 'connected';
+  return { passed: apiStatus.ws, detail: `当前连接状态: ${wsStatus.value}` };
 }
 
-async function testAuth(): Promise<boolean> {
+async function testAuth(): Promise<{passed: boolean; detail?: string}> {
   const token = localStorage.getItem('authToken');
-  return !!token;
+  if (!token) return { passed: false, detail: '未找到 token' };
+  try {
+    const valid = await verifyToken(token);
+    return { passed: valid, detail: valid ? 'Token 有效' : 'Token 无效' };
+  } catch (e: any) {
+    return { passed: false, detail: e?.message || '验证请求失败' };
+  }
 }
 </script>
 
