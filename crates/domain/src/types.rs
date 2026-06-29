@@ -412,6 +412,13 @@ pub struct StrategyParams {
     /// Trading symbols this strategy operates on.
     #[serde(default)]
     pub symbols: Vec<String>,
+    /// Human-friendly label for distinguishing multi-instance strategies of the same type.
+    /// E.g., "My Trend Bot v2" — used for display when multiple strategies share a type.
+    #[serde(default)]
+    pub instance_label: Option<String>,
+    /// 策略所有者用户 ID (可为空，与策略管理平台的模式保持一致)
+    #[serde(default)]
+    pub user_id: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -423,6 +430,24 @@ pub enum StrategyType {
     Statistical,
     MachineLearning,
     Custom,
+}
+
+impl StrategyType {
+    /// Convert a type name string (e.g., "MeanReversion") to the enum variant.
+    /// Uses the Debug representation for matching.
+    pub fn from_type_name(name: &str) -> Option<Self> {
+        use StrategyType::*;
+        match name {
+            "TrendFollowing" => Some(TrendFollowing),
+            "MeanReversion" => Some(MeanReversion),
+            "Arbitrage" => Some(Arbitrage),
+            "MarketMaking" => Some(MarketMaking),
+            "Statistical" => Some(Statistical),
+            "MachineLearning" => Some(MachineLearning),
+            "Custom" => Some(Custom),
+            _ => None,
+        }
+    }
 }
 
 impl StrategyParams {
@@ -1242,8 +1267,10 @@ mod tests {
             max_daily_loss: dec!(50000),
             status: StrategyStatus::Draft,
             description: Some("Test".into()),
+            user_id: 0,
             tags: vec![],
             symbols: vec![],
+            instance_label: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
