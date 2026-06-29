@@ -71,6 +71,7 @@ export interface AccountInfo {
   margin: number
   margin_ratio: number
   updated_at: string
+  equity_history?: [string, number][]
 }
 
 export interface StrategyParams {
@@ -85,6 +86,7 @@ export interface StrategyParams {
   description?: string
   tags: string[]
   symbols: string[]
+  instance_label?: string
   created_at: string
   updated_at: string
 }
@@ -196,20 +198,38 @@ export interface BatchOperationResult<T> {
 }
 
 /**
- * 策略类型信息，注册表元数据
+ * 参数类型枚举
+ */
+export type ParamType = 'Number' | 'String' | { Select: string[] }
+
+/**
+ * 数值参数的范围约束
+ */
+export interface ParamRange {
+  min: number
+  max: number
+  step?: number
+}
+
+/**
+ * 策略参数的 Schema 定义，用于驱动动态表单渲染
+ */
+export interface ParameterSchema {
+  name: string
+  param_type: ParamType
+  default: unknown
+  range?: ParamRange
+  description: string
+}
+
+/**
+ * 策略类型信息，注册表元数据（匹配 Rust StrategyTypeInfo）
  */
 export interface StrategyTypeInfo {
-  strategy_type: StrategyType
-  name: string
+  type_name: string
+  display_name: string
   description: string
-  category: string
-  version: string
-  author: string
-  parameters: Record<string, unknown>
-  is_builtin: boolean
-  is_active: boolean
-  created_at: string
-  updated_at: string
+  parameters: ParameterSchema[]
 }
 
 export type StrategyType =
