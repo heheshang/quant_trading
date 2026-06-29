@@ -164,6 +164,23 @@ pub trait StrategyRepository: Send + Sync + 'static {
         updated_by: Option<&str>,
     ) -> Result<bool, RepoError>;
 
+    /// Atomically update status only if current status matches `expected_old_status`.
+    ///
+    /// SQL: `UPDATE strategies SET status = $new, updated_at = NOW()
+    ///      WHERE strategy_id = $id AND status = $expected`
+    ///
+    /// Returns `true` when exactly one row was updated (status matched the
+    /// precondition); returns `false` when the precondition did not hold
+    /// (zero rows affected). On real DBs this is the compare-and-set
+    /// primitive that closes the TOCTOU window in lifecycle operations.
+    async fn update_status_if(
+        &self,
+        strategy_id: &str,
+        new_status: StrategyStatus,
+        expected_old_status: StrategyStatus,
+        updated_by: Option<&str>,
+    ) -> Result<bool, RepoError>;
+
     /// Get aggregated statistics about strategies.
     async fn stats(&self) -> Result<StrategyStats, RepoError>;
 }
@@ -481,6 +498,43 @@ impl StrategyRepository for PgStrategyRepository {
         .await
         .map_err(|e| {
             error!("Failed to update status for strategy {}: {}", strategy_id, e);
+            RepoError::from(e)
+        })?;
+
+        Ok(affected.rows_affected() > 0)
+    }
+
+    #[instrument(skip(self), fields(%strategy_id))]
+    async fn update_status_if(
+        &self,
+        strategy_id: &str,
+        new_status: StrategyStatus,
+        expected_old_status: StrategyStatus,
+        _updated_by: Option<&str>,
+    ) -> Result<bool, RepoError> {
+        let new_status_str = format!("{:?}", new_status);
+        let expected_status_str = format!("{:?}", expected_old_status);
+        let updated_at = Utc::now();
+
+        let affected = sqlx::query(
+            r#"
+            UPDATE strategies SET
+                status = $1,
+                updated_at = $2
+            WHERE strategy_id = $3 AND status = $4
+            "#,
+        )
+        .bind(&new_status_str)
+        .bind(updated_at)
+        .bind(strategy_id)
+        .bind(&expected_status_str)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to CAS-update status for strategy {}: {}",
+                strategy_id, e
+            );
             RepoError::from(e)
         })?;
 
