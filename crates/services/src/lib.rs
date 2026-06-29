@@ -15,6 +15,7 @@ pub mod market_data_provider;
 pub mod market_service;
 pub mod okx_service;
 pub mod optimizer;
+pub mod pipeline;
 pub mod risk_service;
 pub mod strategy_service;
 

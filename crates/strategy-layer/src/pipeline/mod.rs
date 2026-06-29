@@ -12,8 +12,6 @@ use quant_common::types::Order;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::error;
-use risk_layer::PreTradeRiskChecker;
-use trading_layer::ExecutionEngine;
 
 /// Pipeline 步骤执行器
 #[async_trait::async_trait]
@@ -27,7 +25,7 @@ pub trait PipelineStep: Send + Sync {
 }
 
 /// Pipeline 上下文，在步骤之间传递数据
-#[derive(Clone)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct PipelineContext {
     /// 待处理订单
     pub order: Order,
@@ -37,13 +35,9 @@ pub struct PipelineContext {
     pub risk_reason: Option<String>,
     /// 执行状态
     pub execution_status: ExecutionStatus,
-    /// 风控检查器
-    pub risk_checker: Option<Arc<PreTradeRiskChecker>>,
-    /// 执行引擎
-    pub execution_engine: Option<Arc<ExecutionEngine>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum ExecutionStatus {
     Pending,
     Submitted,
@@ -60,29 +54,13 @@ impl PipelineContext {
             risk_reason: None,
             execution_status: ExecutionStatus::Pending,
             order,
-            risk_checker: None,
-            execution_engine: None,
         }
-    }
-
-    /// 设置风控检查器
-    pub fn with_risk_checker(mut self, checker: Arc<PreTradeRiskChecker>) -> Self {
-        self.risk_checker = Some(checker);
-        self
-    }
-
-    /// 设置执行引擎
-    pub fn with_execution_engine(mut self, engine: Arc<ExecutionEngine>) -> Self {
-        self.execution_engine = Some(engine);
-        self
     }
 }
 
 /// Pipeline 执行器，管理步骤链
 pub struct PipelineExecutor {
     steps: Arc<RwLock<Vec<Box<dyn PipelineStep>>>>,
-    risk_checker: Option<Arc<PreTradeRiskChecker>>,
-    execution_engine: Option<Arc<ExecutionEngine>>,
 }
 
 impl PipelineExecutor {
@@ -91,21 +69,7 @@ impl PipelineExecutor {
     pub fn new() -> Self {
         Self {
             steps: Arc::new(RwLock::new(Vec::new())),
-            risk_checker: None,
-            execution_engine: None,
         }
-    }
-
-    /// 设置风控检查器
-    pub fn with_risk_checker(mut self, checker: Arc<PreTradeRiskChecker>) -> Self {
-        self.risk_checker = Some(checker);
-        self
-    }
-
-    /// 设置执行引擎
-    pub fn with_execution_engine(mut self, engine: Arc<ExecutionEngine>) -> Self {
-        self.execution_engine = Some(engine);
-        self
     }
 
     /// 添加步骤到流水线末尾
@@ -119,15 +83,7 @@ impl PipelineExecutor {
     /// 按序执行每个步骤，任一步骤返回错误则中断。
     pub async fn execute(&self, order: Order) -> Result<PipelineContext, PipelineError> {
         let mut ctx = PipelineContext::new(order);
-        
-        // 设置风控检查器和执行引擎
-        if let Some(risk_checker) = &self.risk_checker {
-            ctx = ctx.with_risk_checker(risk_checker.clone());
-        }
-        if let Some(execution_engine) = &self.execution_engine {
-            ctx = ctx.with_execution_engine(execution_engine.clone());
-        }
-        
+
         let steps = self.steps.read().await;
 
         for step in steps.iter() {
@@ -160,7 +116,7 @@ impl Default for PipelineExecutor {
 }
 
 /// Pipeline 错误
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, serde::Serialize)]
 pub enum PipelineError {
     #[error("Risk check rejected: {0}")]
     RiskRejected(String),

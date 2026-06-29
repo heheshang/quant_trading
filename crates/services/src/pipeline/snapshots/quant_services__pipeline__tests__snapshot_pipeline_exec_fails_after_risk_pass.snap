@@ -1,0 +1,5 @@
+---
+source: crates/services/src/pipeline/tests.rs
+expression: err
+---
+ExecutionFailed: "Order execution rejected: test execution rejection"

@@ -39,3 +39,4 @@ toml = "0.8"
 
 [dev-dependencies]
 okx = { workspace = true }
+insta = { version = "1", features = ["yaml", "redactions"] }
