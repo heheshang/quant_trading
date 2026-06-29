@@ -30,11 +30,13 @@ import {
   checkOkxStatus,
   getOkxAnnouncements,
   executeOkxOrder,
+} from '../services/okx'
+import {
   getOkxRealtimeData,
   getOkxHistoricalData,
   subscribeMarketData,
   stopMarketData,
-} from '../services/api'
+} from '../services/market'
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -18,7 +18,8 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { Alert, RiskConfig } from '@/services/types'
-import { getRiskMetrics, getRiskConfig, getAlerts, updateRiskConfig, acknowledgeAlert as apiAcknowledgeAlert } from '@/services/api'
+import { getRiskMetrics, getRiskConfig, updateRiskConfig } from '@/services/risk'
+import { getAlerts, acknowledgeAlert as apiAcknowledgeAlert } from '@/services/monitor'
 
 import RiskMetricsCards from '@/components/risk/RiskMetricsCards.vue'
 import RiskChart from '@/components/risk/RiskChart.vue'

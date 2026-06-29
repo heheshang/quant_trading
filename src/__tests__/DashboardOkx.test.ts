@@ -105,7 +105,7 @@ vi.mock('@/composables/useFormatting', () => ({
 // ---------------------------------------------------------------------------
 // Mock API services — include getMarketData for OKX market data section
 // ---------------------------------------------------------------------------
-vi.mock('@/services/api', () => ({
+vi.mock('@/services/account', () => ({
   getAccountInfo: vi.fn().mockResolvedValue({
     account_id: 0,
     total_assets: 1_000_000,
@@ -119,7 +119,11 @@ vi.mock('@/services/api', () => ({
     updated_at: '2024-01-01T00:00:00Z',
   }),
   getPositions: vi.fn().mockResolvedValue([]),
+}))
+vi.mock('@/services/order', () => ({
   getActiveOrders: vi.fn().mockResolvedValue([]),
+}))
+vi.mock('@/services/market', () => ({
   getMarketData: vi.fn().mockResolvedValue(okxMarketData),
 }))
 
@@ -146,7 +150,7 @@ vi.mock('@/components/dashboard/RealtimeTickerPanel.vue', () => ({
 // Imports (after all vi.mock calls so hoisting works)
 // ---------------------------------------------------------------------------
 import Dashboard from '@/views/Dashboard.vue'
-import { getMarketData } from '@/services/api'
+import { getMarketData } from '@/services/market'
 
 // ---------------------------------------------------------------------------
 // Helpers

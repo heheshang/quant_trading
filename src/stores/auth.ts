@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin, verifyToken as apiVerifyToken } from '@/services/api'
+import { login as apiLogin, verifyToken as apiVerifyToken } from '@/services/auth'
 
 /**
  * Authentication store.

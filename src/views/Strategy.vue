@@ -6,7 +6,7 @@
       </el-col>
       <el-col :span="6" class="controls">
         <el-button type="primary" @click="openNewStrategyDialog">新建策略</el-button>
-        <el-button @click="store.fetchStrategies(true)" :loading="store.loading">刷新</el-button>
+        <el-button @click="store.fetchStrategies(true)" :loading="store.loading.list">刷新</el-button>
       </el-col>
     </el-row>
 
@@ -20,7 +20,7 @@
       <StrategyTable
         :strategies="store.strategies"
         :strategy-types="store.strategyTypes"
-        :loading="store.loading"
+        :loading="store.isAnyLoading"
         :search-query="searchQuery"
         :active-filters="activeFilters"
         :page-size="pageSize"
@@ -90,7 +90,7 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useStrategyStore } from '@/stores/strategy';
-import { runBacktest as apiRunBacktest } from '@/services/api';
+import { runBacktest as apiRunBacktest } from '@/services/backtest';
 import type { StrategyParams } from '@/services/types';
 import StrategyTable from '@/components/strategy/StrategyTable.vue';
 import StrategyDetailPanel from '@/components/strategy/StrategyDetailPanel.vue';
@@ -137,10 +137,11 @@ function openDetailPanel(strategy: StrategyParams) {
 // --- Backtest ---
 const backtestDialogVisible = ref(false);
 const backtestResult = ref<Record<string, unknown> | null>(null);
+const backtestLoading = ref(false);
 
 async function runBacktest(strategyId: string) {
   try {
-    store.loading = true;
+    backtestLoading.value = true;
     const now = new Date();
     const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const result = await apiRunBacktest(strategyId, startDate.toISOString(), now.toISOString(), 1000000, 0.0003, 0.0001, []);
@@ -149,7 +150,7 @@ async function runBacktest(strategyId: string) {
   } catch {
     ElMessage.error('回测失败');
   } finally {
-    store.loading = false;
+    backtestLoading.value = false;
   }
 }
 

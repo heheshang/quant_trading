@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
-import { changePassword as apiChangePassword } from '@/services/api'
+import { changePassword as apiChangePassword } from '@/services/auth'
 import { useRouter } from 'vue-router'
 
 const props = defineProps<{

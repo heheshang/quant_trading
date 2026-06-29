@@ -4,7 +4,7 @@ import {
   getRiskMetrics,
   getRiskConfig,
   updateRiskConfig,
-} from '@/services/api'
+} from '@/services/risk'
 import type { RiskConfig } from '@/services/types'
 
 const CACHE_TTL_MS = 30_000

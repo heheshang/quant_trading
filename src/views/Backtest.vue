@@ -56,13 +56,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
+import { getStrategies } from '@/services/strategy'
 import {
-  getStrategies,
   runBacktest as apiRunBacktest,
   getBacktestResults,
   getBacktestResult,
   deleteBacktestResult,
-} from '@/services/api'
+} from '@/services/backtest'
 import type { BacktestResult, BacktestResultSummaryRow, StrategyParams } from '@/services/types'
 import { ElMessage } from 'element-plus'
 import { useFormat } from '@/composables/useFormat'

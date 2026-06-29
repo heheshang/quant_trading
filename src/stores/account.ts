@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getAccountInfo, getPositions } from '@/services/api'
+import { getAccountInfo, getPositions } from '@/services/account'
 import type { AccountInfo, Position } from '@/services/types'
 
 const CACHE_TTL_MS = 30_000

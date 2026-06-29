@@ -86,7 +86,9 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { Connection } from '@element-plus/icons-vue';
-import { getMetrics, getAccountInfo, verifyToken } from '@/services/api';
+import { getMetrics } from '@/services/monitor'
+import { getAccountInfo } from '@/services/account'
+import { verifyToken } from '@/services/auth';
 import { useWebSocketStatus } from '@/composables/useWebSocketStatus';
 import EmptyState from '@/components/common/EmptyState.vue';
 

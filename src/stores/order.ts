@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getActiveOrders, submitOrder } from '@/services/api'
+import { getActiveOrders, submitOrder } from '@/services/order'
 import type { Order } from '@/services/types'
 
 const CACHE_TTL_MS = 30_000
