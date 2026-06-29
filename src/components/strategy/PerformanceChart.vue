@@ -96,14 +96,16 @@ const props = withDefaults(
   }
 )
 
+type ChartInstance = ReturnType<typeof echarts.init>
+
 const emit = defineEmits<{
-  'data-change': [data: any]
-  'chart-ready': [chart: any]
+  'data-change': [data: unknown]
+  'chart-ready': [chart: ChartInstance | null]
 }>()
 
 const chartRef = ref<HTMLDivElement>()
 const echartRef = ref<HTMLDivElement>()
-const chartInstance = ref<any>(null)
+const chartInstance = ref<ChartInstance | null>(null)
 const loading = ref(true)
 const error = ref(false)
 const errorTitle = ref('加载失败')
@@ -291,7 +293,7 @@ function initChart() {
       chartInstance.value?.resize()
     })
     
-    emit('chart-ready', chartInstance.value)
+    emit('chart-ready', chartInstance.value as ChartInstance)
     
   } catch (err) {
     error.value = true

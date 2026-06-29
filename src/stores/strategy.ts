@@ -61,7 +61,7 @@ export const useStrategyStore = defineStore('strategy', () => {
     }
   }
 
-  async function fetchStrategy(id: string) {
+  async function selectStrategy(id: string) {
     loading.value = true
     error.value = null
     try {
@@ -281,7 +281,7 @@ export const useStrategyStore = defineStore('strategy', () => {
     draftStrategies,
     strategyById,
     fetchStrategies,
-    fetchStrategy,
+    selectStrategy,
     createStrategy,
     updateStrategy,
     deleteStrategy,

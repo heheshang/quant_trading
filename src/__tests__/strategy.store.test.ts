@@ -363,24 +363,24 @@ describe('strategyStore', () => {
     expect(store.draftStrategies).toEqual([])
   })
 
-  // ── fetchStrategy (by id) ──
+  // ── selectStrategy (by id) ──
 
-  it('fetchStrategy sets currentStrategy when found', async () => {
+  it('selectStrategy sets currentStrategy when found', async () => {
     const store = useStrategyStore()
     await store.fetchStrategies(true)
     expect(store.currentStrategy).toBeNull()
-    store.fetchStrategy('s1')
-    // fetchStrategy reads from strategies cache synchronously
+    store.selectStrategy('s1')
+    // selectStrategy reads from strategies cache synchronously
     expect(store.currentStrategy).toBeDefined()
     expect(store.currentStrategy!.strategy_id).toBe('s1')
   })
 
-  it('fetchStrategy handles errors gracefully', async () => {
+  it('selectStrategy handles errors gracefully', async () => {
     const store = useStrategyStore()
     // Ensure strategies are empty so the find returns undefined
-    store.fetchStrategy('s1')
+    store.selectStrategy('s1')
     // No error should be set since no API call is made (looks in cache only)
-    // Actually fetchStrategy does: const found = strategies.value.find(...)
+    // Actually selectStrategy does: const found = strategies.value.find(...)
     // This won't throw, so error stays null
     // But if there's an error thrown by find (unlikely), it would be caught
     expect(store.error).toBeNull()
