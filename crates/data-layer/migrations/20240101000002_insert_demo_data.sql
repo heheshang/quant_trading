@@ -2,7 +2,7 @@
 INSERT INTO users (username, password_hash, email, role, full_name)
 VALUES (
     'admin',
-    '$argon2id$v=19$m=19456,t=2,p=1$VE5FVEVTVFNBTFQ$8jqS3nB5V5xqY9Z3k2nF0A',
+    '$argon2id$v=19$m=19456,t=2,p=1$zWsHWLEtMXkoMyCRejA+lw$SlK2FE7IwQ9trOmv/NBeQPIKQWgzs359Y/9q7atw73s',
     'admin@example.com',
     'admin',
     'Administrator'
