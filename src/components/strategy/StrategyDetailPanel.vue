@@ -14,6 +14,9 @@
         <el-descriptions-item label="创建时间">{{ formatDate(createTime) }}</el-descriptions-item>
         <el-descriptions-item label="最后更新">{{ formatDate(updateTime) }}</el-descriptions-item>
         <el-descriptions-item label="策略类型">{{ strategyType }}</el-descriptions-item>
+        <el-descriptions-item v-if="instanceLabel" label="实例标签">
+          {{ instanceLabel }}
+        </el-descriptions-item>
       </el-descriptions>
 
       <div class="section">
@@ -35,59 +38,36 @@
       </div>
 
       <div class="section">
-        <h4 class="section-title">指标符号</h4>
+        <h4 class="section-title">交易标的</h4>
         <div class="symbols-container">
           <el-tag
-            v-for="symbol in symbols"
-            :key="symbol.id"
+            v-for="(sym, idx) in symbols"
+            :key="idx"
             size="small"
-            :type="getSymbolType(symbol.type)"
+            effect="plain"
             class="symbol-item"
-          >
-            <el-icon v-if="symbol.icon" class="symbol-icon">
-              <component :is="symbol.icon" />
-            </el-icon>
-            {{ symbol.code }} - {{ symbol.name }}
-          </el-tag>
+          >{{ sym }}</el-tag>
+          <span v-if="!symbols.length" class="empty-hint">无</span>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-header">
-          <h4 class="section-title">实时指标</h4>
-          <el-switch
-            v-model="autoRefresh"
-            size="small"
-            :disabled="!isRunning"
-            @change="toggleAutoRefresh"
-          />
-          <span class="refresh-label">{{ autoRefresh ? '自动刷新' : '手动刷新' }}</span>
-        </div>
-        <div class="metrics-grid">
-          <div v-for="metric in metrics" :key="metric.id" class="metric-item">
-            <div class="metric-header">
-              <el-icon class="metric-icon">
-                <component :is="metric.icon" />
-              </el-icon>
-              <span class="metric-name">{{ metric.name }}</span>
-            </div>
-            <div class="metric-value" :class="getMetricClass(metric.value)">
-              {{ formatMetricValue(metric.value, metric.unit) }}
-            </div>
-            <div class="metric-change" :class="getChangeClass(metric.change)">
-              <el-icon v-if="metric.change > 0"><Top /></el-icon>
-              <el-icon v-else-if="metric.change < 0"><Bottom /></el-icon>
-              <span>{{ formatChange(metric.change) }}</span>
-            </div>
+        <h4 class="section-title">策略参数</h4>
+        <div v-if="Object.keys(paramsValues).length" class="params-list">
+          <div v-for="(val, key) in paramsValues" :key="key" class="param-row">
+            <span class="param-key">{{ key }}</span>
+            <span class="param-val">{{ formatParamValue(val) }}</span>
           </div>
         </div>
+        <span v-else class="empty-hint">无自定义参数</span>
       </div>
+
     </div>
 
     <template #footer>
       <div class="panel-footer">
         <el-button size="small" @click="handleEdit">编辑策略</el-button>
-        <el-button size="small" type="primary" :disabled="!isRunning" @click="handleStart">启动</el-button>
+        <el-button size="small" type="primary" :disabled="isRunning" @click="handleStart">启动</el-button>
         <el-button size="small" type="danger" :disabled="!isRunning" @click="handleStop">停止</el-button>
         <el-button size="small" @click="handleRefresh">刷新</el-button>
       </div>
@@ -96,8 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, type Component } from 'vue'
-import { Top, Bottom } from '@element-plus/icons-vue'
+import { computed } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -105,35 +84,24 @@ const props = withDefaults(
     status: 'active' | 'inactive' | 'pending' | 'error' | 'warning' | 'draft'
     description?: string
     tags?: string[]
-    symbols?: {
-      id: string
-      code: string
-      name: string
-      type: 'stock' | 'index' | 'etf' | 'crypto'
-      icon?: Component
-    }[]
-    metrics?: {
-      id: string
-      name: string
-      value: number
-      unit: string
-      change: number
-      icon?: Component
-    }[]
+    symbols?: string[]
+    paramsValues?: Record<string, unknown>
     createTime?: number
     updateTime?: number
     strategyType?: string
     isRunning?: boolean
+    instanceLabel?: string
   }>(),
   {
     description: '暂无策略描述',
     tags: () => [],
     symbols: () => [],
-    metrics: () => [],
+    paramsValues: () => ({}),
     createTime: () => Date.now(),
     updateTime: () => Date.now(),
     strategyType: 'custom',
     isRunning: false,
+    instanceLabel: '',
   }
 )
 
@@ -142,10 +110,7 @@ const emit = defineEmits<{
   'start': []
   'stop': []
   'refresh': []
-  'update:metrics': [metrics: typeof props.metrics]
 }>()
-
-const autoRefresh = ref(false)
 
 const statusConfig = {
   active: {
@@ -187,36 +152,10 @@ function formatDate(timestamp: number): string {
   })
 }
 
-function getSymbolType(type: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
-  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
-    stock: 'success',
-    index: 'primary',
-    etf: 'warning',
-    crypto: 'danger',
-  }
-  return typeMap[type] || 'info'
-}
-
-function getMetricClass(value: number): string {
-  return value > 0 ? 'positive' : value < 0 ? 'negative' : 'neutral'
-}
-
-function getChangeClass(change: number): string {
-  return change > 0 ? 'increase' : change < 0 ? 'decrease' : 'stable'
-}
-
-function formatMetricValue(value: number, unit: string): string {
-  if (Math.abs(value) >= 1000000) {
-    return (value / 1000000).toFixed(2) + 'M' + unit
-  } else if (Math.abs(value) >= 1000) {
-    return (value / 1000).toFixed(2) + 'K' + unit
-  }
-  return value.toFixed(2) + unit
-}
-
-function formatChange(change: number): string {
-  const sign = change > 0 ? '+' : ''
-  return sign + change.toFixed(2) + '%'
+function formatParamValue(val: unknown): string {
+  if (val === null || val === undefined) return '-'
+  if (typeof val === 'object') return JSON.stringify(val)
+  return String(val)
 }
 
 function handleEdit() {
@@ -233,24 +172,6 @@ function handleStop() {
 
 function handleRefresh() {
   emit('refresh')
-}
-
-function toggleAutoRefresh() {
-  if (autoRefresh.value) {
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-
-function startAutoRefresh() {
-  // 模拟自动刷新逻辑
-  console.log('开始自动刷新')
-}
-
-function stopAutoRefresh() {
-  // 模拟停止自动刷新逻辑
-  console.log('停止自动刷新')
 }
 </script>
 
