@@ -51,7 +51,7 @@ impl StrategyService {
     /// 获取策略类型元数据列表（来自注册中心）
     pub fn list_strategy_types(&self) -> ServiceResult<Vec<strategy_engine::registry::StrategyTypeInfo>> {
         let reg = self.registry.as_ref().ok_or_else(|| {
-            ServiceError::Other("Strategy registry not initialized".into())
+            ServiceError::NotInitialized("Strategy registry not initialized".into())
         })?;
         Ok(reg.list_types())
     }
@@ -59,7 +59,7 @@ impl StrategyService {
     /// 检查注册中心是否包含指定类型
     pub fn has_strategy_type(&self, type_name: &str) -> ServiceResult<bool> {
         let reg = self.registry.as_ref().ok_or_else(|| {
-            ServiceError::Other("Strategy registry not initialized".into())
+            ServiceError::NotInitialized("Strategy registry not initialized".into())
         })?;
         Ok(reg.has_type(type_name))
     }
@@ -70,7 +70,7 @@ impl StrategyService {
         type_name: &str,
     ) -> ServiceResult<strategy_engine::registry::StrategyTypeInfo> {
         let reg = self.registry.as_ref().ok_or_else(|| {
-            ServiceError::Other("Strategy registry not initialized".into())
+            ServiceError::NotInitialized("Strategy registry not initialized".into())
         })?;
         reg.get_type_info(type_name).ok_or_else(|| {
             ServiceError::NotFound(format!("Unknown strategy type '{}'", type_name))
@@ -235,10 +235,7 @@ impl StrategyService {
             ));
         }
 
-        repo.insert(&strategy).await.map_err(|e| {
-            error!("Failed to insert strategy: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        repo.insert(&strategy).await?;
 
         info!(
             strategy_id = %strategy_id,
@@ -258,10 +255,7 @@ impl StrategyService {
             .strategy_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let (rows, _total) = repo.find_all(None, None, None, None, 10000, 0).await.map_err(|e| {
-            error!("Failed to query strategies: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let (rows, _total) = repo.find_all(None, None, None, None, 10000, 0).await?;
 
         let strategies: Vec<StrategyParams> = rows.iter().filter_map(|row| {
             match row.to_domain() {
@@ -294,10 +288,7 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let offset = (page - 1) * page_size;
-        let (rows, _total) = repo.find_all(None, None, status_filter, None, page_size, offset).await.map_err(|e| {
-            error!("Failed to query strategies: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let (rows, _total) = repo.find_all(None, None, status_filter, None, page_size, offset).await?;
 
         let strategies: Vec<StrategyParams> = rows.iter().filter_map(|row| {
             match row.to_domain() {
@@ -332,22 +323,13 @@ impl StrategyService {
             }
         }
 
-        let existing = repo.find_by_id(&strategy.strategy_id).await.map_err(|e| {
-            error!("Failed to check strategy {}: {}", strategy.strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let existing = repo.find_by_id(&strategy.strategy_id).await?;
 
         if existing.is_some() {
-            repo.update(&strategy).await.map_err(|e| {
-                error!("Failed to update strategy {}: {}", strategy.strategy_id, e);
-                ServiceError::Other(e.to_string())
-            })?;
+            repo.update(&strategy).await?;
             info!(strategy_id = %strategy.strategy_id, "Strategy updated");
         } else {
-            repo.insert(&strategy).await.map_err(|e| {
-                error!("Failed to insert strategy {}: {}", strategy.strategy_id, e);
-                ServiceError::Other(e.to_string())
-            })?;
+            repo.insert(&strategy).await?;
             info!(strategy_id = %strategy.strategy_id, "Strategy inserted");
         }
 
@@ -362,10 +344,7 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
 
-        let updated = repo.update(strategy).await.map_err(|e| {
-            error!("Failed to update strategy {}: {}", strategy.strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let updated = repo.update(strategy).await?;
 
         if !updated {
             return Err(ServiceError::NotFound(format!(
@@ -385,10 +364,7 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
 
-        let deleted = repo.delete_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to delete strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let deleted = repo.delete_by_id(strategy_id).await?;
 
         if deleted {
             info!(strategy_id = %strategy_id, "Strategy deleted");
@@ -405,16 +381,10 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
 
-        if let Some(mut params) = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy for toggle {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })? {
+        if let Some(mut params) = repo.find_by_id(strategy_id).await? {
             params.enabled = enabled;
             params.updated_at = chrono::Utc::now();
-            repo.update(&params).await.map_err(|e| {
-                error!("Failed to toggle strategy {}: {}", strategy_id, e);
-                ServiceError::Other(e.to_string())
-            })?;
+            repo.update(&params).await?;
             info!(strategy_id = %strategy_id, enabled, "Strategy toggled");
             Ok(true)
         } else {
@@ -435,10 +405,7 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
 
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| {
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
             error!("Strategy '{}' not found", strategy_id);
             ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
         })?;
@@ -538,10 +505,7 @@ impl StrategyService {
             slippage,
         )
         .await
-        .map_err(|e| {
-            error!("Failed to persist backtest result: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        ?;
 
         let duration_ms = start_time.elapsed().as_millis();
         info!(
@@ -569,10 +533,7 @@ impl StrategyService {
         expected: StrategyStatus,
     ) -> ServiceResult<()> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let updated = repo.update_status_if(strategy_id, target, expected, None).await.map_err(|e| {
-            error!("Failed to CAS-persist strategy status: {}", e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let updated = repo.update_status_if(strategy_id, target, expected, None).await?;
         if !updated {
             return Err(ServiceError::ConcurrentModification {
                 strategy_id: strategy_id.to_string(),
@@ -586,10 +547,7 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn deploy_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Deployed;
         let current_status = params.status;
@@ -612,10 +570,7 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn start_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Running;
         let current_status = params.status;
@@ -652,10 +607,7 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn stop_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Archived;
         let current_status = params.status;
@@ -688,10 +640,7 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn pause_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Paused;
         let current_status = params.status;
@@ -724,10 +673,7 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn resume_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Running;
         let current_status = params.status;
@@ -764,10 +710,7 @@ impl StrategyService {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn archive_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
         let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await.map_err(|e| {
-            error!("Failed to fetch strategy {}: {}", strategy_id, e);
-            ServiceError::Other(e.to_string())
-        })?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
 
         let target = StrategyStatus::Archived;
         let current_status = params.status;
@@ -820,7 +763,7 @@ impl StrategyService {
     /// Return the list of currently running strategies from the scheduler.
     pub async fn get_running_strategies(&self) -> ServiceResult<Vec<quant_common::types::SchedulerTaskInfo>> {
         let scheduler = self.scheduler.as_ref().ok_or_else(|| {
-            ServiceError::Other("Scheduler not initialized".into())
+            ServiceError::NotInitialized("Scheduler not initialized".into())
         })?;
         Ok(scheduler.list_running().await)
     }
@@ -838,10 +781,7 @@ impl StrategyService {
             .backtest_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        repo.find_all(limit, offset).await.map_err(|e| {
-            error!("Failed to query backtest results: {}", e);
-            ServiceError::Other(e.to_string())
-        })
+        repo.find_all(limit, offset).await.map_err(ServiceError::from)
     }
 
     /// Query a single backtest result by ID (includes equity_curve).
@@ -853,10 +793,7 @@ impl StrategyService {
             .ok_or(ServiceError::DatabaseNotConnected)?;
         repo.find_by_id(id)
             .await
-            .map_err(|e| {
-                error!("Failed to query backtest result {}: {}", id, e);
-                ServiceError::Other(e.to_string())
-            })?
+            ?
             .ok_or_else(|| ServiceError::NotFound(format!("Backtest result '{}' not found", id)))
     }
 
@@ -867,10 +804,7 @@ impl StrategyService {
             .backtest_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let deleted = repo.delete_by_id(id).await.map_err(|e| {
-            error!("Failed to delete backtest result {}: {}", id, e);
-            ServiceError::Other(e.to_string())
-        })?;
+        let deleted = repo.delete_by_id(id).await?;
         if deleted {
             info!(%id, "Backtest result deleted");
         } else {

@@ -96,6 +96,84 @@ pub enum ServiceError {
 
     #[error("{0}")]
     Other(String),
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    #[error("Repository error: {0}")]
+    Repository(String),
+}
+
+impl From<quant_repository::RepoError> for ServiceError {
+    /// Map repository-layer errors to typed service errors.
+    ///
+    /// The goal is to preserve the typed error so callers can `match` on the
+    /// specific failure mode (e.g. retry on `Conflict`, surface a 404 on
+    /// `NotFound`) instead of having every repository failure degrade into
+    /// the opaque `ServiceError::Other(String)`.
+    fn from(err: quant_repository::RepoError) -> Self {
+        use quant_repository::RepoError as R;
+        match err {
+            R::NotFound { entity, id } => Self::NotFound(format!("{entity} '{id}' not found")),
+            R::VersionConflict { entity, id, version } => {
+                tracing::warn!(entity, id, version, "repo version conflict");
+                Self::Conflict(format!("{entity} '{id}' version conflict (v{version})"))
+            }
+            R::Database(msg) => {
+                tracing::error!(error = %msg, "repo database error");
+                Self::Repository(msg)
+            }
+            R::Migration(msg) => {
+                tracing::error!(error = %msg, "repo migration error");
+                Self::Repository(format!("migration error: {msg}"))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quant_repository::RepoError;
+
+    #[test]
+    fn from_repo_error_not_found_maps_to_service_not_found() {
+        let repo_err = RepoError::NotFound {
+            entity: "strategy",
+            id: "strat-123".to_string(),
+        };
+        let svc_err: ServiceError = repo_err.into();
+        assert!(matches!(svc_err, ServiceError::NotFound(_)),
+            "expected NotFound, got: {svc_err:?}");
+    }
+
+    #[test]
+    fn from_repo_error_version_conflict_maps_to_conflict() {
+        let repo_err = RepoError::VersionConflict {
+            entity: "strategy",
+            id: "strat-123".to_string(),
+            version: 5,
+        };
+        let svc_err: ServiceError = repo_err.into();
+        assert!(matches!(svc_err, ServiceError::Conflict(_)),
+            "expected Conflict, got: {svc_err:?}");
+    }
+
+    #[test]
+    fn from_repo_error_database_maps_to_repository() {
+        let repo_err = RepoError::Database("connection lost".to_string());
+        let svc_err: ServiceError = repo_err.into();
+        assert!(matches!(svc_err, ServiceError::Repository(_)),
+            "expected Repository, got: {svc_err:?}");
+    }
+
+    #[test]
+    fn from_repo_error_migration_maps_to_repository() {
+        let repo_err = RepoError::Migration("schema mismatch".to_string());
+        let svc_err: ServiceError = repo_err.into();
+        assert!(matches!(svc_err, ServiceError::Repository(_)),
+            "expected Repository, got: {svc_err:?}");
+    }
 }
 
 impl From<quant_domain::types::StrategyError> for ServiceError {
