@@ -1,524 +1,16 @@
 <template>
   <div class="system-settings">
-    <el-row :gutter="20" class="header">
-      <el-col :span="24">
-        <h2>系统设置</h2>
-      </el-col>
-    </el-row>
-
+    <el-row :gutter="20" class="header"><el-col :span="24"><h2>系统设置</h2></el-col></el-row>
     <el-tabs v-model="activeTab" class="settings-tabs">
-      <!-- 基本设置 -->
-      <el-tab-pane label="基本设置" name="basic">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>基本配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="systemInfoFormRef" :model="systemInfo" :rules="systemInfoRules" label-width="150px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="系统名称" prop="name">
-                  <el-input v-model="systemInfo.name" placeholder="输入系统名称" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="系统版本" prop="version">
-                  <el-input v-model="systemInfo.version" placeholder="输入系统版本" readonly />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="语言" prop="language">
-                  <el-select v-model="systemInfo.language" placeholder="选择语言" style="width: 100%">
-                    <el-option label="中文" value="zh-CN" />
-                    <el-option label="English" value="en-US" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="时区" prop="timezone">
-                  <el-select v-model="systemInfo.timezone" placeholder="选择时区" style="width: 100%">
-                    <el-option label="UTC" value="UTC" />
-                    <el-option label="UTC+8 (北京)" value="UTC+8" />
-                    <el-option label="UTC-5 (纽约)" value="UTC-5" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 数据库设置 -->
-      <el-tab-pane label="数据库" name="database">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>数据库配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="databaseFormRef" :model="config.database" :rules="databaseRules" label-width="120px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="主机地址" prop="host">
-                  <el-input v-model="config.database.host" placeholder="输入数据库主机地址" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="端口" prop="port">
-                  <el-input-number 
-                    v-model="config.database.port" 
-                    :min="1" 
-                    :max="65535" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="用户名" prop="username">
-                  <el-input v-model="config.database.username" placeholder="输入数据库用户名" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="密码" prop="password">
-                  <el-input 
-                    v-model="config.database.password" 
-                    type="password" 
-                    placeholder="输入数据库密码" 
-                    show-password
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="数据库名" prop="database">
-                  <el-input v-model="config.database.database" placeholder="输入数据库名" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="最大连接数" prop="max_connections">
-                  <el-input-number 
-                    v-model="config.database.max_connections" 
-                    :min="1" 
-                    :max="1000" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 缓存设置 -->
-      <el-tab-pane label="缓存" name="redis">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>Redis配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="redisFormRef" :model="config.redis" :rules="redisRules" label-width="120px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="主机地址" prop="host">
-                  <el-input v-model="config.redis.host" placeholder="输入Redis主机地址" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="端口" prop="port">
-                  <el-input-number 
-                    v-model="config.redis.port" 
-                    :min="1" 
-                    :max="65535" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="密码" prop="password">
-                  <el-input 
-                    v-model="config.redis.password" 
-                    type="password" 
-                    placeholder="输入Redis密码（可选）" 
-                    show-password
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="数据库" prop="db">
-                  <el-input-number 
-                    v-model="config.redis.db" 
-                    :min="0" 
-                    :max="15" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="连接池大小" prop="pool_size">
-                  <el-input-number 
-                    v-model="config.redis.pool_size" 
-                    :min="1" 
-                    :max="100" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 交易所设置 -->
-      <el-tab-pane label="交易所" name="exchange">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>OKX 交易所状态</span>
-              <el-button size="small" @click="fetchOkxConnStatus" :loading="okxChecking">检测连接</el-button>
-            </div>
-          </template>
-          
-          <div v-if="okxConnStatus" class="okx-status-grid">
-            <div class="okx-status-field">
-              <span class="field-label">连接状态</span>
-              <el-tag :type="okxConnStatus.connected ? 'success' : 'danger'" size="large">
-                {{ okxConnStatus.connected ? '已连接' : '未连接' }}
-              </el-tag>
-            </div>
-            <div class="okx-status-field">
-              <span class="field-label">模拟交易</span>
-              <span>{{ okxConnStatus.demo_trading ? '是' : '否' }}</span>
-            </div>
-            <div class="okx-status-field">
-              <span class="field-label">交易所时间</span>
-              <span>{{ okxConnStatus.exchange_time || '-' }}</span>
-            </div>
-            <div class="okx-status-field">
-              <span class="field-label">消息</span>
-              <span>{{ okxConnStatus.message || '-' }}</span>
-            </div>
-          </div>
-          <div v-else class="okx-status-placeholder">
-            <p>点击「检测连接」查看 OKX 交易所状态</p>
-          </div>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 交易设置 -->
-      <el-tab-pane label="交易" name="trading">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>交易配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="tradingFormRef" :model="config.trading" :rules="tradingRules" label-width="150px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="模拟交易" prop="enable_paper_trading">
-                  <el-switch v-model="config.trading.enable_paper_trading" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="每秒最大订单数" prop="max_orders_per_second">
-                  <el-input-number 
-                    v-model="config.trading.max_orders_per_second" 
-                    :min="1" 
-                    :max="1000" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="默认手续费率" prop="default_commission_rate">
-                  <el-input-number 
-                    v-model="config.trading.default_commission_rate" 
-                    :min="0" 
-                    :max="0.1" 
-                    :step="0.0001" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="默认滑点" prop="default_slippage">
-                  <el-input-number 
-                    v-model="config.trading.default_slippage" 
-                    :min="0" 
-                    :max="0.1" 
-                    :step="0.0001" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="订单超时时间(秒)" prop="order_timeout_seconds">
-                  <el-input-number 
-                    v-model="config.trading.order_timeout_seconds" 
-                    :min="1" 
-                    :max="3600" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 风险设置 -->
-      <el-tab-pane label="风险" name="risk">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>风险配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="riskFormRef" :model="config.risk" :rules="riskRules" label-width="150px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="最大持仓比例" prop="max_position_size">
-                  <el-slider 
-                    v-model="config.risk.max_position_size" 
-                    :min="0" 
-                    :max="1" 
-                    :step="0.01" 
-                    show-input
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="单日最大亏损比例" prop="max_daily_loss">
-                  <el-slider 
-                    v-model="config.risk.max_daily_loss" 
-                    :min="0" 
-                    :max="0.2" 
-                    :step="0.001" 
-                    show-input
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="最大回撤限制" prop="max_drawdown">
-                  <el-slider 
-                    v-model="config.risk.max_drawdown" 
-                    :min="0" 
-                    :max="0.3" 
-                    :step="0.01" 
-                    show-input
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="VaR置信水平" prop="var_confidence_level">
-                  <el-slider 
-                    v-model="config.risk.var_confidence_level" 
-                    :min="0.9" 
-                    :max="0.999" 
-                    :step="0.001" 
-                    show-input
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="启用事前检查" prop="enable_pre_trade_check">
-                  <el-switch v-model="config.risk.enable_pre_trade_check" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="启用实时监控" prop="enable_real_time_monitor">
-                  <el-switch v-model="config.risk.enable_real_time_monitor" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 监控设置 -->
-      <el-tab-pane label="监控" name="monitoring">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>监控配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="monitoringFormRef" :model="config.monitoring" :rules="monitoringRules" label-width="150px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="启用Prometheus" prop="enable_prometheus">
-                  <el-switch v-model="config.monitoring.enable_prometheus" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="Prometheus端口" prop="prometheus_port">
-                  <el-input-number 
-                    v-model="config.monitoring.prometheus_port" 
-                    :min="1" 
-                    :max="65535" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="日志级别" prop="log_level">
-                  <el-select v-model="config.monitoring.log_level" placeholder="选择日志级别" style="width: 100%">
-                    <el-option label="Debug" value="debug" />
-                    <el-option label="Info" value="info" />
-                    <el-option label="Warning" value="warning" />
-                    <el-option label="Error" value="error" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="告警邮箱" prop="alert_email">
-                  <el-input 
-                    v-model="config.monitoring.alert_email" 
-                    placeholder="输入告警邮箱地址（可选）" 
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="告警Webhook" prop="alert_webhook">
-                  <el-input 
-                    v-model="config.monitoring.alert_webhook" 
-                    placeholder="输入告警Webhook URL（可选）" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
-      
-      <!-- 安全设置 -->
-      <el-tab-pane label="安全" name="security">
-        <el-card class="settings-card">
-          <template #header>
-            <div class="card-header">
-              <span>安全配置</span>
-            </div>
-          </template>
-          
-          <el-form ref="securityFormRef" :model="config.security" :rules="securityRules" label-width="150px">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="启用加密" prop="enable_encryption">
-                  <el-switch v-model="config.security.enable_encryption" />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="启用双因素认证" prop="enable_2fa">
-                  <el-switch v-model="config.security.enable_2fa" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="JWT密钥" prop="jwt_secret">
-                  <el-input 
-                    v-model="config.security.jwt_secret" 
-                    type="password" 
-                    placeholder="输入JWT密钥" 
-                    show-password
-                  />
-                </el-form-item>
-              </el-col>
-              
-              <el-col :span="12">
-                <el-form-item label="Token过期时间(小时)" prop="token_expiry_hours">
-                  <el-input-number 
-                    v-model="config.security.token_expiry_hours" 
-                    :min="1" 
-                    :max="720" 
-                    style="width: 100%" 
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            
-            <el-row :gutter="20">
-              <el-col :span="24">
-                <el-form-item label="允许的IP地址" prop="allowed_ips">
-                  <el-select
-                    v-model="config.security.allowed_ips"
-                    multiple
-                    filterable
-                    allow-create
-                    default-first-option
-                    placeholder="输入允许的IP地址"
-                    style="width: 100%"
-                  >
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
+      <el-tab-pane label="基本设置" name="basic"><SettingsBasic ref="basicRef" v-model="systemInfo" /></el-tab-pane>
+      <el-tab-pane label="数据库" name="database"><SettingsDatabase ref="dbRef" v-model="config.database" /></el-tab-pane>
+      <el-tab-pane label="缓存" name="redis"><SettingsRedis ref="redisRef" v-model="config.redis" /></el-tab-pane>
+      <el-tab-pane label="交易所" name="exchange"><SettingsExchange /></el-tab-pane>
+      <el-tab-pane label="交易" name="trading"><SettingsTrading ref="tradingRef" v-model="config.trading" /></el-tab-pane>
+      <el-tab-pane label="风险" name="risk"><SettingsRisk ref="riskRef" v-model="config.risk" /></el-tab-pane>
+      <el-tab-pane label="监控" name="monitoring"><SettingsMonitoring ref="monitoringRef" v-model="config.monitoring" /></el-tab-pane>
+      <el-tab-pane label="安全" name="security"><SettingsSecurity ref="securityRef" v-model="config.security" /></el-tab-pane>
     </el-tabs>
-    
-    <!-- 操作按钮 -->
     <el-card class="action-card">
       <div class="action-buttons">
         <el-button type="primary" @click="saveConfig" :loading="saving">保存配置</el-button>
@@ -528,513 +20,157 @@
         <input ref="importFileInput" type="file" accept=".json" style="display:none" @change="handleImport" />
       </div>
     </el-card>
-
-    <!-- Reset config confirm dialog -->
-    <ConfirmDialog
-      v-model:visible="resetDialogVisible"
-      title="确认重置"
-      message="确定要重置所有系统设置吗？此操作不可撤销。"
-      type="danger"
-      confirm-text="重置"
-      @confirm="confirmReset"
-    />
+    <ConfirmDialog v-model:visible="resetDialogVisible" title="确认重置"
+      message="确定要重置所有系统设置吗？此操作不可撤销。" type="danger" confirm-text="重置" @confirm="confirmReset" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { getConfig, updateConfig, checkOkxStatus } from '@/services/api';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
+import { ref, onMounted } from 'vue'
+import { getConfig, updateConfig } from '@/services/api'
+import type { AppConfig } from '@/services/types'
+import { ElMessage } from 'element-plus'
+import type { FormInstance } from 'element-plus'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import SettingsBasic from '@/components/settings/SettingsBasic.vue'
+import SettingsDatabase from '@/components/settings/SettingsDatabase.vue'
+import SettingsRedis from '@/components/settings/SettingsRedis.vue'
+import SettingsExchange from '@/components/settings/SettingsExchange.vue'
+import SettingsTrading from '@/components/settings/SettingsTrading.vue'
+import SettingsRisk from '@/components/settings/SettingsRisk.vue'
+import SettingsMonitoring from '@/components/settings/SettingsMonitoring.vue'
+import SettingsSecurity from '@/components/settings/SettingsSecurity.vue'
 
-// ========================
-// TypeScript Interfaces
-// ========================
+const basicRef = ref<InstanceType<typeof SettingsBasic>>()
+const dbRef = ref<InstanceType<typeof SettingsDatabase>>()
+const redisRef = ref<InstanceType<typeof SettingsRedis>>()
+const tradingRef = ref<InstanceType<typeof SettingsTrading>>()
+const riskRef = ref<InstanceType<typeof SettingsRisk>>()
+const monitoringRef = ref<InstanceType<typeof SettingsMonitoring>>()
+const securityRef = ref<InstanceType<typeof SettingsSecurity>>()
 
-interface SystemInfo {
-  name: string;
-  version: string;
-  language: string;
-  timezone: string;
-}
+const activeTab = ref('basic')
+const saving = ref(false)
+const resetDialogVisible = ref(false)
 
-interface DatabaseConfig {
-  host: string;
-  port: number;
-  username: string;
-  password: string | null;
-  database: string;
-  max_connections: number;
-}
+interface SystemInfo { name: string; version: string; language: string; timezone: string }
+const systemInfo = ref<SystemInfo>({ name: '量化交易系统', version: '1.0.0', language: 'zh-CN', timezone: 'UTC+8' })
 
-interface RedisConfig {
-  host: string;
-  port: number;
-  password: string | null;
-  db: number;
-  pool_size: number;
-}
+const config = ref({
+  database: { host: 'localhost', port: 5432, username: '', password: null as string | null, database: 'quant_trading', max_connections: 50 },
+  redis: { host: 'localhost', port: 6379, password: null as string | null, db: 0, pool_size: 20 },
+  trading: { enable_paper_trading: false, max_orders_per_second: 100, default_commission_rate: 0.0003 as number, default_slippage: 0.0001 as number, order_timeout_seconds: 30 },
+  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
+  monitoring: { enable_prometheus: true, prometheus_port: 9090, log_level: 'info', alert_email: null as string | null, alert_webhook: null as string | null },
+  security: { enable_encryption: true, jwt_secret: '', token_expiry_hours: 24, enable_2fa: false, allowed_ips: ['127.0.0.1'] },
+})
 
-interface TradingConfig {
-  enable_paper_trading: boolean;
-  max_orders_per_second: number;
-  default_commission_rate: number;
-  default_slippage: number;
-  order_timeout_seconds: number;
-}
-
-interface RiskConfig {
-  max_position_size: number;
-  max_daily_loss: number;
-  max_drawdown: number;
-  enable_pre_trade_check: boolean;
-  enable_real_time_monitor: boolean;
-  var_confidence_level: number;
-}
-
-interface MonitoringConfig {
-  enable_prometheus: boolean;
-  prometheus_port: number;
-  log_level: string;
-  alert_email: string | null;
-  alert_webhook: string | null;
-}
-
-interface SecurityConfig {
-  enable_encryption: boolean;
-  jwt_secret: string;
-  token_expiry_hours: number;
-  enable_2fa: boolean;
-  allowed_ips: string[];
-}
-
-interface SystemConfig {
-  database: DatabaseConfig;
-  redis: RedisConfig;
-  trading: TradingConfig;
-  risk: RiskConfig;
-  monitoring: MonitoringConfig;
-  security: SecurityConfig;
-}
-
-// ========================
-// Form Refs
-// ========================
-
-const systemInfoFormRef = ref<FormInstance>();
-const databaseFormRef = ref<FormInstance>();
-const redisFormRef = ref<FormInstance>();
-const tradingFormRef = ref<FormInstance>();
-const riskFormRef = ref<FormInstance>();
-const monitoringFormRef = ref<FormInstance>();
-const securityFormRef = ref<FormInstance>();
-
-// ========================
-// Validation Rules
-// ========================
-
-const systemInfoRules: FormRules = {
-  name: [
-    { required: true, message: '请输入系统名称', trigger: 'blur' },
-  ],
-  version: [
-    { required: true, message: '系统版本不能为空', trigger: 'blur' },
-  ],
-  language: [
-    { required: true, message: '请选择语言', trigger: 'change' },
-  ],
-  timezone: [
-    { required: true, message: '请选择时区', trigger: 'change' },
-  ],
-};
-
-const databaseRules: FormRules = {
-  host: [
-    { required: true, message: '请输入数据库主机地址', trigger: 'blur' },
-  ],
-  port: [
-    { required: true, message: '请输入数据库端口', trigger: 'blur' },
-    { type: 'number', min: 1, max: 65535, message: '端口范围 1-65535', trigger: 'blur' },
-  ],
-  username: [
-    { required: true, message: '请输入数据库用户名', trigger: 'blur' },
-  ],
-  password: [],
-  database: [
-    { required: true, message: '请输入数据库名', trigger: 'blur' },
-  ],
-  max_connections: [
-    { required: true, message: '请输入最大连接数', trigger: 'blur' },
-    { type: 'number', min: 1, max: 1000, message: '连接数范围 1-1000', trigger: 'blur' },
-  ],
-};
-
-const redisRules: FormRules = {
-  host: [
-    { required: true, message: '请输入Redis主机地址', trigger: 'blur' },
-  ],
-  port: [
-    { required: true, message: '请输入Redis端口', trigger: 'blur' },
-    { type: 'number', min: 1, max: 65535, message: '端口范围 1-65535', trigger: 'blur' },
-  ],
-  password: [],
-  db: [],
-  pool_size: [
-    { required: true, message: '请输入连接池大小', trigger: 'blur' },
-    { type: 'number', min: 1, max: 100, message: '连接池大小范围 1-100', trigger: 'blur' },
-  ],
-};
-
-const tradingRules: FormRules = {
-  enable_paper_trading: [],
-  max_orders_per_second: [
-    { required: true, message: '请输入每秒最大订单数', trigger: 'blur' },
-    { type: 'number', min: 1, max: 1000, message: '订单数范围 1-1000', trigger: 'blur' },
-  ],
-  default_commission_rate: [
-    { required: true, message: '请输入默认手续费率', trigger: 'blur' },
-    { type: 'number', min: 0, max: 0.1, message: '手续费率范围 0-0.1', trigger: 'blur' },
-  ],
-  default_slippage: [
-    { required: true, message: '请输入默认滑点', trigger: 'blur' },
-    { type: 'number', min: 0, max: 0.1, message: '滑点范围 0-0.1', trigger: 'blur' },
-  ],
-  order_timeout_seconds: [
-    { required: true, message: '请输入订单超时时间', trigger: 'blur' },
-    { type: 'number', min: 1, max: 3600, message: '超时范围 1-3600秒', trigger: 'blur' },
-  ],
-};
-
-const riskRules: FormRules = {
-  max_position_size: [
-    { required: true, message: '请输入最大持仓比例', trigger: 'blur' },
-    { type: 'number', min: 0, max: 1, message: '持仓比例范围 0-1', trigger: 'blur' },
-  ],
-  max_daily_loss: [
-    { required: true, message: '请输入单日最大亏损比例', trigger: 'blur' },
-    { type: 'number', min: 0, max: 0.2, message: '亏损比例范围 0-0.2', trigger: 'blur' },
-  ],
-  max_drawdown: [
-    { required: true, message: '请输入最大回撤限制', trigger: 'blur' },
-    { type: 'number', min: 0, max: 0.3, message: '回撤范围 0-0.3', trigger: 'blur' },
-  ],
-  var_confidence_level: [
-    { required: true, message: '请输入VaR置信水平', trigger: 'blur' },
-    { type: 'number', min: 0.9, max: 0.999, message: '置信水平范围 0.9-0.999', trigger: 'blur' },
-  ],
-  enable_pre_trade_check: [],
-  enable_real_time_monitor: [],
-};
-
-const monitoringRules: FormRules = {
-  enable_prometheus: [],
-  prometheus_port: [
-    { required: true, message: '请输入Prometheus端口', trigger: 'blur' },
-    { type: 'number', min: 1, max: 65535, message: '端口范围 1-65535', trigger: 'blur' },
-  ],
-  log_level: [
-    { required: true, message: '请选择日志级别', trigger: 'change' },
-  ],
-  alert_email: [],
-  alert_webhook: [],
-};
-
-const securityRules: FormRules = {
-  enable_encryption: [],
-  enable_2fa: [],
-  jwt_secret: [],
-  token_expiry_hours: [
-    { required: true, message: '请输入Token过期时间', trigger: 'blur' },
-    { type: 'number', min: 1, max: 720, message: '过期时间范围 1-720小时', trigger: 'blur' },
-  ],
-  allowed_ips: [],
-};
-
-// ========================
-// Reactive Data
-// ========================
-
-const activeTab = ref('basic');
-const saving = ref(false);
-const resetDialogVisible = ref(false);
-
-const systemInfo = ref<SystemInfo>({
-  name: '量化交易系统',
-  version: '1.0.0',
-  language: 'zh-CN',
-  timezone: 'UTC+8',
-});
-
-const config = ref<SystemConfig>({
-  database: {
-    host: 'localhost',
-    port: 5432,
-    username: 'quant',
-    password: 'quant_password',
-    database: 'quant_trading',
-    max_connections: 50,
-  },
-  redis: {
-    host: 'localhost',
-    port: 6379,
-    password: null,
-    db: 0,
-    pool_size: 20,
-  },
-  trading: {
-    enable_paper_trading: false,
-    max_orders_per_second: 100,
-    default_commission_rate: 0.0003,
-    default_slippage: 0.0001,
-    order_timeout_seconds: 30,
-  },
-  risk: {
-    max_position_size: 0.2,
-    max_daily_loss: 0.05,
-    max_drawdown: 0.15,
-    enable_pre_trade_check: true,
-    enable_real_time_monitor: true,
-    var_confidence_level: 0.95,
-  },
-  monitoring: {
-    enable_prometheus: true,
-    prometheus_port: 9090,
-    log_level: 'info',
-    alert_email: null,
-    alert_webhook: null,
-  },
-  security: {
-    enable_encryption: true,
-    jwt_secret: 'change_this_secret_in_production',
-    token_expiry_hours: 24,
-    enable_2fa: false,
-    allowed_ips: ['127.0.0.1'],
-  },
-});
-
-// ========================
-// Helper — shallow deep merge: preserves default keys missing from source
-// ========================
-
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    const k = key as keyof T;
-    const sv = source[k];
+function mergeConfig<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
+  const result = { ...target }
+  for (const key of Object.keys(source) as Array<keyof T>) {
+    const sv = source[key]
     if (sv !== null && typeof sv === 'object' && !Array.isArray(sv)) {
-      result[k] = deepMerge(result[k] ?? ({} as any), sv as any);
+      result[key] = { ...(result[key] as Record<string, unknown>), ...(sv as Record<string, unknown>) } as T[keyof T]
     } else if (sv !== undefined) {
-      result[k] = sv as any;
+      result[key] = sv as T[keyof T]
     }
   }
-  return result;
+  return result
 }
 
-// ========================
-// OKX Status
-// ========================
-
-const okxConnStatus = ref<any>(null);
-const okxChecking = ref(false);
-
-async function fetchOkxConnStatus() {
-  okxChecking.value = true;
-  try {
-    okxConnStatus.value = await checkOkxStatus();
-  } catch (error) {
-    console.error('Failed to check OKX status:', error);
-    ElMessage.error('检测 OKX 连接失败');
-  } finally {
-    okxChecking.value = false;
-  }
-}
-
-// ========================
-// Methods
-// ========================
-
-// Fetch current configuration
 async function fetchConfig() {
   try {
-    const data = await getConfig();
-    // Deep merge: backend fields override defaults, missing nested keys keep defaults.
-    config.value = deepMerge(config.value, data);
+    config.value = mergeConfig(config.value, await getConfig() as Partial<typeof config.value>)
   } catch (error) {
-    console.error('Failed to fetch config:', error);
-    ElMessage.error('获取配置失败');
+    console.error('Failed to fetch config:', error)
+    ElMessage.error('获取配置失败')
   }
 }
 
-// Save configuration
+function buildAppPayload(cfg: typeof config.value, sys: SystemInfo): AppConfig {
+  return {
+    app_name: sys.name, version: sys.version, debug: false,
+    database: { ...cfg.database, password: cfg.database.password ?? '' },
+    redis: { ...cfg.redis, password: cfg.redis.password ?? '' },
+    trading: cfg.trading, risk: cfg.risk,
+    monitoring: { ...cfg.monitoring, alert_email: cfg.monitoring.alert_email ?? '', alert_webhook: cfg.monitoring.alert_webhook ?? '' },
+    security: cfg.security,
+    okx: { api_key: '', api_secret: '', passphrase: '', environment: 'demo', enable: false },
+  }
+}
+
 async function saveConfig() {
-  if (!systemInfoFormRef.value) return;
-
-  const formRefs = [
-    systemInfoFormRef,
-    databaseFormRef,
-    redisFormRef,
-    tradingFormRef,
-    riskFormRef,
-    monitoringFormRef,
-    securityFormRef,
-  ];
-
-  // Validate all forms
-  const validationResults = await Promise.all(
-    formRefs.map((ref) => {
-      if (!ref.value) return Promise.resolve(true);
-      return ref.value.validate().then(() => true).catch(() => false);
-    }),
-  );
-
-  const allValid = validationResults.every((valid) => valid);
-  if (!allValid) {
-    ElMessage.warning('请检查表单中的必填项');
-    return;
-  }
-
-  saving.value = true;
+  const formRefs = [basicRef, dbRef, redisRef, tradingRef, riskRef, monitoringRef, securityRef]
+    .map(r => r.value?.formRef)
+    .filter((r): r is FormInstance => r !== undefined)
+  if (formRefs.length === 0) return
+  const allValid = (await Promise.all(formRefs.map(r => r.validate().then(() => true).catch(() => false)))).every(Boolean)
+  if (!allValid) { ElMessage.warning('请检查表单中的必填项'); return }
+  saving.value = true
   try {
-    await updateConfig(config.value as any);
-    ElMessage.success('配置保存成功');
+    await updateConfig(buildAppPayload(config.value, systemInfo.value))
+    ElMessage.success('配置保存成功')
   } catch (error) {
-    console.error('Failed to save config:', error);
-    ElMessage.error('保存配置失败: ' + (error as Error).message);
-  } finally {
-    saving.value = false;
-  }
+    console.error('Failed to save config:', error)
+    ElMessage.error('保存配置失败: ' + (error as Error).message)
+  } finally { saving.value = false }
 }
 
-// Reset configuration — show ConfirmDialog first
-function resetConfig() {
-  resetDialogVisible.value = true;
-}
+function resetConfig() { resetDialogVisible.value = true }
 
 async function confirmReset() {
-  try {
-    await fetchConfig(); // Reload defaults from server
-    ElMessage.success('设置已重置');
-    resetDialogVisible.value = false;
-  } catch (error) {
-    console.error('Failed to reset config:', error);
-    ElMessage.error('重置失败: ' + (error as Error).message);
-  }
+  try { await fetchConfig(); ElMessage.success('设置已重置'); resetDialogVisible.value = false }
+  catch (error) { console.error('Failed to reset config:', error); ElMessage.error('重置失败: ' + (error as Error).message) }
 }
 
-// Export configuration to JSON file
 function exportConfig() {
-  const data = JSON.stringify(config.value, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `quant-trader-config-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  ElMessage.success('配置已导出');
+  const payload = buildAppPayload(config.value, systemInfo.value)
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `quant-trader-config-${new Date().toISOString().slice(0, 10)}.json`; a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('配置已导出')
 }
 
-// Trigger file input for import
-const importFileInput = ref<HTMLInputElement | null>(null);
-function triggerImport() {
-  importFileInput.value?.click();
-}
+const importFileInput = ref<HTMLInputElement | null>(null)
+function triggerImport() { importFileInput.value?.click() }
 
-// Handle imported config file
 async function handleImport(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
   try {
-    const text = await file.text();
-    const imported = JSON.parse(text);
-
-    // Validate imported config has the expected structure
-    if (!imported.system || !imported.database || !imported.trading) {
-      ElMessage.error('无效的配置文件格式');
-      return;
+    const imported: Record<string, unknown> = JSON.parse(await file.text())
+    const missing = ['database', 'trading'].filter(s => !imported[s] || typeof imported[s] !== 'object' || Array.isArray(imported[s]))
+    if (missing.length) { ElMessage.error(`无效的配置文件：缺少必需配置节 [${missing.join(', ')}]`); return }
+    const dbSection = imported.database as Record<string, unknown>
+    if (!dbSection.host || !dbSection.port) { ElMessage.error('无效的配置文件：database 节缺少 host 或 port'); return }
+    const trSection = imported.trading as Record<string, unknown>
+    if (typeof trSection.max_position_size !== 'number' && typeof trSection.max_order_size !== 'number') {
+      ElMessage.warning('配置文件缺少交易限额设置，将使用默认值')
     }
-
-    // Deep merge imported config into current config
-    config.value = {
-      ...config.value,
-      ...imported,
-      database: { ...config.value.database, ...imported.database },
-      trading: { ...config.value.trading, ...imported.trading },
-      risk: { ...config.value.risk, ...imported.risk },
-    };
-
-    ElMessage.success('配置已导入，请点击"保存配置"以生效');
-  } catch (err) {
-    ElMessage.error('导入失败: ' + (err as Error).message);
-  } finally {
-    // Reset file input so the same file can be re-imported
-    input.value = '';
-  }
+    const sysSection = imported.system as Record<string, unknown> | undefined
+    if (sysSection?.env && !['dev', 'test', 'staging', 'prod'].includes(sysSection.env as string)) {
+      ElMessage.warning(`未知环境 "${String(sysSection.env)}"，将使用当前配置`); sysSection.env = undefined
+    }
+    config.value = mergeConfig(config.value, {
+      database: imported.database as typeof config.value.database,
+      trading: imported.trading as typeof config.value.trading,
+      risk: imported.risk as typeof config.value.risk,
+    })
+    ElMessage.success('配置已导入，请点击"保存配置"以生效')
+  } catch (err) { ElMessage.error('导入失败: ' + (err as Error).message) }
+  finally { input.value = '' }
 }
 
-// Initialize on mount
-onMounted(() => {
-  fetchConfig();
-});
+onMounted(() => { fetchConfig() })
 </script>
 
 <style scoped>
-.system-settings {
-  padding: 20px;
-}
-
-.header {
-  margin-bottom: 20px;
-}
-
-.settings-tabs {
-  margin-bottom: 20px;
-}
-
-.settings-card {
-  margin-bottom: 20px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.action-card {
-  margin-top: 20px;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.okx-status-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 12px 0;
-}
-
-.okx-status-field {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 8px;
-}
-
-.okx-status-field .field-label {
-  color: #909399;
-  font-size: 14px;
-}
-
-.okx-status-placeholder {
-  text-align: center;
-  padding: 40px 20px;
-  color: #909399;
-}
+.system-settings { padding: 20px; }
+.header { margin-bottom: 20px; }
+.settings-tabs { margin-bottom: 20px; }
+.action-card { margin-top: 20px; }
+.action-buttons { display: flex; gap: 10px; justify-content: center; }
 </style>
