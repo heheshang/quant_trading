@@ -166,6 +166,7 @@ impl StrategyService {
     ///
     /// Validates params against the schema, then inserts into DB.
     /// Returns the newly generated strategy_id.
+    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self), fields(type_name, strategy_name))]
     pub async fn create_strategy(
         &self,
@@ -414,11 +415,7 @@ impl StrategyService {
 
         // 通过注册中心创建策略实例，回退到硬编码
         let strategy: Box<dyn Strategy> = match self.registry.as_ref() {
-            Some(reg) if reg.has_type(&type_str) => {
-                reg.create(&type_str, params.clone()).await.map_err(|e| {
-                    ServiceError::Strategy(format!("Failed to create strategy '{}': {}", type_str, e))
-                })?
-            }
+            Some(reg) if reg.has_type(&type_str) => reg.create(&type_str, params.clone()).await?,
             _ => {
                 if params.strategy_type != StrategyType::MeanReversion {
                     return Err(ServiceError::Strategy(format!(
@@ -736,11 +733,7 @@ impl StrategyService {
     ) -> ServiceResult<(String, Box<dyn Strategy>)> {
         let type_str = format!("{:?}", params.strategy_type);
         let strategy: Box<dyn Strategy> = match self.registry.as_ref() {
-            Some(reg) if reg.has_type(&type_str) => {
-                reg.create(&type_str, params.clone()).await.map_err(|e| {
-                    ServiceError::Strategy(format!("Failed to create strategy '{}': {}", type_str, e))
-                })?
-            }
+            Some(reg) if reg.has_type(&type_str) => reg.create(&type_str, params.clone()).await?,
             _ => {
                 if params.strategy_type != StrategyType::MeanReversion {
                     return Err(ServiceError::Strategy(format!(

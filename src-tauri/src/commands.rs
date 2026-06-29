@@ -737,6 +737,7 @@ pub async fn get_strategy_type_info(
 }
 
 /// 创建新策略（自动生成 UUID v7 strategy_id，含参数验证）
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn create_strategy(
     state: State<'_, AppState>,

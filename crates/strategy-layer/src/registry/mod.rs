@@ -5,11 +5,33 @@
 
 use async_trait::async_trait;
 use quant_common::types::{ParameterSchema, StrategyParams};
-use quant_common::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
 
 use crate::strategy::{MeanReversionStrategy, Strategy};
+
+// ─── FactoryError ─────────────────────────────────────────────────────────
+
+/// 策略工厂与注册中心统一使用的错误类型。
+///
+/// 设计目标：
+/// - 让 `create` 调用方能够精确区分「类型未注册」「参数非法」「初始化失败」
+///   三类失败模式，而不是把它们都降级为字符串。
+#[derive(Debug, Error)]
+pub enum FactoryError {
+    /// 注册中心中未找到指定策略类型
+    #[error("Unknown strategy type '{0}'")]
+    UnknownType(String),
+
+    /// 参数未通过前置校验（例如缺字段、范围越界）
+    #[error("Invalid parameters: {0}")]
+    InvalidParameters(String),
+
+    /// 策略 `initialize` 阶段失败
+    #[error("Failed to initialize strategy: {0}")]
+    Initialize(String),
+}
 
 // ─── StrategyFactory ──────────────────────────────────────────────────────
 
@@ -17,7 +39,14 @@ use crate::strategy::{MeanReversionStrategy, Strategy};
 #[async_trait]
 pub trait StrategyFactory: Send + Sync {
     /// 根据参数创建策略实例
-    async fn create(&self, params: StrategyParams) -> Box<dyn Strategy>;
+    ///
+    /// 实现必须在返回前完成 `initialize`，因此返回值已是「可运行的策略」。
+    /// 任何前置校验失败、`initialize` 错误都必须以 `FactoryError` 形式传播，
+    /// 不允许静默吞错后返回半初始化实例。
+    async fn create(
+        &self,
+        params: StrategyParams,
+    ) -> Result<Box<dyn Strategy>, FactoryError>;
 
     /// 返回该策略类型的参数 Schema（用于前端动态渲染参数配置界面）
     fn parameter_schema(&self) -> Vec<ParameterSchema>;
@@ -89,19 +118,20 @@ impl StrategyRegistry {
     }
 
     /// 根据策略类型名称和参数创建策略实例
+    ///
+    /// 错误以 `FactoryError` 形式传播：
+    /// - `FactoryError::UnknownType`：类型未注册
+    /// - `FactoryError::Initialize` / `InvalidParameters`：工厂内部失败
     pub async fn create(
         &self,
         type_name: &str,
         params: StrategyParams,
-    ) -> Result<Box<dyn Strategy>> {
-        let factory = self.factories.get(type_name).ok_or_else(|| {
-            quant_common::Error::Internal(format!(
-                "Unknown strategy type '{}'. Available: {:?}",
-                type_name,
-                self.list_type_names(),
-            ))
-        })?;
-        Ok(factory.create(params).await)
+    ) -> Result<Box<dyn Strategy>, FactoryError> {
+        let factory = self
+            .factories
+            .get(type_name)
+            .ok_or_else(|| FactoryError::UnknownType(type_name.to_string()))?;
+        factory.create(params).await
     }
 
     /// 检查是否包含指定策略类型
@@ -176,12 +206,16 @@ pub struct MeanReversionFactory;
 
 #[async_trait]
 impl StrategyFactory for MeanReversionFactory {
-    async fn create(&self, params: StrategyParams) -> Box<dyn Strategy> {
+    async fn create(
+        &self,
+        params: StrategyParams,
+    ) -> Result<Box<dyn Strategy>, FactoryError> {
         let mut strategy = MeanReversionStrategy::new();
-        // 忽略 initialize 的错误——工厂只负责创建，
-        // 参数验证由调用方或 initialize 自身完成
-        let _ = strategy.initialize(params).await;
-        Box::new(strategy)
+        strategy
+            .initialize(params)
+            .await
+            .map_err(|e| FactoryError::Initialize(e.to_string()))?;
+        Ok(Box::new(strategy))
     }
 
     fn parameter_schema(&self) -> Vec<ParameterSchema> {
@@ -404,5 +438,133 @@ mod tests {
         assert!(names.contains(&"lookback_period"));
         assert!(names.contains(&"entry_threshold"));
         assert!(names.contains(&"exit_threshold"));
+    }
+
+    /// P0-2: `StrategyFactory::create` must return a `Result` so that
+    /// `initialize` failures are propagated instead of silently swallowed.
+    #[tokio::test]
+    async fn test_factory_create_propagates_initialize_errors() {
+        struct FailingFactory;
+
+        #[async_trait]
+        impl StrategyFactory for FailingFactory {
+            async fn create(&self, _params: StrategyParams) -> Result<Box<dyn crate::strategy::Strategy>, FactoryError> {
+                Err(FactoryError::Initialize("forced failure".to_string()))
+            }
+
+            fn parameter_schema(&self) -> Vec<ParameterSchema> {
+                Vec::new()
+            }
+        }
+
+        let factory = FailingFactory;
+        let params = StrategyParams {
+            strategy_id: "fail-001".to_string(),
+            strategy_name: "Failing".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({}),
+            enabled: true,
+            max_position: rust_decimal::Decimal::ZERO,
+            max_daily_loss: rust_decimal::Decimal::ZERO,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            instance_label: None,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            user_id: 0,
+        };
+
+        let result = factory.create(params).await;
+        assert!(result.is_err(), "factory.create must return Err on init failure");
+        match result.err().unwrap() {
+            FactoryError::Initialize(msg) => assert_eq!(msg, "forced failure"),
+            other => panic!("expected FactoryError::Initialize, got {other:?}"),
+        }
+    }
+
+    /// P0-2: `StrategyRegistry::create` must surface a typed `FactoryError`
+    /// when the requested type is unknown — preserving the registry's
+    /// "type catalog" semantics for callers.
+    #[tokio::test]
+    async fn test_registry_create_unknown_type_returns_typed_error() {
+        let registry = StrategyRegistry::new();
+        let params = StrategyParams {
+            strategy_id: "x".to_string(),
+            strategy_name: "X".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({}),
+            enabled: true,
+            max_position: rust_decimal::Decimal::ZERO,
+            max_daily_loss: rust_decimal::Decimal::ZERO,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            instance_label: None,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            user_id: 0,
+        };
+
+        let result = registry.create("NonExistent", params).await;
+        assert!(result.is_err());
+        match result.err().unwrap() {
+            FactoryError::UnknownType(name) => assert_eq!(name, "NonExistent"),
+            other => panic!("expected FactoryError::UnknownType, got {other:?}"),
+        }
+    }
+
+    /// P0-2: a factory that propagates a typed `FactoryError::InvalidParameters`
+    /// must reach the caller intact (not be downgraded to a `String`).
+    #[tokio::test]
+    async fn test_registry_propagates_invalid_parameters_error() {
+        struct BadParamFactory;
+
+        #[async_trait]
+        impl StrategyFactory for BadParamFactory {
+            async fn create(&self, _params: StrategyParams) -> Result<Box<dyn crate::strategy::Strategy>, FactoryError> {
+                Err(FactoryError::InvalidParameters("missing lookback_period".to_string()))
+            }
+
+            fn parameter_schema(&self) -> Vec<ParameterSchema> {
+                Vec::new()
+            }
+        }
+
+        let mut registry = StrategyRegistry::new();
+        registry.register(
+            "BadParam",
+            Box::new(BadParamFactory),
+            "BadParam",
+            "always fails parameter validation",
+        );
+
+        let params = StrategyParams {
+            strategy_id: "bp-1".to_string(),
+            strategy_name: "BP".to_string(),
+            strategy_type: quant_common::types::StrategyType::MeanReversion,
+            params: serde_json::json!({}),
+            enabled: true,
+            max_position: rust_decimal::Decimal::ZERO,
+            max_daily_loss: rust_decimal::Decimal::ZERO,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            status: quant_common::types::StrategyStatus::Draft,
+            instance_label: None,
+            description: None,
+            tags: vec![],
+            symbols: vec![],
+            user_id: 0,
+        };
+
+        let result = registry.create("BadParam", params).await;
+        match result.err().unwrap() {
+            FactoryError::InvalidParameters(msg) => {
+                assert!(msg.contains("lookback_period"));
+            }
+            other => panic!("expected FactoryError::InvalidParameters, got {other:?}"),
+        }
     }
 }
