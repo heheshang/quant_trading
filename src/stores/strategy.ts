@@ -11,18 +11,19 @@ import {
   deployStrategy as apiDeployStrategy,
   archiveStrategy as apiArchiveStrategy,
   toggleStrategy as apiToggleStrategy,
+  listStrategyTypes as apiListStrategyTypes,
+  getStrategyTypeInfo as apiGetStrategyTypeInfo,
+  createStrategy as apiCreateStrategy,
 } from '@/services/strategy'
-import type { StrategyParams, StrategyStatus } from '@/services/types'
-
-const POLL_INTERVAL_MS = 5_000
+import type { StrategyParams, StrategyStatus, StrategyTypeInfo } from '@/services/types'
 
 export const useStrategyStore = defineStore('strategy', () => {
   const strategies = ref<StrategyParams[]>([])
   const currentStrategy = ref<StrategyParams | null>(null)
+  const strategyTypes = ref<StrategyTypeInfo[]>([])
+  const currentTypeInfo = ref<StrategyTypeInfo | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
-
-  let pollTimer: ReturnType<typeof setInterval> | null = null
 
   const runningStrategies = computed(() =>
     strategies.value.filter((s) => {
@@ -194,23 +195,68 @@ export const useStrategyStore = defineStore('strategy', () => {
     }
   }
 
-  function startPolling() {
-    if (pollTimer) return
-    pollTimer = setInterval(() => {
-      fetchStrategies(true)
-    }, POLL_INTERVAL_MS)
+  async function listStrategyTypes() {
+    loading.value = true
+    error.value = null
+    try {
+      strategyTypes.value = await apiListStrategyTypes()
+    } catch (err) {
+      error.value = '获取策略类型列表失败'
+      console.error('Failed to fetch strategy types:', err)
+    } finally {
+      loading.value = false
+    }
   }
 
-  function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = null
+  async function fetchStrategyTypeInfo(typeName: string) {
+    loading.value = true
+    error.value = null
+    try {
+      currentTypeInfo.value = await apiGetStrategyTypeInfo(typeName)
+    } catch (err) {
+      error.value = '获取策略类型信息失败'
+      console.error('Failed to fetch strategy type info:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function createNewStrategy(
+    typeName: string,
+    strategyName: string,
+    params: Record<string, unknown>,
+    enabled: boolean,
+    maxPosition: number,
+    maxDailyLoss: number,
+    userId: number,
+    instanceLabel?: string,
+    description?: string,
+    tags?: string[],
+    symbols?: string[],
+  ) {
+    loading.value = true
+    error.value = null
+    try {
+      const id = await apiCreateStrategy(
+        typeName, strategyName, params, enabled,
+        maxPosition, maxDailyLoss, userId, instanceLabel,
+        description, tags, symbols,
+      )
+      await fetchStrategies(true)
+      return id
+    } catch (err) {
+      error.value = '创建策略失败'
+      throw err
+    } finally {
+      loading.value = false
     }
   }
 
   return {
     strategies,
     currentStrategy,
+    strategyTypes,
+    currentTypeInfo,
     loading,
     error,
     runningStrategies,
@@ -228,7 +274,8 @@ export const useStrategyStore = defineStore('strategy', () => {
     resumeStrategy,
     deployStrategy,
     archiveStrategy,
-    startPolling,
-    stopPolling,
+    listStrategyTypes,
+    fetchStrategyTypeInfo,
+    createNewStrategy,
   }
 })
