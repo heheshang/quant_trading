@@ -44,7 +44,7 @@
             type="primary"
             size="large"
             class="login-button"
-            :loading="loading"
+            :loading="auth.loading"
             @click="handleLogin"
           >
             登录
@@ -62,11 +62,11 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { login, verifyToken } from '@/services/api';
+import { useAuthStore } from '@/stores/auth';
 import { ElMessage, FormInstance } from 'element-plus';
 
-// Reactive data
 const router = useRouter();
+const auth = useAuthStore();
 const loginFormRef = ref<FormInstance>();
 
 const loginForm = reactive({
@@ -75,9 +75,6 @@ const loginForm = reactive({
   remember: false
 });
 
-const loading = ref(false);
-
-// Validation rules
 const loginRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -89,81 +86,36 @@ const loginRules = {
   ]
 };
 
-// Handle login
-const handleLogin = async () => {
+async function handleLogin() {
   if (!loginFormRef.value) return;
-  
+
   await loginFormRef.value.validate(async (valid) => {
     if (!valid) return;
-    
-    loading.value = true;
-    try {
-      // Call login API
-      const token = await login(loginForm.username, loginForm.password);
-      
-      // Store authentication state
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('username', loginForm.username);
-      localStorage.setItem('authToken', token);
 
-      // Handle "remember me" - save/clear saved credentials
-      if (loginForm.remember) {
-        localStorage.setItem('remembered_username', loginForm.username);
-        // Store a hint (not the real password) for UX
-        localStorage.setItem('remembered_password', loginForm.password);
-      } else {
-        localStorage.removeItem('remembered_username');
-        localStorage.removeItem('remembered_password');
-      }
-      
-      // Verify token validity
-      try {
-        const valid = await verifyToken(token);
-        if (!valid) {
-          throw new Error('Token 验证失败');
-        }
-      } catch (verifyError) {
-        console.error('Token verification failed:', verifyError);
-        // Token invalid, clear auth and block login
-        localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('username');
-        ElMessage.error('登录验证失败，请重试');
-        loading.value = false;
-        return;
-      }
-      
-      // Redirect to intended page or dashboard
-      const redirectPath = localStorage.getItem('redirect_after_login') || '/dashboard';
-      localStorage.removeItem('redirect_after_login');
+    try {
+      const redirectPath = await auth.login(
+        loginForm.username,
+        loginForm.password,
+        loginForm.remember,
+      );
       ElMessage.success('登录成功');
       router.push(redirectPath);
     } catch (error) {
-      console.error('Login failed:', error);
       ElMessage.error('登录失败: ' + (error as Error).message);
-    } finally {
-      loading.value = false;
     }
   });
-};
+}
 
-// Check if already authenticated; restore remembered credentials
 onMounted(() => {
-  const isAuthenticated = localStorage.getItem('isAuthenticated');
-  if (isAuthenticated === 'true') {
+  if (auth.isLoggedIn) {
     router.push('/dashboard');
     return;
   }
 
-  // Restore remembered credentials
-  const rememberedUsername = localStorage.getItem('remembered_username');
-  const rememberedPassword = localStorage.getItem('remembered_password');
-  if (rememberedUsername) {
-    loginForm.username = rememberedUsername;
+  const remembered = auth.getRememberedUsername();
+  if (remembered) {
+    loginForm.username = remembered;
     loginForm.remember = true;
-    if (rememberedPassword) {
-      loginForm.password = rememberedPassword;
-    }
   }
 });
 </script>
@@ -174,7 +126,7 @@ onMounted(() => {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--el-bg-color-page, #f5f7fa);
 }
 
 .login-box {
