@@ -122,50 +122,78 @@ describe('strategyStore', () => {
     expect(store.strategies).toEqual([])
   })
 
-  // ── loading state ──
+  // ── per-action loading state ──
 
-  it('sets loading=true during fetch and false after', async () => {
+  it('sets loading.list=true during fetchStrategies and false after', async () => {
     const store = useStrategyStore()
     // Use an unresolved promise to test loading state
     mockInvoke.mockImplementation(() => new Promise(() => {})) // never resolves
     store.fetchStrategies(true)
-    expect(store.loading).toBe(true)
+    expect(store.loading.list).toBe(true)
   })
 
-  it('sets loading=false after fetch completes', async () => {
+  it('sets loading.list=false after fetchStrategies completes', async () => {
     const store = useStrategyStore()
     await store.fetchStrategies(true)
-    expect(store.loading).toBe(false)
+    expect(store.loading.list).toBe(false)
   })
 
-  // ── error state ──
+  it('does not cross-contaminate loading flags between actions', async () => {
+    const store = useStrategyStore()
+    mockInvoke.mockImplementation(() => new Promise(() => {})) // never resolves
+    store.startStrategy('s1')
+    // start does not use loading flag (fire-and-forget), only error
+    // but per-action loading for other actions should still be false
+    expect(store.loading.list).toBe(false)
+    expect(store.loading.create).toBe(false)
+  })
 
-  it('sets error message on fetch failure', async () => {
+  it('isAnyLoading reflects any in-flight action', async () => {
+    const store = useStrategyStore()
+    expect(store.isAnyLoading).toBe(false)
+    mockInvoke.mockImplementation(() => new Promise(() => {}))
+    store.fetchStrategies(true)
+    expect(store.isAnyLoading).toBe(true)
+  })
+
+  // ── per-action error state ──
+
+  it('sets error.list on fetchStrategies failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Network error'))
     const store = useStrategyStore()
     await store.fetchStrategies(true)
-    expect(store.error).toBe('获取策略列表失败')
+    expect(store.error.list).toBe('获取策略列表失败')
   })
 
-  it('sets error message on createStrategy failure', async () => {
+  it('sets error.create on createStrategy failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Save failed'))
     const store = useStrategyStore()
     await expect(store.createStrategy(createMockStrategy({ strategy_id: 'new' }))).rejects.toThrow()
-    expect(store.error).toBe('创建策略失败')
+    expect(store.error.create).toBe('创建策略失败')
   })
 
-  it('sets error message on updateStrategy failure', async () => {
+  it('sets error.update on updateStrategy failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Update failed'))
     const store = useStrategyStore()
     await expect(store.updateStrategy(createMockStrategy({ strategy_id: 's1' }))).rejects.toThrow()
-    expect(store.error).toBe('更新策略失败')
+    expect(store.error.update).toBe('更新策略失败')
   })
 
-  it('sets error message on deleteStrategy failure', async () => {
+  it('sets error.delete on deleteStrategy failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Delete failed'))
     const store = useStrategyStore()
     await expect(store.deleteStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('删除策略失败')
+    expect(store.error.delete).toBe('删除策略失败')
+  })
+
+  it('does not cross-contaminate error flags between actions', async () => {
+    mockInvoke.mockRejectedValue(new Error('Network error'))
+    const store = useStrategyStore()
+    await store.fetchStrategies(true)
+    expect(store.error.list).toBe('获取策略列表失败')
+    // Other error keys should remain null
+    expect(store.error.create).toBeNull()
+    expect(store.error.start).toBeNull()
   })
 
   // ── createStrategy ──
@@ -242,21 +270,21 @@ describe('strategyStore', () => {
     expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
   })
 
-  it('lifecycle actions set error on failure', async () => {
+  it('lifecycle actions set per-action error on failure', async () => {
     const store = useStrategyStore()
     mockInvoke.mockRejectedValue(new Error('Fail'))
     await expect(store.startStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('启动策略失败')
+    expect(store.error.start).toBe('启动策略失败')
     await expect(store.stopStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('停止策略失败')
+    expect(store.error.stop).toBe('停止策略失败')
     await expect(store.pauseStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('暂停策略失败')
+    expect(store.error.pause).toBe('暂停策略失败')
     await expect(store.resumeStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('恢复策略失败')
+    expect(store.error.resume).toBe('恢复策略失败')
     await expect(store.deployStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('部署策略失败')
+    expect(store.error.deploy).toBe('部署策略失败')
     await expect(store.archiveStrategy('s1')).rejects.toThrow()
-    expect(store.error).toBe('归档策略失败')
+    expect(store.error.archive).toBe('归档策略失败')
   })
 
   // ── toggleStrategy ──
@@ -280,11 +308,11 @@ describe('strategyStore', () => {
     expect(s2.enabled).toBe(true)
   })
 
-  it('toggleStrategy sets error on failure', async () => {
+  it('toggleStrategy sets error.toggle on failure', async () => {
     const store = useStrategyStore()
     mockInvoke.mockRejectedValue(new Error('Toggle failed'))
     await expect(store.toggleStrategy('s1', false)).rejects.toThrow()
-    expect(store.error).toBe('更新策略状态失败')
+    expect(store.error.toggle).toBe('更新策略状态失败')
   })
 
   // ── Computed properties ──
@@ -357,8 +385,28 @@ describe('strategyStore', () => {
     const store = useStrategyStore()
     expect(store.strategies).toEqual([])
     expect(store.currentStrategy).toBeNull()
-    expect(store.loading).toBe(false)
-    expect(store.error).toBeNull()
+    // All per-action loading flags should start false
+    expect(store.loading.list).toBe(false)
+    expect(store.loading.create).toBe(false)
+    expect(store.loading.update).toBe(false)
+    expect(store.loading.delete).toBe(false)
+    expect(store.loading.start).toBe(false)
+    expect(store.loading.stop).toBe(false)
+    expect(store.loading.pause).toBe(false)
+    expect(store.loading.resume).toBe(false)
+    expect(store.loading.deploy).toBe(false)
+    expect(store.loading.archive).toBe(false)
+    // All per-action error flags should start null
+    expect(store.error.list).toBeNull()
+    expect(store.error.create).toBeNull()
+    expect(store.error.update).toBeNull()
+    expect(store.error.delete).toBeNull()
+    expect(store.error.start).toBeNull()
+    expect(store.error.stop).toBeNull()
+    expect(store.error.pause).toBeNull()
+    expect(store.error.resume).toBeNull()
+    expect(store.error.deploy).toBeNull()
+    expect(store.error.archive).toBeNull()
     expect(store.runningStrategies).toEqual([])
     expect(store.draftStrategies).toEqual([])
   })
@@ -375,15 +423,12 @@ describe('strategyStore', () => {
     expect(store.currentStrategy!.strategy_id).toBe('s1')
   })
 
-  it('selectStrategy handles errors gracefully', async () => {
+  it('selectStrategy handles missing strategy gracefully', async () => {
     const store = useStrategyStore()
     // Ensure strategies are empty so the find returns undefined
     store.selectStrategy('s1')
     // No error should be set since no API call is made (looks in cache only)
-    // Actually selectStrategy does: const found = strategies.value.find(...)
-    // This won't throw, so error stays null
-    // But if there's an error thrown by find (unlikely), it would be caught
-    expect(store.error).toBeNull()
+    expect(store.error.select).toBeNull()
   })
 
   // ── createNewStrategy ──
@@ -447,11 +492,11 @@ describe('strategyStore', () => {
     expect(id).toBe('new-id')
   })
 
-  it('createNewStrategy sets error on failure', async () => {
+  it('createNewStrategy sets error.createNew on failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Create failed'))
     const store = useStrategyStore()
     await expect(store.createNewStrategy('TrendFollowing', 'Fail', {}, true, 0, 0, 1)).rejects.toThrow()
-    expect(store.error).toBe('创建策略失败')
+    expect(store.error.createNew).toBe('创建策略失败')
   })
 
   // ── listStrategyTypes ──
@@ -464,14 +509,14 @@ describe('strategyStore', () => {
     expect(store.strategyTypes).toHaveLength(2)
     expect(store.strategyTypes[0].type_name).toBe('TrendFollowing')
     expect(store.strategyTypes[1].type_name).toBe('MeanReversion')
-    expect(store.loading).toBe(false)
+    expect(store.loading.listTypes).toBe(false)
   })
 
-  it('listStrategyTypes sets error on failure', async () => {
+  it('listStrategyTypes sets error.listTypes on failure', async () => {
     mockInvoke.mockRejectedValue(new Error('List failed'))
     const store = useStrategyStore()
     await store.listStrategyTypes()
-    expect(store.error).toBe('获取策略类型列表失败')
+    expect(store.error.listTypes).toBe('获取策略类型列表失败')
     expect(store.strategyTypes).toHaveLength(0)
   })
 
@@ -486,14 +531,14 @@ describe('strategyStore', () => {
     expect(store.currentTypeInfo!.type_name).toBe('TrendFollowing')
     expect(store.currentTypeInfo!.display_name).toBe('趋势跟随')
     expect(store.currentTypeInfo!.parameters).toHaveLength(2)
-    expect(store.loading).toBe(false)
+    expect(store.loading.fetchTypeInfo).toBe(false)
   })
 
-  it('fetchStrategyTypeInfo sets error on failure', async () => {
+  it('fetchStrategyTypeInfo sets error.fetchTypeInfo on failure', async () => {
     mockInvoke.mockRejectedValue(new Error('Info failed'))
     const store = useStrategyStore()
     await store.fetchStrategyTypeInfo('UnknownType')
-    expect(store.error).toBe('获取策略类型信息失败')
+    expect(store.error.fetchTypeInfo).toBe('获取策略类型信息失败')
     expect(store.currentTypeInfo).toBeNull()
   })
 })
