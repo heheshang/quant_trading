@@ -192,3 +192,63 @@ AppError (common crate, impl IntoResponse)
 - 每层错误使用 `thiserror` 派生
 - 通过 `From` trait 自动转换
 - `AppError` 实现 `IntoResponse`，映射到 HTTP 状态码
+
+## 数据库 Schema → Rust 字段映射
+
+> 本节是 **SQL schema 与 Rust 代码列名一致性**的契约。任何列变更必须同步更新本表。
+> 完整迁移命名规范见 [`migration-naming.md`](./migration-naming.md)。
+
+### 迁移文件位置
+
+- 生产迁移：`crates/data-layer/migrations/`
+- 加载机制：`sqlx::migrate!("./migrations")`（`data-layer/src/postgres.rs::run_migrations`）
+- 集成测试：`crates/data-layer/tests/migration_integration.rs`（`#[ignore]`，需真实 PG）
+- 启动入口：`src-tauri/src/main.rs:119` 在应用启动时自动调用
+
+### 表 → Rust 字段映射
+
+| SQL 表 | SQL 列 | Rust struct | Rust 字段 | 查询文件 |
+|--------|--------|-------------|-----------|---------|
+| `users` | `user_id` | (无 struct，row.get) | row.get("user_id") | `services/auth_service.rs` |
+| `users` | `role` | — | row.get("role") | `services/auth_service.rs:52` |
+| `users` | `phone, full_name, company, address` | — | row.get(...) | `services/auth_service.rs:113-118` |
+| `accounts` | `account_id, total_assets, available_cash, frozen_cash, market_value, total_pnl, daily_pnl, margin, margin_ratio, updated_at` | `Account` | 1:1 | `services/account_service.rs:26-58` |
+| `orders` | `order_id, account_id, strategy_id, symbol, order_type, side, price, quantity, filled_quantity, commission, slippage, status, created_at, updated_at` | `Order` | 1:1 | `services/account_service.rs:69-129` |
+| `positions` | `symbol, quantity, available_quantity, avg_price, market_value, unrealized_pnl, realized_pnl, updated_at` | `Position` | 1:1 | `services/account_service.rs:189-216` |
+| `strategies` | `id, strategy_id, strategy_name, strategy_type, params, enabled, max_position, max_daily_loss, status, description, tags, symbols, instance_label, version, created_at, updated_at, user_id` | `StrategyRow` (sqlx::FromRow) | 1:1 | `repository/strategy_repository.rs:15-35` |
+| `backtest_results` | `id, strategy_id, strategy_name, start_date, end_date, initial_capital, final_capital, total_return, annual_return, sharpe_ratio, max_drawdown, win_rate, profit_loss_ratio, total_trades, winning_trades, losing_trades, equity_curve, symbols, commission_rate, slippage, parameters_json, created_at` | `BacktestResultRow` | 1:1 | `repository/backtest.rs:14-36` |
+| `market_data` | `id, instrument_id, timeframe, timestamp, open, high, low, close, volume, turnover, open_interest, bid_prices, bid_volumes, ask_prices, ask_volumes, created_at` | `MarketDataRecord` (data-layer) / `MarketData` (domain) | 1:1 | `data-layer/market_data_repo.rs:8-20`, `domain/types.rs:41-55` |
+| `market_data` | `(instrument_id, timeframe, timestamp)` | — | UNIQUE 约束，支持 `ON CONFLICT DO NOTHING` | `data-layer/market_data_repo.rs:52` |
+| `risk_config` | `id, var_confidence_level, max_position_size, max_daily_loss, max_drawdown, max_concentration, enable_pre_trade_check, enable_real_time_monitor, created_at, updated_at` | `RiskConfig` (domain) | 1:1 | `services/risk_service.rs:123-150` |
+| `ticker_snapshots` | `id, instrument_id, ts, last_px, open_24h, high_24h, low_24h, vol_24h, vol_ccy_24h, change_24h, created_at` | `NewTickerSnapshot` | 1:1 | `data-layer/market_data_repo.rs:115-137` |
+| `account_snapshots` | `id, ccy, ts, eq, cash_bal, avail_eq, frozen_bal, created_at` | `NewAccountSnapshot` | 1:1 | `data-layer/market_data_repo.rs:141-160` |
+| `position_snapshots` | `id, inst_id, ts, pos, avg_px, upl, upl_ratio, mark_px, created_at` | `NewPositionSnapshot` | 1:1 | `data-layer/market_data_repo.rs:164-184` |
+| `funding_rates` | `id, inst_id, ts, funding_rate, next_funding_rate, funding_time, created_at` | `NewFundingRate` | 1:1 | `data-layer/market_data_repo.rs:188-206` |
+| `mark_prices` | `id, inst_id, ts, mark_px, idx_px, created_at` | `NewMarkPrice` | 1:1 | `data-layer/market_data_repo.rs:210-227` |
+| `api_keys` | `id, user_id, exchange, api_key, encrypted_secret, passphrase, is_active, created_at, last_used` | (无直接查询) | — | — |
+| `audit_logs` | `id, user_id, username, action, resource, details, ip_address, success, error_message, created_at` | `AuditLog` (security) | 1:1（DB 写入未启用） | `security/audit.rs` |
+| `alerts` | `id, level, source, message, acknowledged, acknowledged_by, acknowledged_at, created_at` | (无直接查询) | — | — |
+
+### 列名变更流程
+
+1. **新增列**：先写 migration（`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`）→ 再更新 Rust struct → 再更新本表
+2. **重命名列**：必须分两步：先 `ADD COLUMN new` + 双写 → 后续 migration 删旧列 + 改 Rust
+3. **删除列**：先删 Rust 引用 → 再写 migration `DROP COLUMN` → 标记本表为"已删除"
+4. **CI 校验**：`.harness/scripts/verify-migrations.sh` 检查文件命名规范
+
+### 已知 active 字段映射
+
+| 字段 | SQL 类型 | Rust 类型 | 说明 |
+|------|---------|-----------|------|
+| `accounts.account_id` | BIGSERIAL | i64 | 不是 `id`！用 `account_id` |
+| `orders.order_id` | BIGSERIAL | i64 | 不是 `id` |
+| `strategies.strategy_id` | VARCHAR(100) | String | 字符串主键 |
+| `strategies.id` | SERIAL | i32 | 新增自增 id（migration 013） |
+| `strategies.tags/symbols` | JSONB | `Vec<String>` | 通过 serde_json 转换 |
+| `users.user_id` | BIGSERIAL | i64 | 数字主键 |
+| `users.role` | VARCHAR(50) | String | 单角色（不是 `roles TEXT[]`） |
+| `market_data.instrument_id` | VARCHAR(50) | String | 不是 `symbol`！ |
+| `market_data.timestamp` | TIMESTAMPTZ | `DateTime<Utc>` | 分区键 |
+| `risk_config.enable_*` | BOOLEAN | bool | migration 016 新增 |
+| `ticker_snapshots.ts` | TIMESTAMPTZ | `DateTime<Utc>` | 不是 `timestamp` |
+
