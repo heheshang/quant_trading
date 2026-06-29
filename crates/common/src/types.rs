@@ -127,6 +127,7 @@ mod tests {
     fn test_strategy_status_allowed_transitions() {
         use StrategyStatus::*;
         assert!(Draft.can_transition_to(Backtesting));
+        assert!(Draft.can_transition_to(Deployed));
         assert!(Draft.can_transition_to(Archived));
         assert!(Backtesting.can_transition_to(Deployed));
         assert!(Backtesting.can_transition_to(Draft));
@@ -163,7 +164,7 @@ mod tests {
     #[test]
     fn test_allowed_transitions_list() {
         let transitions = allowed_transitions();
-        assert_eq!(transitions.len(), 10);
+        assert_eq!(transitions.len(), 11);
         for t in &transitions {
             assert!(t.from.can_transition_to(t.to),
                 "transition {:?} → {:?} should be valid", t.from, t.to);

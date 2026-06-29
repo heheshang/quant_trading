@@ -330,7 +330,7 @@ impl StrategyStatus {
     pub fn can_transition_to(&self, to: StrategyStatus) -> bool {
         matches!(
             (*self, to),
-            (Self::Draft, Self::Backtesting | Self::Archived)
+            (Self::Draft, Self::Backtesting | Self::Deployed | Self::Archived)
                 | (Self::Backtesting, Self::Deployed | Self::Draft)
                 | (Self::Deployed, Self::Running | Self::Draft)
                 | (Self::Running, Self::Paused | Self::Archived)
@@ -364,6 +364,7 @@ pub fn allowed_transitions() -> Vec<StatusTransition> {
     use StrategyStatus::*;
     vec![
         StatusTransition { from: Draft, to: Backtesting, guard: None },
+        StatusTransition { from: Draft, to: Deployed, guard: None },
         StatusTransition { from: Draft, to: Archived, guard: None },
         StatusTransition { from: Backtesting, to: Deployed, guard: None },
         StatusTransition { from: Backtesting, to: Draft, guard: None },
@@ -1570,6 +1571,11 @@ mod tests {
     #[test]
     fn test_strategy_status_can_transition_draft_to_archived() {
         assert!(StrategyStatus::Draft.can_transition_to(StrategyStatus::Archived));
+    }
+
+    #[test]
+    fn test_strategy_status_can_transition_draft_to_deployed() {
+        assert!(StrategyStatus::Draft.can_transition_to(StrategyStatus::Deployed));
     }
 
     #[test]
