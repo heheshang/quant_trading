@@ -178,18 +178,11 @@ function handleRefresh() {
   margin-bottom: 20px;
 }
 
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
 .section-title {
   font-size: 14px;
   font-weight: 600;
   color: #606266;
-  margin: 0;
+  margin: 0 0 8px 0;
 }
 
 .description-text {
@@ -199,18 +192,10 @@ function handleRefresh() {
   color: #606266;
   line-height: 1.6;
   white-space: pre-wrap;
-}
-
-.tags-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.tag-item {
   margin: 0;
 }
 
+.tags-container,
 .symbols-container {
   display: flex;
   flex-wrap: wrap;
@@ -223,87 +208,34 @@ function handleRefresh() {
   gap: 4px;
 }
 
-.symbol-icon {
-  margin-right: 4px;
-}
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.metric-item {
-  padding: 12px;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  background-color: #fafbff;
-  transition: all 0.3s;
-}
-
-.metric-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-}
-
-.metric-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.metric-icon {
-  color: #409eff;
-}
-
-.metric-name {
+.empty-hint {
+  color: #909399;
   font-size: 13px;
-  color: #606266;
 }
 
-.metric-value {
-  font-size: 18px;
-  font-weight: 600;
-  text-align: right;
-}
-
-.metric-value.positive {
-  color: #67c23a;
-}
-
-.metric-value.negative {
-  color: #f56c6c;
-}
-
-.metric-value.neutral {
-  color: #909399;
-}
-
-.metric-change {
+.params-list {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 4px;
-  font-size: 12px;
-  margin-top: 4px;
 }
 
-.metric-change.increase {
-  color: #67c23a;
+.param-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
-.metric-change.decrease {
-  color: #f56c6c;
+.param-key {
+  color: #606266;
+  font-weight: 500;
 }
 
-.metric-change.stable {
-  color: #909399;
-}
-
-.refresh-label {
-  font-size: 12px;
-  color: #909399;
-  margin-left: 8px;
+.param-val {
+  color: #303133;
+  font-family: 'SF Mono', Consolas, monospace;
 }
 
 .panel-footer {

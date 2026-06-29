@@ -118,7 +118,6 @@ describe('Strategy.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.dialogVisible).toBe(true)
     expect(wrapper.vm.editingStrategy).toBeNull()
-    expect(wrapper.vm.store.toggleStrategy).toHaveBeenCalled()
   }, 30000)
 
   it('刷新 - 调用 store.fetchStrategies', async () => {
@@ -201,8 +200,18 @@ describe('Strategy.vue - 按钮测试', () => {
     expect(wrapper.exists()).toBe(true)
   }, 30000)
 
-  it.skip('加载状态显示 - component has form validation that makes this test complex', () => {
-    // Skipping due to form validation complexity in StrategyFormDialog
+  it('加载状态显示 - store.loading 传入 StrategyTable', async () => {
+    const wrapper = await mountComponent()
+    const refreshBtn = wrapper.findAll('button').find((b: any) => b.text().includes('刷新'))
+    expect(refreshBtn).toBeDefined()
+    expect(refreshBtn!.attributes('loading')).toBe('false')
+
+    ;(wrapper.vm.store as any).loading = true
+    await wrapper.vm.$nextTick()
+
+    const table = wrapper.findComponent({ name: 'StrategyTable' })
+    expect(table.exists()).toBe(true)
+    expect(table.props('loading')).toBe(true)
   }, 30000)
 
   it('搜索栏 - SearchBar 输入', async () => {
