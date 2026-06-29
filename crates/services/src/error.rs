@@ -85,12 +85,6 @@ pub enum ServiceError {
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
 
-    #[error("Concurrent modification: strategy {strategy_id} expected status {expected}")]
-    ConcurrentModification {
-        strategy_id: String,
-        expected: String,
-    },
-
     #[error("Service not initialized: {0}")]
     NotInitialized(String),
 
