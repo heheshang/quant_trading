@@ -27,8 +27,10 @@ struct StrategyRow {
     description: Option<String>,
     tags: serde_json::Value,
     symbols: serde_json::Value,
+    instance_label: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    pub user_id: Option<i64>,
 }
 
 impl StrategyRow {
@@ -60,8 +62,10 @@ impl StrategyRow {
             description: self.description.clone(),
             tags,
             symbols,
+            instance_label: self.instance_label.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
+            user_id: self.user_id.unwrap_or(0),
         })
     }
 }
@@ -80,8 +84,10 @@ pub struct StrategySummaryRow {
     pub description: Option<String>,
     pub tags: serde_json::Value,
     pub symbols: serde_json::Value,
+    pub instance_label: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub user_id: Option<i64>,
 }
 
 impl StrategySummaryRow {
@@ -107,8 +113,10 @@ impl StrategySummaryRow {
             description: self.description.clone(),
             tags,
             symbols,
+            instance_label: self.instance_label.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
+            user_id: self.user_id.unwrap_or(0),
         })
     }
 }
@@ -211,8 +219,8 @@ impl StrategyRepository for PgStrategyRepository {
 
         let mut query = sqlx::QueryBuilder::new(
             "SELECT id, strategy_id, strategy_name, strategy_type, params, enabled, status, \
-             max_position, max_daily_loss, description, tags, symbols, created_at, updated_at \
-             FROM strategies WHERE 1=1"
+              max_position, max_daily_loss, description, tags, symbols, instance_label, created_at, updated_at, \
+              user_id FROM strategies WHERE 1=1"
         );
 
         if let Some(ref pattern) = search_pattern {
@@ -313,7 +321,9 @@ impl StrategyRepository for PgStrategyRepository {
                    params, enabled,
                    max_position, max_daily_loss,
                    status, description, tags, symbols,
-                   created_at, updated_at
+                   instance_label,
+                   created_at, updated_at,
+                   user_id
             FROM strategies
             WHERE strategy_id = $1
             "#,
@@ -345,13 +355,15 @@ impl StrategyRepository for PgStrategyRepository {
                 params, enabled,
                 max_position, max_daily_loss,
                 status, description, tags, symbols,
+                instance_label,
                 created_at, updated_at
             ) VALUES (
                 $1, $2, $3,
                 $4, $5,
                 $6, $7,
                 $8, $9, $10, $11,
-                $12, $13
+                $12,
+                $13, $14
             )
             RETURNING id
             "#,
@@ -367,6 +379,7 @@ impl StrategyRepository for PgStrategyRepository {
         .bind(&params.description)
         .bind(&tags_json)
         .bind(&symbols_json)
+        .bind(&params.instance_label)
         .bind(params.created_at)
         .bind(params.updated_at)
         .fetch_one(&*self.pool)
@@ -401,8 +414,9 @@ impl StrategyRepository for PgStrategyRepository {
                 description = $8,
                 tags = $9,
                 symbols = $10,
-                updated_at = $11
-            WHERE strategy_id = $12
+                instance_label = $11,
+                updated_at = $12
+            WHERE strategy_id = $13
             "#,
         )
         .bind(&params.strategy_name)
@@ -415,6 +429,7 @@ impl StrategyRepository for PgStrategyRepository {
         .bind(&params.description)
         .bind(&tags_json)
         .bind(&symbols_json)
+        .bind(&params.instance_label)
         .bind(params.updated_at)
         .bind(&params.strategy_id)
         .execute(&*self.pool)
@@ -522,5 +537,213 @@ impl StrategyRepository for PgStrategyRepository {
             machine_learning: row.14,
             custom: row.15,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use rust_decimal_macros::dec;
+    use serde_json::json;
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    fn make_row() -> StrategyRow {
+        StrategyRow {
+            id: 42,
+            strategy_id: "strat_test_001".into(),
+            strategy_name: "Test Strategy".into(),
+            strategy_type: "TrendFollowing".into(),
+            params: json!({"period": 14, "threshold": 0.5}),
+            enabled: true,
+            max_position: dec!(10000),
+            max_daily_loss: dec!(5000),
+            status: "Draft".into(),
+            description: Some("A test strategy".into()),
+            tags: json!(["momentum", "trend"]),
+            symbols: json!(["BTC/USDT", "ETH/USDT"]),
+            instance_label: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            user_id: Some(0),
+        }
+    }
+
+    fn make_summary_row() -> StrategySummaryRow {
+        StrategySummaryRow {
+            id: 99,
+            strategy_id: "strat_summary_001".into(),
+            strategy_name: "Summary Strategy".into(),
+            strategy_type: "MeanReversion".into(),
+            params: json!({"lookback": 20}),
+            enabled: false,
+            max_position: dec!(5000),
+            max_daily_loss: dec!(2500),
+            status: "Running".into(),
+            description: Some("Summary description".into()),
+            tags: json!(["mean", "reversion"]),
+            symbols: json!(["SOL/USDT"]),
+            instance_label: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            user_id: Some(0),
+        }
+    }
+
+    // ── StrategyRow::to_domain ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_strategy_row_to_domain_valid() {
+        let row = make_row();
+        let result = row.to_domain();
+        assert!(result.is_ok());
+        let domain = result.unwrap();
+
+        assert_eq!(domain.strategy_id, "strat_test_001");
+        assert_eq!(domain.strategy_name, "Test Strategy");
+        assert_eq!(domain.strategy_type, StrategyType::TrendFollowing);
+        assert_eq!(domain.params, json!({"period": 14, "threshold": 0.5}));
+        assert!(domain.enabled);
+        assert_eq!(domain.max_position, dec!(10000));
+        assert_eq!(domain.max_daily_loss, dec!(5000));
+        assert_eq!(domain.status, StrategyStatus::Draft);
+        assert_eq!(domain.description, Some("A test strategy".into()));
+        assert_eq!(domain.tags, vec!["momentum", "trend"]);
+        assert_eq!(domain.symbols, vec!["BTC/USDT", "ETH/USDT"]);
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_invalid_strategy_type() {
+        let mut row = make_row();
+        row.strategy_type = "InvalidType".into();
+        let result = row.to_domain();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_invalid_status() {
+        let mut row = make_row();
+        row.status = "InvalidStatus".into();
+        let result = row.to_domain();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_null_tags() {
+        let mut row = make_row();
+        row.tags = json!(null);
+        let domain = row.to_domain().unwrap();
+        assert!(domain.tags.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_null_symbols() {
+        let mut row = make_row();
+        row.symbols = json!(null);
+        let domain = row.to_domain().unwrap();
+        assert!(domain.symbols.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_empty_tags() {
+        let mut row = make_row();
+        row.tags = json!([]);
+        let domain = row.to_domain().unwrap();
+        assert!(domain.tags.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_empty_symbols() {
+        let mut row = make_row();
+        row.symbols = json!([]);
+        let domain = row.to_domain().unwrap();
+        assert!(domain.symbols.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_tags_non_array() {
+        let mut row = make_row();
+        row.tags = json!("not_an_array");
+        let domain = row.to_domain().unwrap();
+        assert!(domain.tags.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_row_to_domain_symbols_non_array() {
+        let mut row = make_row();
+        row.symbols = json!("not_an_array");
+        let domain = row.to_domain().unwrap();
+        assert!(domain.symbols.is_empty());
+    }
+
+    // ── StrategySummaryRow::to_domain ─────────────────────────────────────────
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_valid() {
+        let row = make_summary_row();
+        let result = row.to_domain();
+        assert!(result.is_ok());
+        let domain = result.unwrap();
+
+        assert_eq!(domain.strategy_id, "strat_summary_001");
+        assert_eq!(domain.strategy_name, "Summary Strategy");
+        assert_eq!(domain.strategy_type, StrategyType::MeanReversion);
+        assert_eq!(domain.params, json!({"lookback": 20}));
+        assert!(!domain.enabled);
+        assert_eq!(domain.max_position, dec!(5000));
+        assert_eq!(domain.max_daily_loss, dec!(2500));
+        assert_eq!(domain.status, StrategyStatus::Running);
+        assert_eq!(domain.description, Some("Summary description".into()));
+        assert_eq!(domain.tags, vec!["mean", "reversion"]);
+        assert_eq!(domain.symbols, vec!["SOL/USDT"]);
+    }
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_invalid_strategy_type() {
+        let mut row = make_summary_row();
+        row.strategy_type = "BogusType".into();
+        let result = row.to_domain();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_invalid_status() {
+        let mut row = make_summary_row();
+        row.status = "BogusStatus".into();
+        let result = row.to_domain();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_null_tags() {
+        let mut row = make_summary_row();
+        row.tags = json!(null);
+        let domain = row.to_domain().unwrap();
+        assert!(domain.tags.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_null_symbols() {
+        let mut row = make_summary_row();
+        row.symbols = json!(null);
+        let domain = row.to_domain().unwrap();
+        assert!(domain.symbols.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_tags_non_array() {
+        let mut row = make_summary_row();
+        row.tags = json!("not_an_array");
+        let domain = row.to_domain().unwrap();
+        assert!(domain.tags.is_empty());
+    }
+
+    #[test]
+    fn test_strategy_summary_row_to_domain_symbols_non_array() {
+        let mut row = make_summary_row();
+        row.symbols = json!("not_an_array");
+        let domain = row.to_domain().unwrap();
+        assert!(domain.symbols.is_empty());
     }
 }

@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// Repository-layer errors.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum RepoError {
     #[error("database error: {0}")]
     Database(String),
