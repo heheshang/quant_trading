@@ -7,7 +7,7 @@ use tracing::{error, info, instrument, warn};
 /// JWT Claims
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,        // 用户 ID
+    pub sub: i64,           // 用户 ID
     pub username: String,   // 用户名
     pub exp: i64,           // 过期时间
     pub iat: i64,           // 签发时间
@@ -33,7 +33,7 @@ impl AuthService {
     #[instrument(skip(self, roles))]
     pub fn generate_token(
         &self,
-        user_id: &str,
+        user_id: i64,
         username: &str,
         roles: Vec<String>,
     ) -> Result<String> {
@@ -42,7 +42,7 @@ impl AuthService {
         let exp = now + Duration::hours(self.token_expiry_hours);
 
         let claims = Claims {
-            sub: user_id.to_string(),
+            sub: user_id,
             username: username.to_string(),
             exp: exp.timestamp(),
             iat: now.timestamp(),
@@ -101,7 +101,7 @@ impl AuthService {
     #[instrument(skip(self, old_token))]
     pub fn refresh_token(&self, old_token: &str) -> Result<String> {
         let claims = self.verify_token(old_token)?;
-        self.generate_token(&claims.sub, &claims.username, claims.roles)
+        self.generate_token(claims.sub, &claims.username, claims.roles)
     }
 }
 
@@ -114,12 +114,13 @@ mod tests {
         let auth = AuthService::new("test_secret".to_string(), 24);
 
         let token = auth
-            .generate_token("user123", "testuser", vec!["trader".to_string()])
+            .generate_token(123, "testuser", vec!["trader".to_string()])
             .unwrap();
 
         let claims = auth.verify_token(&token).unwrap();
         assert_eq!(claims.username, "testuser");
         assert_eq!(claims.roles, vec!["trader".to_string()]);
+        assert_eq!(claims.sub, 123);
     }
 
     #[test]
@@ -127,7 +128,7 @@ mod tests {
         let auth = AuthService::new("test_secret".to_string(), 24);
 
         let claims = Claims {
-            sub: "user123".to_string(),
+            sub: 1,
             username: "testuser".to_string(),
             exp: (Utc::now() + Duration::hours(1)).timestamp(),
             iat: Utc::now().timestamp(),
