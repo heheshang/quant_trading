@@ -24,14 +24,15 @@ async fn main() {
     let command = &args[1];
 
     let db_config = DatabaseConfig {
-        host: std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string()),
-        port: std::env::var("DB_PORT")
+        host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "localhost".to_string()),
+        port: std::env::var("DATABASE_PORT")
             .unwrap_or_else(|_| "5432".to_string())
             .parse()
             .unwrap_or(5432),
-        username: std::env::var("DB_USERNAME").unwrap_or_else(|_| "quant".to_string()),
-        password: std::env::var("DB_PASSWORD").unwrap_or_else(|_| "quant_password".to_string()),
-        database: std::env::var("DB_DATABASE").unwrap_or_else(|_| "quant_trading".to_string()),
+        username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
+        password: std::env::var("DATABASE_PASSWORD")
+            .unwrap_or_else(|_| "quant_password".to_string()),
+        database: std::env::var("DATABASE_NAME").unwrap_or_else(|_| "quant_trading".to_string()),
         max_connections: 5,
     };
 
@@ -120,10 +121,10 @@ fn print_usage() {
     println!("  rollback [version]      Rollback to a specific version");
     println!("  status                  Show migration status");
     println!();
-    println!("Environment Variables:");
-    println!("  DB_HOST                 Database host (default: localhost)");
-    println!("  DB_PORT                 Database port (default: 5432)");
-    println!("  DB_USERNAME             Database username (default: quant)");
-    println!("  DB_PASSWORD             Database password (default: quant_password)");
-    println!("  DB_DATABASE             Database name (default: quant_trading)");
+    println!("Environment Variables (match main.rs / .env):");
+    println!("  DATABASE_HOST           Database host (default: localhost)");
+    println!("  DATABASE_PORT           Database port (default: 5432)");
+    println!("  DATABASE_USERNAME       Database username (default: quant)");
+    println!("  DATABASE_PASSWORD       Database password (default: quant_password)");
+    println!("  DATABASE_NAME           Database name (default: quant_trading)");
 }
