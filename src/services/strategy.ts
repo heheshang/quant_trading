@@ -1,12 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { StrategyParams } from './types'
+import type { StrategyParams, StrategyTypeInfo } from './types'
 
 export function getStrategies(): Promise<StrategyParams[]> {
   return invoke<StrategyParams[]>('get_strategies')
-}
-
-export function getStrategy(strategyId: string): Promise<StrategyParams> {
-  return invoke<StrategyParams>('get_strategy', { strategyId })
 }
 
 export function saveStrategy(strategy: StrategyParams): Promise<string> {
@@ -43,4 +39,40 @@ export function resumeStrategy(strategyId: string): Promise<string> {
 
 export function archiveStrategy(strategyId: string): Promise<string> {
   return invoke<string>('archive_strategy', { strategyId })
+}
+
+export function listStrategyTypes(): Promise<StrategyTypeInfo[]> {
+  return invoke<StrategyTypeInfo[]>('list_strategy_types')
+}
+
+export function getStrategyTypeInfo(typeName: string): Promise<StrategyTypeInfo> {
+  return invoke<StrategyTypeInfo>('get_strategy_type_info', { typeName })
+}
+
+export function createStrategy(
+  typeName: string,
+  strategyName: string,
+  params: Record<string, unknown>,
+  enabled: boolean,
+  maxPosition: number,
+  maxDailyLoss: number,
+  userId: number,
+  instanceLabel?: string,
+  description?: string,
+  tags?: string[],
+  symbols?: string[],
+): Promise<string> {
+  return invoke<string>('create_strategy', {
+    typeName,
+    strategyName,
+    params,
+    enabled,
+    maxPosition,
+    maxDailyLoss,
+    instanceLabel: instanceLabel ?? null,
+    description: description ?? null,
+    tags: tags ?? [],
+    symbols: symbols ?? [],
+    userId,
+  })
 }
