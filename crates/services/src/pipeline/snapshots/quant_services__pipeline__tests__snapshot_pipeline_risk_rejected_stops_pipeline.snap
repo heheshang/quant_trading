@@ -1,0 +1,5 @@
+---
+source: crates/services/src/pipeline/tests.rs
+expression: err
+---
+RiskRejected: "Risk check failed: test rejection"

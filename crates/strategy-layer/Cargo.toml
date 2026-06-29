@@ -7,9 +7,6 @@ license.workspace = true
 
 [dependencies]
 quant-common = { path = "../common" }
-data-layer = { path = "../data-layer" }
-risk-layer = { path = "../risk-layer" }
-trading-layer = { path = "../trading-layer" }
 
 tokio = { workspace = true }
 serde = { workspace = true }

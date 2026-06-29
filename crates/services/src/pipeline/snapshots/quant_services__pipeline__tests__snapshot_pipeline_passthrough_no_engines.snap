@@ -1,0 +1,21 @@
+---
+source: crates/services/src/pipeline/tests.rs
+expression: result
+---
+order:
+  order_id: "[order_id]"
+  strategy_id: strat-test
+  symbol: BTC/USDT
+  order_type: Limit
+  side: Buy
+  price: 50000
+  quantity: 1
+  filled_quantity: 0
+  status: Pending
+  created_at: "[created_at]"
+  updated_at: "[updated_at]"
+  commission: 0
+  slippage: 0
+risk_approved: true
+risk_reason: ~
+execution_status: Submitted
