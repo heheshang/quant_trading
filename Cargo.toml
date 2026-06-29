@@ -43,7 +43,7 @@ futures = "0.3"
 
 # Data structures and utilities
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.0", features = ["v4", "v7", "serde"] }
 rust_decimal = { version = "1.33", features = ["serde-float"] }
 rust_decimal_macros = { version = "1.39.0", features = ["reexportable"]}
 

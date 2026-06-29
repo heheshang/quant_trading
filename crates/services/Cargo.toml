@@ -39,3 +39,5 @@ toml = "0.8"
 
 [dev-dependencies]
 okx = { workspace = true }
+mockall = "0.13"
+futures = { workspace = true }

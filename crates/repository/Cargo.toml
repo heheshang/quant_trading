@@ -28,3 +28,4 @@ sqlx = { workspace = true }
 
 [dev-dependencies]
 dotenv = "0.15"
+rust_decimal_macros = { workspace = true }
