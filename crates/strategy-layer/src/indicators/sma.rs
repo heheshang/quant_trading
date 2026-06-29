@@ -1,6 +1,5 @@
 //! 简单移动平均 (Simple Moving Average, SMA)
 
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
 

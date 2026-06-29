@@ -8,7 +8,29 @@ use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
+
+/// Optional configuration for a backtest run.
+#[derive(Clone, Default)]
+pub struct BacktestOptions {
+    pub cancellation_token: Option<CancellationToken>,
+    pub timeout: Option<Duration>,
+    #[allow(clippy::type_complexity)]
+    pub progress: Option<Arc<dyn Fn(f64) + Send + Sync>>,
+}
+
+impl std::fmt::Debug for BacktestOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BacktestOptions")
+            .field("cancellation_token", &self.cancellation_token.as_ref().map(|_| "Some"))
+            .field("timeout", &self.timeout)
+            .field("progress", &self.progress.as_ref().map(|_| "Some"))
+            .finish()
+    }
+}
 
 /// 回测引擎
 pub struct BacktestEngine {
@@ -51,11 +73,22 @@ impl BacktestEngine {
         }
     }
 
+    #[deprecated(note = "Use `run_with_options` instead")]
     #[instrument(skip(self, strategy, market_data), fields(strategy = %strategy.name(), data_points = market_data.len()))]
     pub async fn run(
         &mut self,
         strategy: &dyn Strategy,
         market_data: Vec<MarketData>,
+    ) -> Result<BacktestResult> {
+        self.run_with_options(strategy, market_data, BacktestOptions::default()).await
+    }
+
+    #[instrument(skip(self, strategy, market_data, options), fields(strategy = %strategy.name(), data_points = market_data.len()))]
+    pub async fn run_with_options(
+        &mut self,
+        strategy: &dyn Strategy,
+        market_data: Vec<MarketData>,
+        options: BacktestOptions,
     ) -> Result<BacktestResult> {
         info!(
             strategy = %strategy.name(),
@@ -87,7 +120,6 @@ impl BacktestEngine {
 
         let mut timestamps: Vec<DateTime<Utc>> = data_by_time.keys().cloned().collect();
         timestamps.sort();
-        let processed_timestamps = timestamps.len();
 
         let mut total_trades = 0;
         self.winning_trades = 0;
@@ -95,8 +127,25 @@ impl BacktestEngine {
         self.total_profit = Decimal::ZERO;
         self.total_loss = Decimal::ZERO;
 
-        // 回测主循环
-        for timestamp in timestamps {
+        
+        let deadline = options.timeout.map(|d| std::time::Instant::now() + d);
+
+        let total_timestamps = timestamps.len();
+        for (i, timestamp) in timestamps.into_iter().enumerate() {
+            if let Some(dl) = deadline {
+                if std::time::Instant::now() > dl {
+                    return Err(Error::Internal("Backtest timed out".to_string()));
+                }
+            }
+
+            if let Some(ref token) = options.cancellation_token {
+                if token.is_cancelled() {
+                    return Err(Error::Internal("Backtest cancelled".to_string()));
+                }
+            }
+
+            tokio::task::yield_now().await;
+
             let current_data = data_by_time.get(&timestamp).ok_or_else(|| {
                 error!(%timestamp, "Timestamp not found in data_by_time map");
                 Error::Internal("Timestamp not found in market data".to_string())
@@ -123,11 +172,15 @@ impl BacktestEngine {
             // 记录权益曲线
             self.equity_curve
                 .push((timestamp, self.account.total_assets));
+
+            if let Some(ref progress) = options.progress {
+                progress((i + 1) as f64 / total_timestamps as f64);
+            }
         }
 
         info!(
             strategy = %strategy.name(),
-            processed_timestamps,
+            processed_timestamps = total_timestamps,
             total_trades,
             "Backtest main loop complete"
         );
@@ -327,7 +380,7 @@ pub async fn run_backtest_multi(
         let data = market_data.clone();
         handles.push(tokio::spawn(async move {
             let mut engine = BacktestEngine::new(initial_capital, commission_rate, slippage);
-            let result = engine.run(strategy.as_ref(), data).await;
+            let result = engine.run_with_options(strategy.as_ref(), data, BacktestOptions::default()).await;
             (label, result)
         }));
     }
@@ -403,7 +456,7 @@ mod tests {
             Decimal::from_f64(0.0001).unwrap(),
         );
         let strategy = MeanReversionStrategy::new();
-        let result = engine.run(&strategy, vec![]).await;
+        let result = engine.run_with_options(&strategy, vec![], BacktestOptions::default()).await;
         assert!(result.is_err());
     }
 

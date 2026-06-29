@@ -333,6 +333,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
+        version: 0,
         };
 
         let strategy = registry.create("MeanReversion", params).await;
@@ -359,6 +360,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
+        version: 0,
         };
         let result = registry.create("NonExistent", params).await;
         assert!(result.is_err());
@@ -474,6 +476,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
+        version: 0,
         };
 
         let result = factory.create(params).await;
@@ -506,6 +509,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
+        version: 0,
         };
 
         let result = registry.create("NonExistent", params).await;
@@ -557,6 +561,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
+        version: 0,
         };
 
         let result = registry.create("BadParam", params).await;

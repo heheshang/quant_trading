@@ -1,6 +1,5 @@
 //! 相对强弱指标 (Relative Strength Index, RSI)
 
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
 

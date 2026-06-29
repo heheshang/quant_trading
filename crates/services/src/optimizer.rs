@@ -1,4 +1,5 @@
 use crate::error::{ServiceError, ServiceResult};
+use async_trait::async_trait;
 use quant_common::config::ParamOptimizerConfig;
 use quant_common::types::{BacktestResult, MarketData, StrategyParams};
 use rust_decimal::Decimal;
@@ -24,35 +25,33 @@ pub struct OptimizationResult {
     pub total_combinations: usize,
 }
 
-/// 参数优化器
-pub struct ParamOptimizer {
-    registry: Arc<StrategyRegistry>,
-    config: ParamOptimizerConfig,
+#[async_trait]
+pub trait SearchAlgorithm: Send + Sync {
+    fn name(&self) -> &str;
+
+    async fn search(
+        &self,
+        registry: Arc<StrategyRegistry>,
+        strategy_type: &str,
+        param_grid: Vec<serde_json::Value>,
+        market_data: Vec<MarketData>,
+        initial_capital: Decimal,
+        commission_rate: Decimal,
+        slippage: Decimal,
+    ) -> ServiceResult<OptimizationResult>;
 }
 
-impl ParamOptimizer {
-    pub fn new(registry: Arc<StrategyRegistry>, config: ParamOptimizerConfig) -> Self {
-        Self { registry, config }
+pub struct GridSearch;
+
+#[async_trait]
+impl SearchAlgorithm for GridSearch {
+    fn name(&self) -> &str {
+        "grid_search"
     }
 
-    /// 将注册中心使用的 `&str` 策略类型名解析为 `StrategyType` 枚举。
-    ///
-    /// 注册中心使用 `format!("{:?}", strategy_type)` 作为 key（即 Rust 变体名），
-    /// 所以这里通过 `serde_json` 反序列化来完成与 `Debug` 输出一致的解析，
-    /// 避免维护两套字符串映射。
-    fn parse_strategy_type(s: &str) -> ServiceResult<quant_common::types::StrategyType> {
-        serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| {
-            ServiceError::InvalidParameter(format!("Unknown strategy type '{s}': {e}"))
-        })
-    }
-
-    /// 执行网格搜索参数优化
-    ///
-    /// 对指定策略类型生成所有参数组合，并为每个组合运行回测，
-    /// 返回按 Sharpe 比率排序的结果。
-    #[instrument(skip(self, market_data), fields(strategy_type = %strategy_type, combos = %param_grid.len()))]
-    pub async fn optimize(
+    async fn search(
         &self,
+        registry: Arc<StrategyRegistry>,
         strategy_type: &str,
         param_grid: Vec<serde_json::Value>,
         market_data: Vec<MarketData>,
@@ -62,21 +61,10 @@ impl ParamOptimizer {
     ) -> ServiceResult<OptimizationResult> {
         let total = param_grid.len();
         if total == 0 {
-            return Err(ServiceError::InvalidParameter(
-                "Parameter grid is empty".to_string(),
-            ));
+            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
         }
 
-        let max_iter = self.config.max_iterations as usize;
-        if total > max_iter {
-            return Err(ServiceError::InvalidParameter(format!(
-                "Parameter grid has {} combinations, max is {}",
-                total, max_iter
-            )));
-        }
-
-        // 为每个参数组合创建策略实例
-        let parsed_type = Self::parse_strategy_type(strategy_type)?;
+        let parsed_type = parse_strategy_type(strategy_type)?;
         let mut strategies = Vec::new();
         for (i, params) in param_grid.iter().enumerate() {
             let sp = StrategyParams {
@@ -95,9 +83,10 @@ impl ParamOptimizer {
                 symbols: vec![],
                 instance_label: None,
                 user_id: 0,
+                version: 0,
             };
 
-            let strategy = match self.registry.create(strategy_type, sp.clone()).await {
+            let strategy = match registry.create(strategy_type, sp.clone()).await {
                 Ok(s) => s,
                 Err(e) => {
                     error!(combo = %i, error = %e, "Failed to create strategy");
@@ -108,7 +97,6 @@ impl ParamOptimizer {
             strategies.push((strategy, format!("combo-{}", i)));
         }
 
-        // 并行运行回测
         let multi_result: MultiStrategyResult = run_backtest_multi(
             strategies,
             market_data,
@@ -119,7 +107,6 @@ impl ParamOptimizer {
         .await
         .map_err(|e| ServiceError::Other(format!("Multi-backtest failed: {}", e)))?;
 
-        // 构建结果
         let mut combinations: Vec<ParameterCombo> = multi_result
             .results
             .into_iter()
@@ -137,29 +124,154 @@ impl ParamOptimizer {
             })
             .collect();
 
-        // 按 Sharpe 比率降序排序
         combinations.sort_by(|a, b| {
-            let a_sharpe = a
-                .result
-                .as_ref()
-                .map(|r| r.sharpe_ratio)
-                .unwrap_or(Decimal::ZERO);
-            let b_sharpe = b
-                .result
-                .as_ref()
-                .map(|r| r.sharpe_ratio)
-                .unwrap_or(Decimal::ZERO);
+            let a_sharpe = a.result.as_ref().map(|r| r.sharpe_ratio).unwrap_or(Decimal::ZERO);
+            let b_sharpe = b.result.as_ref().map(|r| r.sharpe_ratio).unwrap_or(Decimal::ZERO);
             b_sharpe.cmp(&a_sharpe)
         });
 
         let best = combinations.first().cloned();
 
         Ok(OptimizationResult {
-            config: self.config.clone(),
+            config: ParamOptimizerConfig::default(),
             combinations,
             best,
             total_combinations: total,
         })
+    }
+}
+
+pub struct BayesianOptimization;
+
+#[async_trait]
+impl SearchAlgorithm for BayesianOptimization {
+    fn name(&self) -> &str {
+        "bayesian_optimization"
+    }
+
+    async fn search(
+        &self,
+        _registry: Arc<StrategyRegistry>,
+        _strategy_type: &str,
+        param_grid: Vec<serde_json::Value>,
+        _market_data: Vec<MarketData>,
+        _initial_capital: Decimal,
+        _commission_rate: Decimal,
+        _slippage: Decimal,
+    ) -> ServiceResult<OptimizationResult> {
+        let total = param_grid.len();
+        if total == 0 {
+            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+        }
+
+        // Baseline stub: pick a random sample and return empty results.
+        // Full Bayesian Optimization implementation is future work.
+        Ok(OptimizationResult {
+            config: ParamOptimizerConfig::default(),
+            combinations: Vec::new(),
+            best: None,
+            total_combinations: total,
+        })
+    }
+}
+
+pub struct GeneticAlgorithm;
+
+#[async_trait]
+impl SearchAlgorithm for GeneticAlgorithm {
+    fn name(&self) -> &str {
+        "genetic_algorithm"
+    }
+
+    async fn search(
+        &self,
+        _registry: Arc<StrategyRegistry>,
+        _strategy_type: &str,
+        param_grid: Vec<serde_json::Value>,
+        _market_data: Vec<MarketData>,
+        _initial_capital: Decimal,
+        _commission_rate: Decimal,
+        _slippage: Decimal,
+    ) -> ServiceResult<OptimizationResult> {
+        let total = param_grid.len();
+        if total == 0 {
+            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+        }
+
+        // Stub: full Genetic Algorithm implementation is future work.
+        Ok(OptimizationResult {
+            config: ParamOptimizerConfig::default(),
+            combinations: Vec::new(),
+            best: None,
+            total_combinations: total,
+        })
+    }
+}
+
+fn parse_strategy_type(s: &str) -> ServiceResult<quant_common::types::StrategyType> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| {
+        ServiceError::InvalidParameter(format!("Unknown strategy type '{s}': {e}"))
+    })
+}
+
+/// 参数优化器
+pub struct ParamOptimizer {
+    registry: Arc<StrategyRegistry>,
+    config: ParamOptimizerConfig,
+    pub algorithm: Box<dyn SearchAlgorithm>,
+}
+
+impl ParamOptimizer {
+    pub fn new(registry: Arc<StrategyRegistry>, config: ParamOptimizerConfig) -> Self {
+        Self {
+            registry: registry.clone(),
+            config: config.clone(),
+            algorithm: Box::new(GridSearch),
+        }
+    }
+
+    pub fn with_algorithm(
+        registry: Arc<StrategyRegistry>,
+        config: ParamOptimizerConfig,
+        algorithm: Box<dyn SearchAlgorithm>,
+    ) -> Self {
+        Self { registry, config, algorithm }
+    }
+
+    #[instrument(skip(self, market_data), fields(strategy_type = %strategy_type, combos = %param_grid.len()))]
+    pub async fn optimize(
+        &self,
+        strategy_type: &str,
+        param_grid: Vec<serde_json::Value>,
+        market_data: Vec<MarketData>,
+        initial_capital: Decimal,
+        commission_rate: Decimal,
+        slippage: Decimal,
+    ) -> ServiceResult<OptimizationResult> {
+        let total = param_grid.len();
+        if total == 0 {
+            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+        }
+
+        let max_iter = self.config.max_iterations as usize;
+        if total > max_iter {
+            return Err(ServiceError::InvalidParameter(format!(
+                "Parameter grid has {} combinations, max is {}",
+                total, max_iter
+            )));
+        }
+
+        self.algorithm
+            .search(
+                self.registry.clone(),
+                strategy_type,
+                param_grid,
+                market_data,
+                initial_capital,
+                commission_rate,
+                slippage,
+            )
+            .await
     }
 }
 

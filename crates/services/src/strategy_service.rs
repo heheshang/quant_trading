@@ -11,6 +11,7 @@ use std::time::Instant;
 use strategy_engine::registry::StrategyRegistry;
 use strategy_engine::scheduler::StrategyScheduler;
 use strategy_engine::{BacktestEngine, Strategy};
+use strategy_engine::backtest::BacktestOptions;
 use tracing::{error, info, instrument, warn};
 
 /// 策略服务 — 管理策略注册、生命周期、回测与调度
@@ -228,6 +229,7 @@ impl StrategyService {
             created_at: now,
             updated_at: now,
             user_id,
+            version: 0,
         };
 
         if !strategy.is_valid() {
@@ -337,7 +339,8 @@ impl StrategyService {
         Ok(strategy.strategy_id.clone())
     }
 
-    /// Update an existing strategy. Returns the strategy_id.
+    /// Update an existing strategy. Uses optimistic locking via `update_with_version`.
+    /// Returns the strategy_id on success, or `ServiceError::Conflict` on version mismatch.
     #[instrument(skip(self, strategy), fields(strategy_id = %strategy.strategy_id))]
     pub async fn update_strategy(&self, strategy: &StrategyParams) -> ServiceResult<String> {
         let repo = self
@@ -345,12 +348,20 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
 
-        let updated = repo.update(strategy).await?;
-
-        if !updated {
-            return Err(ServiceError::NotFound(format!(
+        let current = repo.find_by_id(&strategy.strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!(
                 "Strategy '{}' not found",
                 strategy.strategy_id
+            ))
+        })?;
+
+        let expected_version = current.version;
+        let updated = repo.update_with_version(&strategy.strategy_id, strategy, expected_version).await?;
+
+        if !updated {
+            return Err(ServiceError::Conflict(format!(
+                "Strategy '{}' was modified by another session (version {})",
+                strategy.strategy_id, expected_version
             )));
         }
 
@@ -478,7 +489,7 @@ impl StrategyService {
         }
 
         let mut engine = BacktestEngine::new(initial_capital, commission_rate, slippage);
-        let result = engine.run(&*strategy, market_data).await.map_err(|e| {
+        let result = engine.run_with_options(&*strategy, market_data, BacktestOptions::default()).await.map_err(|e| {
             error!("Backtest execution failed: {}", e);
             ServiceError::Backtest(e.to_string())
         })?;
@@ -850,6 +861,7 @@ mod tests {
             instance_label: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            version: 0,
         };
         let result = svc.save_strategy(&strategy).await;
         assert!(result.is_err());
@@ -1009,6 +1021,14 @@ mod tests {
             async fn update(&self, params: &StrategyParams) -> Result<bool, RepoError>;
 
             #[mockall::concretize]
+            async fn update_with_version(
+                &self,
+                strategy_id: &str,
+                params: &StrategyParams,
+                expected_version: i64,
+            ) -> Result<bool, RepoError>;
+
+            #[mockall::concretize]
             async fn delete_by_id(&self, strategy_id: &str) -> Result<bool, RepoError>;
 
             #[mockall::concretize]
@@ -1051,6 +1071,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             user_id: 0,
+            version: 0,
         }
     }
 
@@ -1072,6 +1093,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             user_id: Some(0),
+            version: 0,
         }
     }
 
@@ -1476,6 +1498,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             user_id: 0,
+            version: 0,
         };
 
         let existing_for_mock = existing.clone();
@@ -1527,6 +1550,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             user_id: 0,
+            version: 0,
         };
 
         let existing_for_mock = existing.clone();
