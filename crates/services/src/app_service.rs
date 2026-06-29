@@ -3,11 +3,12 @@
 //! Holds all domain services and their shared dependencies.
 //! This is the single entry point for business logic.
 
+use data_layer::market_data_repo::MarketDataRepository;
 use data_layer::OkxDataSource;
 use exchange_okx::ClientInterface;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
-use quant_repository::{MarketDataRepository, PgBacktestRepository, PgStrategyRepository, PostgresClient};
+use quant_repository::{PgBacktestRepository, PgStrategyRepository, PostgresClient};
 use std::path::PathBuf;
 use std::sync::Arc;
 use strategy_engine::registry::default_registry;
