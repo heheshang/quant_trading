@@ -2,7 +2,7 @@
   <div id="app">
     <el-container class="layout-container">
       <!-- Show sidebar only when authenticated -->
-      <el-aside width="200px" class="sidebar" v-if="isAuthenticated">
+      <el-aside width="200px" class="sidebar" v-if="auth.isAuthenticated">
         <el-menu
           :default-active="$route.path"
           router
@@ -64,7 +64,7 @@
       
       <el-container>
         <!-- Show header only when authenticated -->
-        <el-header class="header" v-if="isAuthenticated">
+        <el-header class="header" v-if="auth.isAuthenticated">
           <div class="header-content">
             <div class="header-left">
               <h3>{{ pageTitle }}</h3>
@@ -76,7 +76,7 @@
             </div>
             <div class="user-info">
               <el-icon><User /></el-icon>
-              <span>{{ username }}</span>
+              <span>{{ auth.username }}</span>
               <el-button type="text" @click="logout">退出</el-button>
             </div>
           </div>
@@ -95,13 +95,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
 const router = useRouter();
-const username = ref('管理员');
-const isAuthenticated = ref(false);
+const auth = useAuthStore();
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
@@ -118,39 +118,23 @@ const pageTitle = computed(() => {
   return titles[route.path] || '量化交易系统';
 });
 
-// Check authentication status on mount
+// Restore session on mount and guard route
 onMounted(() => {
-  const authStatus = localStorage.getItem('isAuthenticated');
-  isAuthenticated.value = authStatus === 'true';
-  
-  const storedUsername = localStorage.getItem('username');
-  if (storedUsername) {
-    username.value = storedUsername;
-  }
-  
-  // If not authenticated and not on login page, redirect to login
-  if (!isAuthenticated.value && route.path !== '/login') {
+  auth.restoreSession();
+  if (!auth.isLoggedIn && route.path !== '/login') {
+    auth.setRedirectPath(route.path);
     router.push('/login');
   }
 });
 
-// Watch for route changes to update authentication status
+// Keep auth state in sync across route changes
 router.afterEach(() => {
-  const authStatus = localStorage.getItem('isAuthenticated');
-  isAuthenticated.value = authStatus === 'true';
-  
-  const storedUsername = localStorage.getItem('username');
-  if (storedUsername) {
-    username.value = storedUsername;
-  }
+  auth.restoreSession();
 });
 
-// Logout function
+// Logout
 const logout = () => {
-  localStorage.removeItem('isAuthenticated');
-  localStorage.removeItem('username');
-  localStorage.removeItem('authToken');
-  isAuthenticated.value = false;
+  auth.clearSession();
   router.push('/login');
 };
 </script>
