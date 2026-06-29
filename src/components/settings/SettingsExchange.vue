@@ -36,7 +36,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { checkOkxStatus } from '@/services/api'
+import { checkOkxStatus } from '@/services/okx'
 
 defineOptions({ name: 'SettingsExchange' })
 

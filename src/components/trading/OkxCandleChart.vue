@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { getOkxCandles } from '@/services/api'
+import { getOkxCandles } from '@/services/okx'
 import type { OkxCandle } from '@/services/types'
 
 interface Instrument {

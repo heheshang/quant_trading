@@ -200,13 +200,13 @@ describe('Strategy.vue - 按钮测试', () => {
     expect(wrapper.exists()).toBe(true)
   }, 30000)
 
-  it('加载状态显示 - store.loading 传入 StrategyTable', async () => {
+  it('加载状态显示 - store.isAnyLoading 传入 StrategyTable', async () => {
     const wrapper = await mountComponent()
     const refreshBtn = wrapper.findAll('button').find((b: any) => b.text().includes('刷新'))
     expect(refreshBtn).toBeDefined()
     expect(refreshBtn!.attributes('loading')).toBe('false')
 
-    ;(wrapper.vm.store as any).loading = true
+    ;(wrapper.vm.store as any).loading.list = true
     await wrapper.vm.$nextTick()
 
     const table = wrapper.findComponent({ name: 'StrategyTable' })

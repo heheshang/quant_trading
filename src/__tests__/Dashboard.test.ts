@@ -109,9 +109,11 @@ vi.mock('@/composables/useFormatting', () => ({
 // ---------------------------------------------------------------------------
 // Mock API services — called by store fetch methods in onMounted
 // ---------------------------------------------------------------------------
-vi.mock('@/services/api', () => ({
+vi.mock('@/services/account', () => ({
   getAccountInfo: vi.fn().mockResolvedValue(defaultAccount),
   getPositions: vi.fn().mockResolvedValue(defaultPositions),
+}))
+vi.mock('@/services/order', () => ({
   getActiveOrders: vi.fn().mockResolvedValue(defaultOrders),
 }))
 
@@ -141,7 +143,7 @@ import Dashboard from '@/views/Dashboard.vue'
 import { useAccountStore } from '@/stores/account'
 
 import * as echarts from 'echarts'
-import { getAccountInfo, getPositions } from '@/services/api'
+import { getAccountInfo, getPositions } from '@/services/account'
 
 // ---------------------------------------------------------------------------
 // Helpers

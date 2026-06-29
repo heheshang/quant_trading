@@ -54,7 +54,8 @@
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import { getAccountInfo, getPositions, preTradeCheck } from '@/services/api'
+import { getAccountInfo, getPositions } from '@/services/account'
+import { preTradeCheck } from '@/services/risk'
 
 const formRef = ref<FormInstance>()
 const checkResult = ref<boolean | null>(null)

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import {
   getStrategies,
   saveStrategy as apiSaveStrategy,
@@ -19,13 +19,63 @@ import type { StrategyParams, StrategyStatus, StrategyTypeInfo } from '@/service
 
 const POLL_INTERVAL_MS = 5_000
 
+/**
+ * Per-action loading keys. Each action sets its own flag so that the UI
+ * can show a spinner on the specific button (e.g. "Start Strategy") while
+ * other actions remain unaffected.
+ */
+type LoadingKey =
+  | 'list'
+  | 'select'
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'toggle'
+  | 'start'
+  | 'stop'
+  | 'pause'
+  | 'resume'
+  | 'deploy'
+  | 'archive'
+  | 'listTypes'
+  | 'fetchTypeInfo'
+  | 'createNew'
+
+type ErrorKey = LoadingKey
+
+const LOADING_KEYS: LoadingKey[] = [
+  'list',
+  'select',
+  'create',
+  'update',
+  'delete',
+  'toggle',
+  'start',
+  'stop',
+  'pause',
+  'resume',
+  'deploy',
+  'archive',
+  'listTypes',
+  'fetchTypeInfo',
+  'createNew',
+]
+
+function makeLoadingRecord(): Record<LoadingKey, boolean> {
+  return Object.fromEntries(LOADING_KEYS.map((k) => [k, false])) as Record<LoadingKey, boolean>
+}
+
+function makeErrorRecord(): Record<ErrorKey, string | null> {
+  return Object.fromEntries(LOADING_KEYS.map((k) => [k, null])) as Record<ErrorKey, string | null>
+}
+
 export const useStrategyStore = defineStore('strategy', () => {
   const strategies = ref<StrategyParams[]>([])
   const currentStrategy = ref<StrategyParams | null>(null)
   const strategyTypes = ref<StrategyTypeInfo[]>([])
   const currentTypeInfo = ref<StrategyTypeInfo | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const loading = reactive<Record<LoadingKey, boolean>>(makeLoadingRecord())
+  const error = reactive<Record<ErrorKey, string | null>>(makeErrorRecord())
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -47,80 +97,86 @@ export const useStrategyStore = defineStore('strategy', () => {
     return (id: string) => strategies.value.find((s) => s.strategy_id === id)
   })
 
+  /**
+   * Convenience aggregate: any action currently in flight.
+   * Use this for full-page spinners; use `loading[key]` for per-button spinners.
+   */
+  const isAnyLoading = computed(() => Object.values(loading).some((v) => v))
+
   async function fetchStrategies(force = false) {
     if (!force && strategies.value.length > 0) return
-    loading.value = true
-    error.value = null
+    loading.list = true
+    error.list = null
     try {
       strategies.value = await getStrategies()
     } catch (err) {
-      error.value = '获取策略列表失败'
+      error.list = '获取策略列表失败'
       console.error('Failed to fetch strategies:', err)
     } finally {
-      loading.value = false
+      loading.list = false
     }
   }
 
   async function selectStrategy(id: string) {
-    loading.value = true
-    error.value = null
+    loading.select = true
+    error.select = null
     try {
       const found = strategies.value.find((s) => s.strategy_id === id)
       if (found) {
         currentStrategy.value = found
       }
     } catch (err) {
-      error.value = '获取策略详情失败'
+      error.select = '获取策略详情失败'
       console.error('Failed to fetch strategy:', err)
     } finally {
-      loading.value = false
+      loading.select = false
     }
   }
 
   async function createStrategy(strategy: StrategyParams) {
-    loading.value = true
-    error.value = null
+    loading.create = true
+    error.create = null
     try {
       await apiSaveStrategy(strategy)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '创建策略失败'
+      error.create = '创建策略失败'
       throw err
     } finally {
-      loading.value = false
+      loading.create = false
     }
   }
 
   async function updateStrategy(strategy: StrategyParams) {
-    loading.value = true
-    error.value = null
+    loading.update = true
+    error.update = null
     try {
       await apiSaveStrategy(strategy)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '更新策略失败'
+      error.update = '更新策略失败'
       throw err
     } finally {
-      loading.value = false
+      loading.update = false
     }
   }
 
   async function deleteStrategy(strategyId: string) {
-    loading.value = true
-    error.value = null
+    loading.delete = true
+    error.delete = null
     try {
       await apiDeleteStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '删除策略失败'
+      error.delete = '删除策略失败'
       throw err
     } finally {
-      loading.value = false
+      loading.delete = false
     }
   }
 
   async function toggleStrategy(strategyId: string, enabled: boolean) {
-    error.value = null
+    error.toggle = null
     try {
       await apiToggleStrategy(strategyId, enabled)
       const found = strategies.value.find((s) => s.strategy_id === strategyId)
@@ -128,100 +184,100 @@ export const useStrategyStore = defineStore('strategy', () => {
         found.enabled = enabled
       }
     } catch (err) {
-      error.value = '更新策略状态失败'
+      error.toggle = '更新策略状态失败'
       throw err
     }
   }
 
   async function startStrategy(strategyId: string) {
-    error.value = null
+    error.start = null
     try {
       await apiStartStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '启动策略失败'
+      error.start = '启动策略失败'
       throw err
     }
   }
 
   async function stopStrategy(strategyId: string) {
-    error.value = null
+    error.stop = null
     try {
       await apiStopStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '停止策略失败'
+      error.stop = '停止策略失败'
       throw err
     }
   }
 
   async function pauseStrategy(strategyId: string) {
-    error.value = null
+    error.pause = null
     try {
       await apiPauseStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '暂停策略失败'
+      error.pause = '暂停策略失败'
       throw err
     }
   }
 
   async function resumeStrategy(strategyId: string) {
-    error.value = null
+    error.resume = null
     try {
       await apiResumeStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '恢复策略失败'
+      error.resume = '恢复策略失败'
       throw err
     }
   }
 
   async function deployStrategy(strategyId: string) {
-    error.value = null
+    error.deploy = null
     try {
       await apiDeployStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '部署策略失败'
+      error.deploy = '部署策略失败'
       throw err
     }
   }
 
   async function archiveStrategy(strategyId: string) {
-    error.value = null
+    error.archive = null
     try {
       await apiArchiveStrategy(strategyId)
       await fetchStrategies(true)
     } catch (err) {
-      error.value = '归档策略失败'
+      error.archive = '归档策略失败'
       throw err
     }
   }
 
   async function listStrategyTypes() {
-    loading.value = true
-    error.value = null
+    loading.listTypes = true
+    error.listTypes = null
     try {
       strategyTypes.value = await apiListStrategyTypes()
     } catch (err) {
-      error.value = '获取策略类型列表失败'
+      error.listTypes = '获取策略类型列表失败'
       console.error('Failed to fetch strategy types:', err)
     } finally {
-      loading.value = false
+      loading.listTypes = false
     }
   }
 
   async function fetchStrategyTypeInfo(typeName: string) {
-    loading.value = true
-    error.value = null
+    loading.fetchTypeInfo = true
+    error.fetchTypeInfo = null
     try {
       currentTypeInfo.value = await apiGetStrategyTypeInfo(typeName)
     } catch (err) {
-      error.value = '获取策略类型信息失败'
+      error.fetchTypeInfo = '获取策略类型信息失败'
       console.error('Failed to fetch strategy type info:', err)
     } finally {
-      loading.value = false
+      loading.fetchTypeInfo = false
     }
   }
 
@@ -238,8 +294,8 @@ export const useStrategyStore = defineStore('strategy', () => {
     tags?: string[],
     symbols?: string[],
   ) {
-    loading.value = true
-    error.value = null
+    loading.createNew = true
+    error.createNew = null
     try {
       const id = await apiCreateStrategy(
         typeName, strategyName, params, enabled,
@@ -249,10 +305,10 @@ export const useStrategyStore = defineStore('strategy', () => {
       await fetchStrategies(true)
       return id
     } catch (err) {
-      error.value = '创建策略失败'
+      error.createNew = '创建策略失败'
       throw err
     } finally {
-      loading.value = false
+      loading.createNew = false
     }
   }
 
@@ -277,6 +333,7 @@ export const useStrategyStore = defineStore('strategy', () => {
     currentTypeInfo,
     loading,
     error,
+    isAnyLoading,
     runningStrategies,
     draftStrategies,
     strategyById,

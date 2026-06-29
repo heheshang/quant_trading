@@ -52,7 +52,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Coin, Warning } from '@element-plus/icons-vue'
-import { getMarketData } from '@/services/api'
+import { getMarketData } from '@/services/market'
 
 interface MarketTicker {
   symbol: string

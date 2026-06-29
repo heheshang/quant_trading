@@ -36,7 +36,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getAccountInfo, getUserProfile, updateProfile } from '@/services/api'
+import { getAccountInfo } from '@/services/account'
+import { getUserProfile, updateProfile } from '@/services/auth'
 import type { AccountInfo } from '@/services/types'
 import ProfileInfo from '@/components/profile/ProfileInfo.vue'
 import type { ProfileFormData } from '@/components/profile/ProfileInfo.vue'

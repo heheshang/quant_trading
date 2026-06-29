@@ -27,7 +27,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getConfig, updateConfig } from '@/services/api'
+import { getConfig, updateConfig } from '@/services/config'
 import type { AppConfig } from '@/services/types'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'

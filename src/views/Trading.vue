@@ -55,11 +55,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { ElMessage } from 'element-plus'
+import { getAccountInfo, getPositions } from '@/services/account'
+import { getActiveOrders } from '@/services/order'
+import { getStrategies } from '@/services/strategy'
 import {
-  getAccountInfo, getPositions, getActiveOrders, getStrategies,
   getOkxBalance, getOkxPositions, placeOkxOrder, getOkxInstruments,
   checkOkxStatus, getOkxAnnouncements, cancelOkxOrder,
-} from '@/services/api'
+} from '@/services/okx'
 import { useOrderStore } from '@/stores/order'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import PaperAccountCard from '@/components/trading/PaperAccountCard.vue'
