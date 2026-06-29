@@ -7,8 +7,8 @@ use tracing::{error, info, instrument};
 
 /// PostgreSQL 数据库客户端
 ///
-/// Provides connection pool management and migration support.
-/// Specific entity repositories wrap this with their own traits.
+/// Connection pool wrapper used by per-entity repositories. Migration management
+/// is owned by `data_layer::PostgresClient`; this pool only serves queries.
 pub struct PostgresClient {
     pool: Arc<PgPool>,
 }
@@ -35,22 +35,6 @@ impl PostgresClient {
         Ok(Self {
             pool: Arc::new(pool),
         })
-    }
-
-    /// Run database migrations from a given directory.
-    /// Migrations live in `crates/data-layer/migrations/` for now.
-    pub async fn run_migrations_with_path(&self, path: &str) -> Result<()> {
-        // Migration files live in their respective crate directories.
-        // For Tauri, migration path is resolved relative to the binary.
-        sqlx::query("SELECT 1")
-            .fetch_one(&*self.pool)
-            .await
-            .map_err(|e| Error::Database(e.to_string()))?;
-        tracing::warn!(
-            "run_migrations_with_path({}) is a stub — run migrations from data-layer",
-            path
-        );
-        Ok(())
     }
 
     /// Get a reference to the connection pool.
