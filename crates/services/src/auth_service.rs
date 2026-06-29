@@ -48,7 +48,7 @@ impl AuthService {
                         ServiceError::InvalidCredentials
                     })?;
 
-            let user_id: String = row.get("user_id");
+            let user_id: i64 = row.get("user_id");
             let role: String = row.get("role");
             let stored_hash: String = row.get("password_hash");
 
@@ -62,7 +62,7 @@ impl AuthService {
             }
 
             let token = auth_service
-                .generate_token(&user_id, username, vec![role])
+                .generate_token(user_id, username, vec![role])
                 .map_err(|e| {
                     error!("Token generation failed: {}", e);
                     ServiceError::TokenGeneration(e.to_string())

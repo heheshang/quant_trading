@@ -10,6 +10,7 @@ use quant_common::config::AppConfig;
 use quant_repository::{MarketDataRepository, PgBacktestRepository, PgStrategyRepository, PostgresClient};
 use std::path::PathBuf;
 use std::sync::Arc;
+use strategy_engine::registry::default_registry;
 use strategy_engine::scheduler::StrategyScheduler;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
@@ -68,24 +69,26 @@ impl AppServices {
         let scheduler = Arc::new(StrategyScheduler::new(
             config.blocking_read().scheduler.clone(),
         ));
+        let mut strategy_service = StrategyService::new(
+            postgres.clone(),
+            Some(Arc::new(LockingProvider::new(okx_data_source.clone()))),
+            postgres
+                .as_ref()
+                .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
+                    as Arc<dyn quant_repository::BacktestRepository>),
+            postgres
+                .as_ref()
+                .map(|pg| Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
+                    as Arc<dyn quant_repository::StrategyRepository>),
+            Some(scheduler),
+        );
+        strategy_service.set_registry(Arc::new(default_registry()));
         Self {
             config_service: ConfigService::new(config.clone()),
             auth_service: AuthService::new(config.clone(), postgres.clone()),
             account_service: AccountService::new(postgres.clone()),
             market_service: MarketService::new(okx_data_source.clone()),
-            strategy_service: StrategyService::new(
-                postgres.clone(),
-                Some(Arc::new(LockingProvider::new(okx_data_source.clone()))),
-                postgres
-                    .as_ref()
-                    .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
-                        as Arc<dyn quant_repository::BacktestRepository>),
-                postgres
-                    .as_ref()
-                    .map(|pg| Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
-                        as Arc<dyn quant_repository::StrategyRepository>),
-                Some(scheduler),
-            ),
+            strategy_service,
             okx_service: OkxService::new(
                 okx_client.clone(),
                 okx_executor.clone(),
@@ -117,24 +120,26 @@ impl AppServices {
         info!("Initializing AppServices with config path: {}", config_path.display());
         let scheduler_config = config.try_read().map(|c| c.scheduler.clone()).unwrap_or_default();
         let scheduler = Arc::new(StrategyScheduler::new(scheduler_config));
+        let mut strategy_service = StrategyService::new(
+            postgres.clone(),
+            Some(Arc::new(LockingProvider::new(okx_data_source.clone()))),
+            postgres
+                .as_ref()
+                .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
+                    as Arc<dyn quant_repository::BacktestRepository>),
+            postgres
+                .as_ref()
+                .map(|pg| Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
+                    as Arc<dyn quant_repository::StrategyRepository>),
+            Some(scheduler),
+        );
+        strategy_service.set_registry(Arc::new(default_registry()));
         Self {
             config_service: ConfigService::with_path(config.clone(), config_path),
             auth_service: AuthService::new(config.clone(), postgres.clone()),
             account_service: AccountService::new(postgres.clone()),
             market_service: MarketService::new(okx_data_source.clone()),
-            strategy_service: StrategyService::new(
-                postgres.clone(),
-                Some(Arc::new(LockingProvider::new(okx_data_source.clone()))),
-                postgres
-                    .as_ref()
-                    .map(|pg| Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
-                        as Arc<dyn quant_repository::BacktestRepository>),
-                postgres
-                    .as_ref()
-                    .map(|pg| Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
-                        as Arc<dyn quant_repository::StrategyRepository>),
-                Some(scheduler),
-            ),
+            strategy_service,
             okx_service: OkxService::new(
                 okx_client.clone(),
                 okx_executor.clone(),
