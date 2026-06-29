@@ -71,9 +71,6 @@ impl AuditLogger {
             "audit event recorded"
         );
 
-        // TODO: 存储到数据库
-        // INSERT INTO audit_logs ...
-
         Ok(log)
     }
 

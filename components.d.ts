@@ -16,6 +16,7 @@ declare module 'vue' {
     BacktestResults: typeof import('./src/components/backtest/BacktestResults.vue')['default']
     BacktestTradeList: typeof import('./src/components/backtest/BacktestTradeList.vue')['default']
     CandleChart: typeof import('./src/components/MarketData/CandleChart.vue')['default']
+    ChartControls: typeof import('./src/components/strategy/ChartControls.vue')['default']
     ConfirmDialog: typeof import('./src/components/common/ConfirmDialog.vue')['default']
     ConnectionStatus: typeof import('./src/components/ws/ConnectionStatus.vue')['default']
     DashboardHeader: typeof import('./src/components/dashboard/DashboardHeader.vue')['default']
