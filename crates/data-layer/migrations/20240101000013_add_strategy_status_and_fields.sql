@@ -1,16 +1,21 @@
 -- 策略管理全链路优化：修复所有 schema 不一致
 -- 迁移编号：0013
 
--- 1. 新增自增 id 列（原表只有 strategy_id 作为 PK）
+-- 1. 新增自增 id 列（业务查询使用 strategy_id，id 作为稳定行标识）
 ALTER TABLE strategies ADD COLUMN IF NOT EXISTS id SERIAL;
 
--- 2. 将 id 设为 PK（如果尚未设置）
+-- 2. 为 id 建立唯一约束；保留 strategy_id 主键，避免全新库重复添加主键。
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'strategies_pkey_id'
+    SELECT 1
+      FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+     WHERE c.conrelid = 'strategies'::regclass
+       AND c.contype IN ('p', 'u')
+       AND a.attname = 'id'
   ) THEN
-    ALTER TABLE strategies ADD CONSTRAINT strategies_pkey_id PRIMARY KEY (id);
+    ALTER TABLE strategies ADD CONSTRAINT strategies_id_key UNIQUE (id);
   END IF;
 EXCEPTION
   WHEN duplicate_object THEN NULL;

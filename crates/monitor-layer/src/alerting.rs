@@ -12,18 +12,28 @@ pub struct AlertManager {
     alerts: Arc<RwLock<Vec<Alert>>>,
     email_enabled: bool,
     webhook_urls: Vec<String>,
-    http_client: Client,
+    http_client: Option<Client>,
     rate_limiter: Arc<RwLock<HashMap<String, Instant>>>,
     rate_limit_duration: Duration,
 }
 
 impl AlertManager {
     pub fn new(email_enabled: bool, webhook_urls: Vec<String>) -> Self {
+        let http_client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| {
+                error!("Failed to build alert HTTP client: {}", e);
+                e
+            })
+            .ok();
+
         Self {
             alerts: Arc::new(RwLock::new(Vec::new())),
             email_enabled,
             webhook_urls,
-            http_client: Client::new(),
+            http_client,
             rate_limiter: Arc::new(RwLock::new(HashMap::new())),
             rate_limit_duration: Duration::from_secs(60), // 1 minute rate limit
         }
@@ -100,7 +110,12 @@ impl AlertManager {
             "acknowledged": alert.acknowledged
         });
 
-        match self.http_client.post(url).json(&payload).send().await {
+        let Some(client) = self.http_client.as_ref() else {
+            error!("Alert HTTP client unavailable; webhook skipped: {}", url);
+            return;
+        };
+
+        match client.post(url).json(&payload).send().await {
             Ok(response) => {
                 info!(
                     "Webhook alert sent to {}: Status {}",

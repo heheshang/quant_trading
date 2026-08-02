@@ -104,6 +104,18 @@ onMounted(async () => {
   fetchRiskConfig()
   fetchRiskAlerts()
 })
+
+defineExpose({
+  riskMetrics,
+  riskConfig,
+  riskAlerts,
+  saving,
+  fetchRiskMetrics,
+  fetchRiskConfig,
+  fetchRiskAlerts,
+  saveConfig,
+  acknowledgeAlert,
+})
 </script>
 
 <style scoped>

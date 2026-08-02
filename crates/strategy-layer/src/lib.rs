@@ -7,9 +7,12 @@ pub mod signals;
 pub mod strategy;
 pub mod traits;
 
-pub use backtest::{BacktestEngine, MultiStrategyResult, run_backtest_multi};
+pub use backtest::{run_backtest_multi, BacktestEngine, MultiStrategyResult};
 pub use pipeline::{PipelineError, PipelineExecutor, PipelineStep};
-pub use registry::{default_registry, MeanReversionFactory, StrategyFactory, StrategyRegistry, TrendFollowingFactory};
+pub use registry::{
+    default_registry, MeanReversionFactory, StrategyFactory, StrategyRegistry,
+    TrendFollowingFactory,
+};
 pub use scheduler::{SchedulerError, StrategyScheduler};
 pub use signals::{Signal, SignalGenerator, SignalSource, SignalType};
 pub use strategy::{Strategy, StrategyContext};

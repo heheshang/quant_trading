@@ -1,0 +1,99 @@
+name: quant-trading
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quant_trading}
+      POSTGRES_USER: ${DATABASE_USERNAME:-quant}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-quant_password}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-quant} -d ${POSTGRES_DB:-quant_trading}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-16379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    image: ${APP_IMAGE:-quant-trading-system:docker-test}
+    command: ["migrate", "up"]
+    environment: &app_environment
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-quant}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-quant_password}
+      DATABASE_NAME: ${POSTGRES_DB:-quant_trading}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-10}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_POOL_SIZE: ${REDIS_POOL_SIZE:-10}
+      ENABLE_PAPER_TRADING: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_DIR: /app/logs
+      SERVICE_NAME: quant-trading
+      ENABLE_JSON_LOGGING: "false"
+      ENABLE_FILE_LOGGING: "true"
+      ENABLE_STDOUT_LOGGING: "true"
+      OKX_ENABLE: ${OKX_ENABLE:-false}
+      OKX_ENVIRONMENT: ${OKX_ENVIRONMENT:-demo}
+      OKX_API_KEY: ${OKX_API_KEY:-}
+      OKX_API_SECRET: ${OKX_API_SECRET:-}
+      OKX_PASSPHRASE: ${OKX_PASSPHRASE:-}
+      JWT_SECRET: ${JWT_SECRET:-docker_test_change_me}
+      ENABLE_ENCRYPTION: ${ENABLE_ENCRYPTION:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: ${APP_IMAGE:-quant-trading-system:docker-test}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["app"]
+    environment: *app_environment
+    volumes:
+      - app-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f /usr/local/bin/quant-trading-system >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-logs:

@@ -31,7 +31,8 @@
         @update:page-size="pageSize = $event"
         @update:current-page="currentPage = $event"
         @update:selected="selectedStrategies = $event"
-        @toggle="store.toggleStrategy"
+        @search="onSearch"
+        @toggle="toggleStrategyStatus"
         @detail="openDetailPanel"
         @edit="openEditDialog"
         @delete="confirmDeleteStrategy"
@@ -123,6 +124,14 @@ function openEditDialog(strategy: StrategyParams) {
 
 function onStrategySaved() {
   store.fetchStrategies(true);
+}
+
+function onSearch() {
+  store.fetchStrategies(true);
+}
+
+async function toggleStrategyStatus(strategyId: string, enabled: boolean) {
+  await store.toggleStrategy(strategyId, enabled);
 }
 
 // --- Detail panel ---
@@ -225,6 +234,37 @@ async function executeDelete() {
     ElMessage.error('删除策略失败');
   }
 }
+
+defineExpose({
+  store,
+  searchQuery,
+  activeFilters,
+  currentPage,
+  pageSize,
+  selectedStrategies,
+  dialogVisible,
+  editingStrategy,
+  detailPanelVisible,
+  detailStrategy,
+  backtestDialogVisible,
+  backtestResult,
+  backtestLoading,
+  deleteDialogVisible,
+  strategyToDelete,
+  openNewStrategyDialog,
+  openEditDialog,
+  onStrategySaved,
+  onSearch,
+  toggleStrategyStatus,
+  openDetailPanel,
+  runBacktest,
+  batchStart,
+  batchStop,
+  batchDelete,
+  handleLifecycle,
+  confirmDeleteStrategy,
+  executeDelete,
+});
 // --- Init ---
 onMounted(() => {
   store.fetchStrategies();

@@ -43,10 +43,7 @@ pub trait StrategyFactory: Send + Sync {
     /// 实现必须在返回前完成 `initialize`，因此返回值已是「可运行的策略」。
     /// 任何前置校验失败、`initialize` 错误都必须以 `FactoryError` 形式传播，
     /// 不允许静默吞错后返回半初始化实例。
-    async fn create(
-        &self,
-        params: StrategyParams,
-    ) -> Result<Box<dyn Strategy>, FactoryError>;
+    async fn create(&self, params: StrategyParams) -> Result<Box<dyn Strategy>, FactoryError>;
 
     /// 返回该策略类型的参数 Schema（用于前端动态渲染参数配置界面）
     fn parameter_schema(&self) -> Vec<ParameterSchema>;
@@ -206,10 +203,7 @@ pub struct MeanReversionFactory;
 
 #[async_trait]
 impl StrategyFactory for MeanReversionFactory {
-    async fn create(
-        &self,
-        params: StrategyParams,
-    ) -> Result<Box<dyn Strategy>, FactoryError> {
+    async fn create(&self, params: StrategyParams) -> Result<Box<dyn Strategy>, FactoryError> {
         let mut strategy = MeanReversionStrategy::new();
         strategy
             .initialize(params)
@@ -264,10 +258,7 @@ pub struct TrendFollowingFactory;
 
 #[async_trait]
 impl StrategyFactory for TrendFollowingFactory {
-    async fn create(
-        &self,
-        params: StrategyParams,
-    ) -> Result<Box<dyn Strategy>, FactoryError> {
+    async fn create(&self, params: StrategyParams) -> Result<Box<dyn Strategy>, FactoryError> {
         let mut strategy = TrendFollowingStrategy::new();
         strategy
             .initialize(params)
@@ -397,7 +388,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
 
         let strategy = registry.create("MeanReversion", params).await;
@@ -424,7 +415,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         let result = registry.create("NonExistent", params).await;
         assert!(result.is_err());
@@ -433,12 +424,7 @@ mod tests {
     #[tokio::test]
     async fn test_unregister() {
         let mut registry = StrategyRegistry::new();
-        registry.register(
-            "MeanReversion",
-            Box::new(MeanReversionFactory),
-            "",
-            "",
-        );
+        registry.register("MeanReversion", Box::new(MeanReversionFactory), "", "");
         assert!(registry.has_type("MeanReversion"));
 
         let removed = registry.unregister("MeanReversion");
@@ -515,7 +501,10 @@ mod tests {
 
         #[async_trait]
         impl StrategyFactory for FailingFactory {
-            async fn create(&self, _params: StrategyParams) -> Result<Box<dyn crate::strategy::Strategy>, FactoryError> {
+            async fn create(
+                &self,
+                _params: StrategyParams,
+            ) -> Result<Box<dyn crate::strategy::Strategy>, FactoryError> {
                 Err(FactoryError::Initialize("forced failure".to_string()))
             }
 
@@ -541,11 +530,14 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
-        version: 0,
+            version: 0,
         };
 
         let result = factory.create(params).await;
-        assert!(result.is_err(), "factory.create must return Err on init failure");
+        assert!(
+            result.is_err(),
+            "factory.create must return Err on init failure"
+        );
         match result.err().unwrap() {
             FactoryError::Initialize(msg) => assert_eq!(msg, "forced failure"),
             other => panic!("expected FactoryError::Initialize, got {other:?}"),
@@ -574,7 +566,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
-        version: 0,
+            version: 0,
         };
 
         let result = registry.create("NonExistent", params).await;
@@ -593,8 +585,13 @@ mod tests {
 
         #[async_trait]
         impl StrategyFactory for BadParamFactory {
-            async fn create(&self, _params: StrategyParams) -> Result<Box<dyn crate::strategy::Strategy>, FactoryError> {
-                Err(FactoryError::InvalidParameters("missing lookback_period".to_string()))
+            async fn create(
+                &self,
+                _params: StrategyParams,
+            ) -> Result<Box<dyn crate::strategy::Strategy>, FactoryError> {
+                Err(FactoryError::InvalidParameters(
+                    "missing lookback_period".to_string(),
+                ))
             }
 
             fn parameter_schema(&self) -> Vec<ParameterSchema> {
@@ -626,7 +623,7 @@ mod tests {
             tags: vec![],
             symbols: vec![],
             user_id: 0,
-        version: 0,
+            version: 0,
         };
 
         let result = registry.create("BadParam", params).await;

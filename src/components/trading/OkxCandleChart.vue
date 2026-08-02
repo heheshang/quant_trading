@@ -158,6 +158,12 @@ onUnmounted(() => {
     chartInstance = null
   }
 })
+
+defineExpose({
+  candleChartRef,
+  candleError,
+  fetchCandles,
+})
 </script>
 
 <style scoped>

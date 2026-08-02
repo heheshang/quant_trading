@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   OkxBalance,
   OkxCandle,
+  OkxAnnouncementPage,
+  OkxConnectionStatus,
   OkxInstrument,
   OkxOrder,
   OkxPlaceOrderRequest,
@@ -51,12 +53,12 @@ export function getOkxInstruments(
   return invoke<OkxInstrument[]>('get_okx_instruments', { instType })
 }
 
-export function checkOkxStatus(): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>('check_okx_status')
+export function checkOkxStatus(): Promise<OkxConnectionStatus> {
+  return invoke<OkxConnectionStatus>('check_okx_status')
 }
 
-export function getOkxAnnouncements(): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>('get_okx_announcements')
+export function getOkxAnnouncements(): Promise<OkxAnnouncementPage[]> {
+  return invoke<OkxAnnouncementPage[]>('get_okx_announcements')
 }
 
 export function executeOkxOrder(order: Order): Promise<string> {

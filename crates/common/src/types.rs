@@ -7,10 +7,10 @@
 //! New code should import from `quant_domain::types` directly.
 
 pub use quant_domain::types::{
-    Account, Alert, AlertLevel, BacktestResult, Exchange, Instrument, InstrumentType, MarketData,
-    Order, OrderSide, OrderStatus, OrderType, Position, RiskMetrics,
-    SchedulerTaskInfo, StrategyError, StrategyGuard, StrategyParams, StrategyStatus,
-    StrategyType, StatusTransition, allowed_transitions,
+    allowed_transitions, Account, Alert, AlertLevel, BacktestResult, Exchange, Instrument,
+    InstrumentType, MarketData, Order, OrderSide, OrderStatus, OrderType, Position, RiskMetrics,
+    SchedulerTaskInfo, StatusTransition, StrategyError, StrategyGuard, StrategyParams,
+    StrategyStatus, StrategyType,
 };
 
 // ─── LogEntry ────────────────────────────────────────────────────────────
@@ -166,8 +166,12 @@ mod tests {
         let transitions = allowed_transitions();
         assert_eq!(transitions.len(), 11);
         for t in &transitions {
-            assert!(t.from.can_transition_to(t.to),
-                "transition {:?} → {:?} should be valid", t.from, t.to);
+            assert!(
+                t.from.can_transition_to(t.to),
+                "transition {:?} → {:?} should be valid",
+                t.from,
+                t.to
+            );
         }
     }
 
@@ -196,7 +200,11 @@ mod tests {
             name: "lookback_period".into(),
             param_type: ParamType::Number,
             default: serde_json::json!(20),
-            range: Some(ParamRange { min: 5.0, max: 100.0, step: Some(1.0) }),
+            range: Some(ParamRange {
+                min: 5.0,
+                max: 100.0,
+                step: Some(1.0),
+            }),
             description: "Number of bars for lookback".into(),
         };
         assert_eq!(schema.name, "lookback_period");

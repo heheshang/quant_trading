@@ -108,10 +108,53 @@ impl OkxExecutor {
     }
 
     /// 查询订单状态（可用于订单跟踪）
-    #[instrument(skip(self), fields(inst_id = %_inst_id, ord_id = %_ord_id))]
-    pub async fn get_order_status(&self, _inst_id: &str, _ord_id: &str) -> Result<OrderStatus> {
-        // This would require implementing get_order in the OKX client
-        // For now, return a placeholder
-        Ok(OrderStatus::Submitted)
+    #[instrument(skip(self), fields(inst_id = %inst_id, ord_id = %ord_id))]
+    pub async fn get_order_status(&self, inst_id: &str, ord_id: &str) -> Result<OrderStatus> {
+        let client = self.client.read().await;
+        let order = client.get_order(inst_id, ord_id).await?;
+        Self::map_okx_state(&order.state)
+    }
+
+    fn map_okx_state(state: &str) -> Result<OrderStatus> {
+        match state {
+            "live" => Ok(OrderStatus::Submitted),
+            "partially_filled" => Ok(OrderStatus::PartiallyFilled),
+            "filled" => Ok(OrderStatus::Filled),
+            "canceled" | "mmp_canceled" => Ok(OrderStatus::Cancelled),
+            _ => Err(Error::Trading(format!(
+                "Unknown OKX order state: {}",
+                state
+            ))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_okx_state_known_states() {
+        assert_eq!(
+            OkxExecutor::map_okx_state("live").unwrap(),
+            OrderStatus::Submitted
+        );
+        assert_eq!(
+            OkxExecutor::map_okx_state("partially_filled").unwrap(),
+            OrderStatus::PartiallyFilled
+        );
+        assert_eq!(
+            OkxExecutor::map_okx_state("filled").unwrap(),
+            OrderStatus::Filled
+        );
+        assert_eq!(
+            OkxExecutor::map_okx_state("canceled").unwrap(),
+            OrderStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn test_map_okx_state_unknown_is_error() {
+        assert!(OkxExecutor::map_okx_state("unknown").is_err());
     }
 }

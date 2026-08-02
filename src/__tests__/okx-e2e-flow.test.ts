@@ -162,7 +162,7 @@ describe('OKX E2E Data Flow', () => {
     expect(text).toContain('BTC')
     expect(text).toContain('ETH')
     expect(text).toContain('USDT')
-    expect(text).toContain('50000')
+    expect(text).toContain('50,000.00')
   }, 30000)
 
   // =======================================================================
@@ -179,16 +179,14 @@ describe('OKX E2E Data Flow', () => {
     })
     const wrapper = await mountWithOkxTab()
 
-    // Mock form validation (same pattern as Trading.test.ts mockFormRef)
-    wrapper.vm.okxOrderFormRef = {
-      validate: vi.fn((cb: any) => {
-        cb(true)
-        return Promise.resolve(true)
-      }),
-    } as any
-
     // Fill order form with real-world values
-    wrapper.vm.okxOrderForm = { instId: 'BTC-USDT', side: 'buy', ordType: 'limit', px: 50000, sz: 0.1 }
+    Object.assign(wrapper.vm.okxOrderFormRef.formData, {
+      instId: 'BTC-USDT',
+      side: 'buy',
+      ordType: 'limit',
+      px: 50000,
+      sz: 0.1,
+    })
 
     // Submit — pipeline: submitOkxOrder() → validate → placeOkxOrder() → invoke('place_okx_order')
     await wrapper.vm.submitOkxOrder()

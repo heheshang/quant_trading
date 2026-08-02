@@ -24,6 +24,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { changePassword as apiChangePassword } from '@/services/auth'
+import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
 const props = defineProps<{
@@ -36,6 +37,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const dialogVisible = computed({
   get: () => props.visible,
@@ -101,8 +103,8 @@ async function handleChangePassword() {
         dialogVisible.value = false
         passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
         emit('passwordChanged')
+        authStore.clearSession()
         setTimeout(() => {
-          localStorage.removeItem('auth_token')
           router.push('/login')
         }, 2000)
       } else {
@@ -116,6 +118,13 @@ async function handleChangePassword() {
     }
   })
 }
+
+defineExpose({
+  passwordFormRef,
+  passwordForm,
+  changingPassword,
+  handleChangePassword,
+})
 </script>
 
 <style scoped>

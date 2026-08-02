@@ -126,6 +126,19 @@ async function handleSaveProfile(formData: ProfileFormData) {
 onMounted(() => {
   fetchProfile()
 })
+
+defineExpose({
+  profileForm,
+  accountInfo,
+  isEditing,
+  loading,
+  saving,
+  showPasswordDialog,
+  show2FADialog,
+  fetchProfile,
+  handleCancelEdit,
+  handleSaveProfile,
+})
 </script>
 
 <style scoped>

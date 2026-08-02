@@ -49,10 +49,16 @@ describe('Backtest.vue - 按钮测试', () => {
     const wrapper = await mountComponent()
     mockInvoke.mockClear()
 
-    wrapper.vm.backtestConfig = { strategyId: 's1', strategyName: 'Test Strategy', startDate: '2026-01-01', endDate: '2026-06-01', initialCapital: 1000000, commissionRate: 0.0003, slippage: 0.0001, symbols: 'BTC-USDT' }
-    wrapper.vm.backtestFormRef = { validate: vi.fn().mockResolvedValue(undefined) } as any
-
-    await wrapper.vm.runBacktest()
+    await wrapper.vm.handleRun({
+      strategyId: 's1',
+      strategyName: 'Test Strategy',
+      startDate: '2026-01-01',
+      endDate: '2026-06-01',
+      initialCapital: 1000000,
+      commissionRate: 0.0003,
+      slippage: 0.0001,
+      symbols: 'BTC-USDT',
+    })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -63,30 +69,33 @@ describe('Backtest.vue - 按钮测试', () => {
 
   it('重置按钮 - 恢复配置默认值', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.backtestConfig.initialCapital = 999999
-    wrapper.vm.resetConfig()
+    wrapper.vm.handleReset()
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.backtestConfig.initialCapital).not.toBe(999999)
+    expect(wrapper.vm.backtestResult).toBeNull()
   }, 30000)
 
-  it('对比按钮 - 切换对比模式', async () => {
+  it('切换页签 - 更新 activeTab', async () => {
     const wrapper = await mountComponent()
-    expect(wrapper.vm.compareMode).toBe(false)
-    wrapper.vm.compareMode = true
+    expect(wrapper.vm.activeTab).toBe('overview')
+    wrapper.vm.activeTab = 'equity'
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.compareMode).toBe(true)
+    expect(wrapper.vm.activeTab).toBe('equity')
   }, 30000)
 
   it('导出 CSV - 触发下载', async () => {
     const wrapper = await mountComponent()
+    wrapper.vm.backtestResult = mockResult
     const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
     const clickSpy = vi.fn()
-    vi.spyOn(document, 'createElement').mockReturnValue({ click: clickSpy, href: '', download: '' } as any)
+    const createElementSpy = vi
+      .spyOn(document, 'createElement')
+      .mockReturnValue({ click: clickSpy, href: '', download: '' } as any)
 
-    wrapper.vm.exportHistoryCSV()
+    wrapper.vm.exportResult()
     expect(clickSpy).toHaveBeenCalled()
     clickSpy.mockRestore()
     createObjectURL.mockRestore()
+    createElementSpy.mockRestore()
   }, 30000)
 
   it('刷新历史 - 调用 fetchHistory', async () => {
@@ -100,11 +109,18 @@ describe('Backtest.vue - 按钮测试', () => {
 
   it('回测运行期间 loading 状态', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.backtestFormRef = { validate: vi.fn().mockResolvedValue(undefined) } as any
-    wrapper.vm.backtestConfig = { strategyId: 's1', strategyName: 'Test', startDate: '2026-01-01', endDate: '2026-06-01', initialCapital: 1000000, commissionRate: 0.0003, slippage: 0.0001, symbols: 'BTC-USDT' }
     mockInvoke.mockImplementation(() => new Promise(() => {}))
 
-    wrapper.vm.runBacktest()
+    wrapper.vm.handleRun({
+      strategyId: 's1',
+      strategyName: 'Test',
+      startDate: '2026-01-01',
+      endDate: '2026-06-01',
+      initialCapital: 1000000,
+      commissionRate: 0.0003,
+      slippage: 0.0001,
+      symbols: 'BTC-USDT',
+    })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.running).toBe(true)

@@ -264,7 +264,7 @@ describe('Monitor', () => {
     const tabs = wrapper.findAll('.el-tabs__item')
 
     // Default: metrics tab active
-    expect(wrapper.find('#metrics-chart').exists()).toBe(true)
+    expect(wrapper.text()).toContain('实时指标趋势')
 
     // Switch to alerts (index 1)
     await tabs[1].trigger('click')
@@ -279,7 +279,7 @@ describe('Monitor', () => {
     // Switch back to metrics (index 0)
     await tabs[0].trigger('click')
     await nextTick()
-    expect(wrapper.find('#metrics-chart').exists()).toBe(true)
+    expect(wrapper.text()).toContain('实时指标趋势')
   })
 
   // -----------------------------------------------------------------------

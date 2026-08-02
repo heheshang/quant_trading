@@ -84,6 +84,8 @@ function tagText(level: string): string {
 function formatDate(date: string): string {
   return new Date(date).toLocaleString('zh-CN')
 }
+
+defineExpose({ levelFilter, filteredAlerts })
 </script>
 
 <style scoped>

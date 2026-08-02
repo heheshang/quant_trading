@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Settings from '@/views/Settings.vue'
+import SettingsExchange from '@/components/settings/SettingsExchange.vue'
 import { invoke } from '@tauri-apps/api/core'
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,10 @@ async function mountComponent(): Promise<any> {
   return wrapper
 }
 
+function exchangeVm(wrapper: any) {
+  return wrapper.findComponent(SettingsExchange).vm
+}
+
 /** Switch to the exchange tab by setting activeTab */
 async function switchToExchangeTab(wrapper: any) {
   wrapper.vm.activeTab = 'exchange'
@@ -113,7 +118,7 @@ describe('Settings.vue - OKX connection status', () => {
     await switchToExchangeTab(wrapper)
 
     // Fetch OKX status
-    await wrapper.vm.fetchOkxConnStatus()
+    await exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -142,7 +147,7 @@ describe('Settings.vue - OKX connection status', () => {
     const wrapper = await mountComponent()
     await switchToExchangeTab(wrapper)
 
-    await wrapper.vm.fetchOkxConnStatus()
+    await exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -170,14 +175,14 @@ describe('Settings.vue - OKX connection status', () => {
       return {}
     })
 
-    const fetchPromise = wrapper.vm.fetchOkxConnStatus()
+    const fetchPromise = exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.okxChecking).toBe(true)
+    expect(exchangeVm(wrapper).checking).toBe(true)
 
     resolvePromise({ ...connectedOkxStatus })
     await fetchPromise
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.okxChecking).toBe(false)
+    expect(exchangeVm(wrapper).checking).toBe(false)
   }, 30000)
 
   // -----------------------------------------------------------------------
@@ -193,13 +198,13 @@ describe('Settings.vue - OKX connection status', () => {
     const wrapper = await mountComponent()
     await switchToExchangeTab(wrapper)
 
-    await wrapper.vm.fetchOkxConnStatus()
+    await exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     // Component should not crash, okxConnStatus stays null (no grid)
     expect(wrapper.find('.okx-status-grid').exists()).toBe(false)
-    expect(wrapper.vm.okxChecking).toBe(false)
+    expect(exchangeVm(wrapper).checking).toBe(false)
     expect(wrapper.exists()).toBe(true)
   }, 30000)
 
@@ -211,7 +216,7 @@ describe('Settings.vue - OKX connection status', () => {
     const wrapper = await mountComponent()
     await switchToExchangeTab(wrapper)
 
-    await wrapper.vm.fetchOkxConnStatus()
+    await exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -227,7 +232,7 @@ describe('Settings.vue - OKX connection status', () => {
       return {}
     })
 
-    await wrapper.vm.fetchOkxConnStatus()
+    await exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -253,7 +258,7 @@ describe('Settings.vue - OKX connection status', () => {
     await switchToExchangeTab(wrapper)
     mockInvoke.mockClear()
 
-    await wrapper.vm.fetchOkxConnStatus()
+    await exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 

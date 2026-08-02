@@ -3,12 +3,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use quant_common::types::{Account, MarketData, Position};
+use risk_engine::PreTradeRiskChecker;
 use rust_decimal::Decimal;
 use strategy_engine::pipeline::{OrderExecStep, RiskCheckStep};
 use strategy_engine::signals::Signal;
 use strategy_engine::traits::{OrderExecError, OrderExecutor, RiskCheckError, RiskChecker};
 use trading_engine::ExecutionEngine;
-use risk_engine::PreTradeRiskChecker;
 
 /// Wraps [`PreTradeRiskChecker`] to implement the strategy-layer [`RiskChecker`] trait.
 struct RiskLayerChecker {
@@ -24,9 +24,9 @@ impl RiskLayerChecker {
 #[async_trait]
 impl RiskChecker for RiskLayerChecker {
     async fn check(&self, signal: &Signal) -> Result<(), RiskCheckError> {
-        let order = signal
-            .to_order(&signal.strategy_id)
-            .ok_or_else(|| RiskCheckError::Internal("Cannot convert signal to order".to_string()))?;
+        let order = signal.to_order(&signal.strategy_id).ok_or_else(|| {
+            RiskCheckError::Internal("Cannot convert signal to order".to_string())
+        })?;
 
         let account = Account {
             account_id: 0,
@@ -42,9 +42,9 @@ impl RiskChecker for RiskLayerChecker {
         };
         let positions: Vec<Position> = Vec::new();
 
-        self.inner.check_order(&order, &account, &positions).map_err(|e| {
-            RiskCheckError::Rejected(e.to_string())
-        })
+        self.inner
+            .check_order(&order, &account, &positions)
+            .map_err(|e| RiskCheckError::Rejected(e.to_string()))
     }
 }
 
@@ -62,9 +62,9 @@ impl TradingLayerExecutor {
 #[async_trait]
 impl OrderExecutor for TradingLayerExecutor {
     async fn execute(&self, signal: &Signal) -> Result<String, OrderExecError> {
-        let order = signal
-            .to_order(&signal.strategy_id)
-            .ok_or_else(|| OrderExecError::Internal("Cannot convert signal to order".to_string()))?;
+        let order = signal.to_order(&signal.strategy_id).ok_or_else(|| {
+            OrderExecError::Internal("Cannot convert signal to order".to_string())
+        })?;
 
         let market_data = MarketData {
             symbol: order.symbol.clone(),

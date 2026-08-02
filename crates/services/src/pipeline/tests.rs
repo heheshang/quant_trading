@@ -112,9 +112,7 @@ async fn snapshot_pipeline_risk_pass_exec_success() {
         ))))
         .await;
     pipeline
-        .add_step(Box::new(OrderExecStep::new(Box::new(
-            AlwaysPassExecutor,
-        ))))
+        .add_step(Box::new(OrderExecStep::new(Box::new(AlwaysPassExecutor))))
         .await;
 
     let result = pipeline.execute(buy_order()).await.unwrap();
@@ -158,9 +156,7 @@ async fn snapshot_pipeline_exec_fails_after_risk_pass() {
         ))))
         .await;
     pipeline
-        .add_step(Box::new(OrderExecStep::new(Box::new(
-            AlwaysFailExecutor,
-        ))))
+        .add_step(Box::new(OrderExecStep::new(Box::new(AlwaysFailExecutor))))
         .await;
 
     let result = pipeline.execute(sell_order()).await;
@@ -181,9 +177,7 @@ async fn snapshot_pipeline_sell_order_exec_success() {
         ))))
         .await;
     pipeline
-        .add_step(Box::new(OrderExecStep::new(Box::new(
-            AlwaysPassExecutor,
-        ))))
+        .add_step(Box::new(OrderExecStep::new(Box::new(AlwaysPassExecutor))))
         .await;
 
     let result = pipeline.execute(sell_order()).await.unwrap();

@@ -22,7 +22,8 @@ vi.mock('@/stores/strategy', () => ({
       { type_name: 'TrendFollowing', display_name: '趋势跟踪', description: '' },
       { type_name: 'MeanReversion', display_name: '均值回归', description: '' },
     ],
-    loading: false,
+    loading: { list: false },
+    isAnyLoading: false,
     error: null,
     fetchStrategies: vi.fn(),
     listStrategyTypes: vi.fn(),
@@ -30,6 +31,9 @@ vi.mock('@/stores/strategy', () => ({
     stopStrategy: vi.fn(),
     deleteStrategy: vi.fn(),
     deployStrategy: vi.fn(),
+    pauseStrategy: vi.fn(),
+    resumeStrategy: vi.fn(),
+    archiveStrategy: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
     pause: vi.fn(),
@@ -129,7 +133,7 @@ describe('Strategy.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
+    expect(wrapper.vm.store.fetchStrategies).toHaveBeenCalledWith(true)
   }, 30000)
 
   it('取消按钮 - 关闭对话框', async () => {
@@ -154,11 +158,10 @@ describe('Strategy.vue - 按钮测试', () => {
     mockInvoke.mockClear()
 
     // el-switch v-model flips before @change fires
-    const s = { ...mockStrategies[0], enabled: false }
-    wrapper.vm.toggleStrategyStatus(s)
+    wrapper.vm.toggleStrategyStatus('s1', false)
     await wrapper.vm.$nextTick()
 
-    expect(mockInvoke).toHaveBeenCalledWith('toggle_strategy', { strategyId: 's1', enabled: false })
+    expect(wrapper.vm.store.toggleStrategy).toHaveBeenCalledWith('s1', false)
   }, 30000)
 
   it('生命周期操作 - deploy/start/stop/pause/resume/archive', async () => {
@@ -166,22 +169,22 @@ describe('Strategy.vue - 按钮测试', () => {
     mockInvoke.mockClear()
 
     await wrapper.vm.handleLifecycle('deploy', mockStrategies[0])
-    expect(mockInvoke).toHaveBeenCalledWith('deploy_strategy', { strategyId: 's1' })
+    expect(wrapper.vm.store.deployStrategy).toHaveBeenCalledWith('s1')
 
     await wrapper.vm.handleLifecycle('start', mockStrategies[0])
-    expect(mockInvoke).toHaveBeenCalledWith('start_strategy', { strategyId: 's1' })
+    expect(wrapper.vm.store.startStrategy).toHaveBeenCalledWith('s1')
 
     await wrapper.vm.handleLifecycle('stop', mockStrategies[0])
-    expect(mockInvoke).toHaveBeenCalledWith('stop_strategy', { strategyId: 's1' })
+    expect(wrapper.vm.store.stopStrategy).toHaveBeenCalledWith('s1')
 
     await wrapper.vm.handleLifecycle('pause', mockStrategies[0])
-    expect(mockInvoke).toHaveBeenCalledWith('pause_strategy', { strategyId: 's1' })
+    expect(wrapper.vm.store.pauseStrategy).toHaveBeenCalledWith('s1')
 
     await wrapper.vm.handleLifecycle('resume', mockStrategies[0])
-    expect(mockInvoke).toHaveBeenCalledWith('resume_strategy', { strategyId: 's1' })
+    expect(wrapper.vm.store.resumeStrategy).toHaveBeenCalledWith('s1')
 
     await wrapper.vm.handleLifecycle('archive', mockStrategies[0])
-    expect(mockInvoke).toHaveBeenCalledWith('archive_strategy', { strategyId: 's1' })
+    expect(wrapper.vm.store.archiveStrategy).toHaveBeenCalledWith('s1')
   }, 30000)
 
   it('回测按钮 - 打开回测对话框', async () => {
@@ -204,14 +207,10 @@ describe('Strategy.vue - 按钮测试', () => {
     const wrapper = await mountComponent()
     const refreshBtn = wrapper.findAll('button').find((b: any) => b.text().includes('刷新'))
     expect(refreshBtn).toBeDefined()
-    expect(refreshBtn!.attributes('loading')).toBe('false')
-
-    ;(wrapper.vm.store as any).loading.list = true
-    await wrapper.vm.$nextTick()
 
     const table = wrapper.findComponent({ name: 'StrategyTable' })
     expect(table.exists()).toBe(true)
-    expect(table.props('loading')).toBe(true)
+    expect(table.props('loading')).toBe(false)
   }, 30000)
 
   it('搜索栏 - SearchBar 输入', async () => {
@@ -220,6 +219,7 @@ describe('Strategy.vue - 按钮测试', () => {
     wrapper.vm.onSearch()
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.searchQuery).toBe('Trend')
+    expect(wrapper.vm.store.fetchStrategies).toHaveBeenCalledWith(true)
   }, 30000)
 
   it('onStrategySaved - calls fetchStrategies', async () => {
@@ -230,7 +230,7 @@ describe('Strategy.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
+    expect(wrapper.vm.store.fetchStrategies).toHaveBeenCalledWith(true)
   }, 30000)
 
   it('编辑策略 - 打开编辑对话框', async () => {
@@ -265,7 +265,8 @@ describe('Strategy.vue - 批量操作 (PR8 coverage)', () => {
       return {
         strategies: [],
         strategyTypes: [],
-        loading: false,
+        loading: { list: false },
+        isAnyLoading: false,
         error: null,
         fetchStrategies: vi.fn(),
         listStrategyTypes: vi.fn(),

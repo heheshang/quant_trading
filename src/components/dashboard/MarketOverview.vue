@@ -85,6 +85,13 @@ async function fetchMarketData() {
     marketLoading.value = false
   }
 }
+
+defineExpose({
+  marketData,
+  marketError,
+  marketLoading,
+  fetchMarketData,
+})
 </script>
 
 <style scoped>

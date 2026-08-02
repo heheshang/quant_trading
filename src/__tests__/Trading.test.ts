@@ -24,10 +24,6 @@ vi.mock('element-plus', async () => {
 
 const mockInvoke = vi.mocked(invoke)
 
-function mockFormRef() {
-  return { validate: vi.fn((cb: any) => cb(true)) } as any
-}
-
 let container: HTMLDivElement
 
 async function mountComponent(): Promise<any> {
@@ -65,14 +61,14 @@ describe('Trading.vue - 按钮测试', () => {
 
   it('提交订单 - 调用 placeOrder', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.orderFormRef = mockFormRef()
-    wrapper.vm.orderForm.symbol = 'BTC-USDT'
-    wrapper.vm.orderForm.side = 'Buy'
-    wrapper.vm.orderForm.order_type = 'Limit'
-    wrapper.vm.orderForm.price = 50000
-    wrapper.vm.orderForm.quantity = 0.1
-
-    await wrapper.vm.submitOrder()
+    await wrapper.vm.submitOrder({
+      strategy_id: '',
+      symbol: 'BTC-USDT',
+      side: 'Buy',
+      order_type: 'Limit',
+      price: 50000,
+      quantity: 0.1,
+    })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()

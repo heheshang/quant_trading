@@ -2,6 +2,46 @@
 
 import { vi } from 'vitest'
 
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() {
+      return store.size
+    },
+    clear() {
+      store.clear()
+    },
+    getItem(key: string) {
+      return store.get(key) ?? null
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null
+    },
+    removeItem(key: string) {
+      store.delete(key)
+    },
+    setItem(key: string, value: string) {
+      store.set(key, String(value))
+    },
+  } as Storage
+}
+
+// Vitest 4 + jsdom 29 在部分环境中不会把 localStorage/sessionStorage 暴露到
+// globalThis；测试代码同时使用 global 与 window 两种访问方式，因此统一注入。
+const globalWithStorage = globalThis as typeof globalThis & {
+  localStorage?: Storage
+  window?: { localStorage?: Storage }
+}
+const localStorage = globalWithStorage.localStorage ?? globalWithStorage.window?.localStorage ?? createMemoryStorage()
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorage,
+  configurable: true,
+})
+Object.defineProperty(globalThis, 'sessionStorage', {
+  value: createMemoryStorage(),
+  configurable: true,
+})
+
 // Mock @tauri-apps/api/event
 const mockUnlisten = vi.fn()
 const mockListen = vi.fn().mockResolvedValue(mockUnlisten)
@@ -22,7 +62,7 @@ class MockResizeObserver {
   unobserve = vi.fn()
   disconnect = vi.fn()
 }
-global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
+globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
 // Mock echarts
 vi.mock('echarts', () => {

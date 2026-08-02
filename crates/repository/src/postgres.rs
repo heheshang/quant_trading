@@ -42,6 +42,16 @@ impl PostgresClient {
         &self.pool
     }
 
+    /// Wrap an existing PostgreSQL pool.
+    ///
+    /// Used by the application entrypoint to avoid opening a second connection
+    /// pool when `data_layer::PostgresClient` already owns one.
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self {
+            pool: Arc::new(pool),
+        }
+    }
+
     /// Health check — verifies database connectivity.
     #[instrument(skip(self))]
     pub async fn health_check(&self) -> Result<bool> {
@@ -61,6 +71,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance"]
     async fn test_connection() {
         let config = DatabaseConfig {
             host: dotenv::var("DATABASE_HOST").unwrap_or_else(|_| "localhost".into()),

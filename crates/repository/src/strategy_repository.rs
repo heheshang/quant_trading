@@ -38,18 +38,12 @@ impl StrategyRow {
     fn to_domain(&self) -> Result<StrategyParams, RepoError> {
         let strategy_type: StrategyType =
             serde_json::from_value(serde_json::Value::String(self.strategy_type.clone()))
-                .map_err(|e| {
-                    RepoError::Database(format!("invalid strategy_type: {}", e))
-                })?;
+                .map_err(|e| RepoError::Database(format!("invalid strategy_type: {}", e)))?;
         let status: StrategyStatus =
             serde_json::from_value(serde_json::Value::String(self.status.clone()))
-                .map_err(|e| {
-                    RepoError::Database(format!("invalid status: {}", e))
-                })?;
-        let tags: Vec<String> = serde_json::from_value(self.tags.clone())
-            .unwrap_or_default();
-        let symbols: Vec<String> = serde_json::from_value(self.symbols.clone())
-            .unwrap_or_default();
+                .map_err(|e| RepoError::Database(format!("invalid status: {}", e)))?;
+        let tags: Vec<String> = serde_json::from_value(self.tags.clone()).unwrap_or_default();
+        let symbols: Vec<String> = serde_json::from_value(self.symbols.clone()).unwrap_or_default();
 
         Ok(StrategyParams {
             strategy_id: self.strategy_id.clone(),
@@ -526,7 +520,10 @@ impl StrategyRepository for PgStrategyRepository {
         .execute(&*self.pool)
         .await
         .map_err(|e| {
-            error!("Failed to update strategy {} with version check: {}", strategy_id, e);
+            error!(
+                "Failed to update strategy {} with version check: {}",
+                strategy_id, e
+            );
             RepoError::from(e)
         })?;
 
@@ -571,7 +568,10 @@ impl StrategyRepository for PgStrategyRepository {
         .execute(&*self.pool)
         .await
         .map_err(|e| {
-            error!("Failed to update status for strategy {}: {}", strategy_id, e);
+            error!(
+                "Failed to update status for strategy {}: {}",
+                strategy_id, e
+            );
             RepoError::from(e)
         })?;
 
@@ -617,9 +617,25 @@ impl StrategyRepository for PgStrategyRepository {
 
     #[instrument(skip(self))]
     async fn stats(&self) -> Result<StrategyStats, RepoError> {
-        let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) =
-            sqlx::query_as(
-                r#"
+        let row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = sqlx::query_as(
+            r#"
                 SELECT
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE enabled = true) as enabled,
@@ -639,13 +655,13 @@ impl StrategyRepository for PgStrategyRepository {
                     COUNT(*) FILTER (WHERE strategy_type = 'Custom') as custom
                 FROM strategies
                 "#,
-            )
-            .fetch_one(&*self.pool)
-            .await
-            .map_err(|e| {
-                error!("Failed to get strategy stats: {}", e);
-                RepoError::from(e)
-            })?;
+        )
+        .fetch_one(&*self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to get strategy stats: {}", e);
+            RepoError::from(e)
+        })?;
 
         Ok(StrategyStats {
             total: row.0,

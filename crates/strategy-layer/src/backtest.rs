@@ -5,8 +5,8 @@ use quant_common::utils::{
     calculate_annual_return, calculate_max_drawdown, calculate_sharpe_ratio,
 };
 use quant_common::{Error, Result};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,7 +25,10 @@ pub struct BacktestOptions {
 impl std::fmt::Debug for BacktestOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BacktestOptions")
-            .field("cancellation_token", &self.cancellation_token.as_ref().map(|_| "Some"))
+            .field(
+                "cancellation_token",
+                &self.cancellation_token.as_ref().map(|_| "Some"),
+            )
             .field("timeout", &self.timeout)
             .field("progress", &self.progress.as_ref().map(|_| "Some"))
             .finish()
@@ -80,7 +83,8 @@ impl BacktestEngine {
         strategy: &dyn Strategy,
         market_data: Vec<MarketData>,
     ) -> Result<BacktestResult> {
-        self.run_with_options(strategy, market_data, BacktestOptions::default()).await
+        self.run_with_options(strategy, market_data, BacktestOptions::default())
+            .await
     }
 
     #[instrument(skip(self, strategy, market_data, options), fields(strategy = %strategy.name(), data_points = market_data.len()))]
@@ -127,7 +131,6 @@ impl BacktestEngine {
         self.total_profit = Decimal::ZERO;
         self.total_loss = Decimal::ZERO;
 
-        
         let deadline = options.timeout.map(|d| std::time::Instant::now() + d);
 
         let total_timestamps = timestamps.len();
@@ -380,7 +383,9 @@ pub async fn run_backtest_multi(
         let data = market_data.clone();
         handles.push(tokio::spawn(async move {
             let mut engine = BacktestEngine::new(initial_capital, commission_rate, slippage);
-            let result = engine.run_with_options(strategy.as_ref(), data, BacktestOptions::default()).await;
+            let result = engine
+                .run_with_options(strategy.as_ref(), data, BacktestOptions::default())
+                .await;
             (label, result)
         }));
     }
@@ -430,7 +435,12 @@ mod tests {
         }
     }
 
-    fn make_order(symbol: &str, side: quant_common::types::OrderSide, price: Decimal, quantity: Decimal) -> Order {
+    fn make_order(
+        symbol: &str,
+        side: quant_common::types::OrderSide,
+        price: Decimal,
+        quantity: Decimal,
+    ) -> Order {
         Order {
             order_id: 0,
             strategy_id: "test".to_string(),
@@ -456,7 +466,9 @@ mod tests {
             Decimal::from_f64(0.0001).unwrap(),
         );
         let strategy = MeanReversionStrategy::new();
-        let result = engine.run_with_options(&strategy, vec![], BacktestOptions::default()).await;
+        let result = engine
+            .run_with_options(&strategy, vec![], BacktestOptions::default())
+            .await;
         assert!(result.is_err());
     }
 
@@ -472,16 +484,17 @@ mod tests {
             ),
         ];
 
-        let mut engine = BacktestEngine::new(
-            Decimal::from(10000),
-            Decimal::ZERO,
-            Decimal::ZERO,
-        );
+        let mut engine = BacktestEngine::new(Decimal::from(10000), Decimal::ZERO, Decimal::ZERO);
 
         // Buy at 100, quantity = 10
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Buy, Decimal::from(100), Decimal::from(10)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Buy,
+                    Decimal::from(100),
+                    Decimal::from(10),
+                ),
                 &data,
             )
             .unwrap();
@@ -489,7 +502,12 @@ mod tests {
         // Sell at 110, profit = (110 - 100) * 10 = 100
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Sell, Decimal::from(110), Decimal::from(10)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Sell,
+                    Decimal::from(110),
+                    Decimal::from(10),
+                ),
                 &data,
             )
             .unwrap();
@@ -511,16 +529,17 @@ mod tests {
             ),
         ];
 
-        let mut engine = BacktestEngine::new(
-            Decimal::from(10000),
-            Decimal::ZERO,
-            Decimal::ZERO,
-        );
+        let mut engine = BacktestEngine::new(Decimal::from(10000), Decimal::ZERO, Decimal::ZERO);
 
         // First buy: 10 units at 100
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Buy, Decimal::from(100), Decimal::from(10)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Buy,
+                    Decimal::from(100),
+                    Decimal::from(10),
+                ),
                 &data,
             )
             .unwrap();
@@ -528,7 +547,12 @@ mod tests {
         // Second buy: 10 units at 200
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Buy, Decimal::from(200), Decimal::from(10)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Buy,
+                    Decimal::from(200),
+                    Decimal::from(10),
+                ),
                 &data,
             )
             .unwrap();
@@ -551,16 +575,17 @@ mod tests {
             ),
         ];
 
-        let mut engine = BacktestEngine::new(
-            Decimal::from(10000),
-            Decimal::ZERO,
-            Decimal::ZERO,
-        );
+        let mut engine = BacktestEngine::new(Decimal::from(10000), Decimal::ZERO, Decimal::ZERO);
 
         // Buy at 100
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Buy, Decimal::from(100), Decimal::from(10)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Buy,
+                    Decimal::from(100),
+                    Decimal::from(10),
+                ),
                 &data,
             )
             .unwrap();
@@ -568,7 +593,12 @@ mod tests {
         // Win trade: sell at 150, profit = 500
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Sell, Decimal::from(150), Decimal::from(5)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Sell,
+                    Decimal::from(150),
+                    Decimal::from(5),
+                ),
                 &data,
             )
             .unwrap();
@@ -576,7 +606,12 @@ mod tests {
         // Loss trade: sell at 50, loss = 250
         engine
             .execute_order(
-                make_order("BTC/USDT", quant_common::types::OrderSide::Sell, Decimal::from(50), Decimal::from(5)),
+                make_order(
+                    "BTC/USDT",
+                    quant_common::types::OrderSide::Sell,
+                    Decimal::from(50),
+                    Decimal::from(5),
+                ),
                 &data,
             )
             .unwrap();

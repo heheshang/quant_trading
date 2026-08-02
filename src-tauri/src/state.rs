@@ -1,7 +1,8 @@
-use data_layer::{OkxDataSource, PostgresClient, RedisCache};
+use data_layer::{OkxDataSource, PostgresClient};
 use exchange_okx::websocket::OkxWebSocket;
 use exchange_okx::ClientInterface;
 use monitor_layer::{AlertManager, LogBuffer};
+use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
 use quant_services::AppServices;
 use std::sync::atomic::AtomicBool;

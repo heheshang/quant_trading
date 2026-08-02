@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn test_from_rsi_oversold_returns_buy() {
         let signal = SignalGenerator::from_rsi(
-            Decimal::from(25),  // RSI < 30 → oversold → Buy
+            Decimal::from(25), // RSI < 30 → oversold → Buy
             "BTC/USDT".to_string(),
             Decimal::from(100),
         );
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn test_from_rsi_overbought_returns_sell() {
         let signal = SignalGenerator::from_rsi(
-            Decimal::from(80),  // RSI > 70 → overbought → Sell
+            Decimal::from(80), // RSI > 70 → overbought → Sell
             "BTC/USDT".to_string(),
             Decimal::from(100),
         );
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn test_from_rsi_normal_returns_hold() {
         let signal = SignalGenerator::from_rsi(
-            Decimal::from(50),  // 30 <= RSI <= 70 → Hold
+            Decimal::from(50), // 30 <= RSI <= 70 → Hold
             "BTC/USDT".to_string(),
             Decimal::from(100),
         );
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_from_macd_golden_cross_returns_buy() {
         let signal = SignalGenerator::from_macd(
-            Decimal::from(10),   // MACD > Signal → golden cross → Buy
+            Decimal::from(10), // MACD > Signal → golden cross → Buy
             Decimal::from(5),
             "BTC/USDT".to_string(),
             Decimal::from(100),
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_from_macd_death_cross_returns_sell() {
         let signal = SignalGenerator::from_macd(
-            Decimal::from(5),    // MACD < Signal → death cross → Sell
+            Decimal::from(5), // MACD < Signal → death cross → Sell
             Decimal::from(10),
             "BTC/USDT".to_string(),
             Decimal::from(100),
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn test_from_macd_neutral_returns_hold() {
         let signal = SignalGenerator::from_macd(
-            Decimal::from(10),   // MACD == Signal → Hold
+            Decimal::from(10), // MACD == Signal → Hold
             Decimal::from(10),
             "BTC/USDT".to_string(),
             Decimal::from(100),

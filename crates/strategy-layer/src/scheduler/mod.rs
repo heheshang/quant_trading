@@ -34,7 +34,7 @@ pub struct StrategyScheduler {
     /// 信号流水线执行器
     pipeline: Option<Arc<PipelineExecutor>>,
     /// 市场数据提供者
-    market_data_provider: Option<Arc<dyn MarketDataProvider>>, 
+    market_data_provider: Option<Arc<dyn MarketDataProvider>>,
 }
 
 impl StrategyScheduler {
@@ -98,6 +98,7 @@ impl StrategyScheduler {
         let cbs = Arc::clone(&self.circuit_breakers);
         let pipeline = self.pipeline.clone();
         let market_data_provider = self.market_data_provider.clone();
+        let strategy_symbols = strategy.params().symbols.clone();
 
         // Shared metadata updated by the task loop.
         let meta = Arc::new(std::sync::Mutex::new(task::SchedulerTaskMeta {
@@ -158,13 +159,9 @@ impl StrategyScheduler {
                         // 构造上下文，获取真实市场数据
                         let mut market_data = Vec::new();
                         if let Some(ref provider) = market_data_provider {
-                            // 获取当前策略的符号（从策略参数中获取）
-                            // 注意：这里需要从策略中获取符号信息，暂时使用空实现
-                            // TODO: 从策略中获取 symbols
-                            let symbols: Vec<String> = vec![];
-                            for symbol in symbols {
+                            for symbol in &strategy_symbols {
                                 match provider.get_historical_data(
-                                    &symbol,
+                                    symbol,
                                     chrono::Utc::now() - chrono::Duration::hours(24),
                                     chrono::Utc::now(),
                                 ).await {
@@ -270,11 +267,7 @@ impl StrategyScheduler {
             let mut tasks = self.tasks.write().await;
             tasks.insert(
                 sid,
-                SchedulerTaskHandle::new(
-                    strategy_name,
-                    interval_secs,
-                    handle,
-                ),
+                SchedulerTaskHandle::new(strategy_name, interval_secs, handle),
             );
         }
 
@@ -285,9 +278,9 @@ impl StrategyScheduler {
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn stop_strategy(&self, strategy_id: &str) -> Result<(), SchedulerError> {
         let mut tasks = self.tasks.write().await;
-        let handle = tasks.remove(strategy_id).ok_or_else(|| {
-            SchedulerError::NotFound(strategy_id.to_string())
-        })?;
+        let handle = tasks
+            .remove(strategy_id)
+            .ok_or_else(|| SchedulerError::NotFound(strategy_id.to_string()))?;
 
         // 中止任务
         if let Some(jh) = handle.join_handle {
@@ -332,7 +325,9 @@ impl StrategyScheduler {
                     status: quant_common::types::StrategyStatus::Running,
                     interval_secs: m.interval_secs,
                     last_run_at: m.last_run_at,
-                    error_count: handle.error_counter.load(std::sync::atomic::Ordering::Acquire),
+                    error_count: handle
+                        .error_counter
+                        .load(std::sync::atomic::Ordering::Acquire),
                 }
             })
             .collect()
@@ -386,7 +381,7 @@ mod tests {
         StrategyScheduler::new(SchedulerConfig::default())
     }
 
-    fn make_dummy_strategy() -> Box<dyn Strategy> {
+    async fn make_dummy_strategy() -> Box<dyn Strategy> {
         let mut s = MeanReversionStrategy::new();
         let params = StrategyParams {
             strategy_id: "test_scheduler".to_string(),
@@ -404,10 +399,10 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         // 忽略 initialize 错误
-        let _ = s.initialize(params);
+        let _ = s.initialize(params).await;
         Box::new(s)
     }
 
@@ -422,7 +417,12 @@ mod tests {
     async fn test_start_and_stop_strategy() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("test_001".to_string(), "Test Strategy".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy(
+                "test_001".to_string(),
+                "Test Strategy".to_string(),
+                make_dummy_strategy().await,
+                3600,
+            )
             .await
             .unwrap();
         assert_eq!(scheduler.running_count().await, 1);
@@ -435,15 +435,28 @@ mod tests {
     async fn test_start_twice_returns_error() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("dup".to_string(), "Dup Strategy".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy(
+                "dup".to_string(),
+                "Dup Strategy".to_string(),
+                make_dummy_strategy().await,
+                3600,
+            )
             .await
             .unwrap();
 
         let result = scheduler
-            .start_strategy("dup".to_string(), "Dup Strategy".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy(
+                "dup".to_string(),
+                "Dup Strategy".to_string(),
+                make_dummy_strategy().await,
+                3600,
+            )
             .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SchedulerError::AlreadyRunning(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            SchedulerError::AlreadyRunning(_)
+        ));
     }
 
     #[tokio::test]
@@ -458,11 +471,21 @@ mod tests {
     async fn test_shutdown_all() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("s1".to_string(), "Strategy 1".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy(
+                "s1".to_string(),
+                "Strategy 1".to_string(),
+                make_dummy_strategy().await,
+                3600,
+            )
             .await
             .unwrap();
         scheduler
-            .start_strategy("s2".to_string(), "Strategy 2".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy(
+                "s2".to_string(),
+                "Strategy 2".to_string(),
+                make_dummy_strategy().await,
+                3600,
+            )
             .await
             .unwrap();
         assert_eq!(scheduler.running_count().await, 2);
@@ -475,7 +498,12 @@ mod tests {
     async fn test_circuit_breaker_initialized() {
         let scheduler = make_scheduler();
         scheduler
-            .start_strategy("cb_test".to_string(), "CB Test".to_string(), make_dummy_strategy(), 3600)
+            .start_strategy(
+                "cb_test".to_string(),
+                "CB Test".to_string(),
+                make_dummy_strategy().await,
+                3600,
+            )
             .await
             .unwrap();
 

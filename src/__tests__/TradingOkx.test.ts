@@ -377,16 +377,14 @@ describe('Trading.vue - OKX 数据渲染测试', () => {
 
     const wrapper = await mountWithOkxTab()
 
-    // Set up form ref mock (same pattern as Trading.test.ts mockFormRef)
-    wrapper.vm.okxOrderFormRef = {
-      validate: vi.fn((cb: any) => {
-        cb(true)
-        return Promise.resolve(true)
-      }),
-    } as any
-
-    // Set order form values
-    wrapper.vm.okxOrderForm = { instId: 'BTC-USDT', side: 'buy', ordType: 'limit', px: 50000, sz: 0.1 }
+    // Set order form values on the actual child form
+    Object.assign(wrapper.vm.okxOrderFormRef.formData, {
+      instId: 'BTC-USDT',
+      side: 'buy',
+      ordType: 'limit',
+      px: 50000,
+      sz: 0.1,
+    })
 
     // Submit
     await wrapper.vm.submitOkxOrder()

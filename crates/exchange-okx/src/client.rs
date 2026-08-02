@@ -1,4 +1,5 @@
 use crate::types::*;
+use async_trait::async_trait;
 use okx::api::account::OkxAccount;
 use okx::api::announcements::announcements_api::{AnnouncementPage, OkxAnnouncements};
 use okx::api::api_trait::OkxApiTrait;
@@ -9,7 +10,6 @@ use okx::dto::trade_dto::OrderReqDto;
 use okx::OkxClient;
 use quant_common::{Error, Result};
 use reqwest::Method;
-use async_trait::async_trait;
 /// OKX 客户端
 #[derive(Debug)]
 pub struct Client {
@@ -32,8 +32,15 @@ pub trait ClientInterface: Send + Sync {
     async fn place_order(&self, request: OkxPlaceOrderRequest) -> Result<OkxOrder>;
     /// 撤单
     async fn cancel_order(&self, inst_id: &str, ord_id: &str) -> Result<()>;
+    /// 查询订单状态
+    async fn get_order(&self, inst_id: &str, ord_id: &str) -> Result<OkxOrder>;
     /// 获取K线数据
-    async fn get_candles(&self, inst_id: &str, bar: &str, limit: Option<u32>) -> Result<Vec<OkxCandle>>;
+    async fn get_candles(
+        &self,
+        inst_id: &str,
+        bar: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<OkxCandle>>;
     /// 获取交易对信息
     async fn get_instruments(&self, inst_type: &str) -> Result<serde_json::Value>;
     /// 获取 Ticker 24h 统计
@@ -211,6 +218,33 @@ impl ClientInterface for Client {
         } else {
             Err(Error::Trading("Failed to place order".to_string()))
         }
+    }
+
+    /// 查询订单
+    async fn get_order(&self, inst_id: &str, ord_id: &str) -> Result<OkxOrder> {
+        let orders = self
+            .trade_api
+            .get_order_details(inst_id, Some(ord_id), None)
+            .await
+            .map_err(Error::OKX)?;
+
+        orders
+            .into_iter()
+            .next()
+            .map(|o| OkxOrder {
+                ord_id: o.ord_id,
+                cl_ord_id: o.cl_ord_id,
+                inst_id: o.inst_id,
+                side: o.side,
+                ord_type: o.ord_type,
+                px: o.px,
+                sz: o.sz,
+                state: o.state,
+                avg_px: o.avg_px,
+                acc_fill_sz: o.acc_fill_sz,
+                u_time: o.u_time,
+            })
+            .ok_or_else(|| Error::NotFound(format!("Order {} not found", ord_id)))
     }
 
     /// 撤单
@@ -478,7 +512,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_account_balance()
             .withf(|ccy: &Option<&str>| *ccy == Some("BTC"))
-            .returning(|_: Option<&str>| Box::pin(async move { Ok(vec![mock_okx_balance("BTC", "1.5")]) }));
+            .returning(|_: Option<&str>| {
+                Box::pin(async move { Ok(vec![mock_okx_balance("BTC", "1.5")]) })
+            });
 
         let result = mock.get_account_balance(Some("BTC")).await;
         assert!(result.is_ok());
@@ -509,7 +545,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_account_balance()
             .withf(|ccy: &Option<&str>| *ccy == Some("BTC"))
-            .returning(|_: Option<&str>| Box::pin(async move { Ok(vec![mock_large_number_balance()]) }));
+            .returning(|_: Option<&str>| {
+                Box::pin(async move { Ok(vec![mock_large_number_balance()]) })
+            });
 
         let result = mock.get_account_balance(Some("BTC")).await;
         assert!(result.is_ok());
@@ -522,7 +560,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_account_balance()
             .withf(|ccy: &Option<&str>| *ccy == Some("INVALID"))
-            .returning(|_: Option<&str>| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: Option<&str>| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_account_balance(Some("INVALID")).await;
         assert!(result.is_err());
@@ -535,7 +575,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_positions()
             .withf(|inst_id: &Option<&str>| *inst_id == Some("BTC-USDT"))
-            .returning(|_: Option<&str>| Box::pin(async move { Ok(vec![mock_okx_position("BTC-USDT", "1")]) }));
+            .returning(|_: Option<&str>| {
+                Box::pin(async move { Ok(vec![mock_okx_position("BTC-USDT", "1")]) })
+            });
 
         let result = mock.get_positions(Some("BTC-USDT")).await;
         assert!(result.is_ok());
@@ -577,7 +619,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_positions()
             .withf(|inst_id: &Option<&str>| *inst_id == Some("INVALID"))
-            .returning(|_: Option<&str>| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: Option<&str>| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_positions(Some("INVALID")).await;
         assert!(result.is_err());
@@ -605,7 +649,9 @@ mod tests {
     async fn test_place_order_limit() {
         let mut mock = MockClientInterface::new();
         mock.expect_place_order()
-            .withf(|req: &OkxPlaceOrderRequest| req.ord_type == "limit" && req.inst_id == "BTC-USDT")
+            .withf(|req: &OkxPlaceOrderRequest| {
+                req.ord_type == "limit" && req.inst_id == "BTC-USDT"
+            })
             .returning(|_| {
                 let mut order = mock_filled_order("BTC-USDT", "sell");
                 order.ord_type = "limit".to_string();
@@ -638,9 +684,7 @@ mod tests {
     async fn test_cancel_order_success() {
         let mut mock = MockClientInterface::new();
         mock.expect_cancel_order()
-            .withf(|inst_id: &str, ord_id: &str| {
-                inst_id == "BTC-USDT" && ord_id == "123456789"
-            })
+            .withf(|inst_id: &str, ord_id: &str| inst_id == "BTC-USDT" && ord_id == "123456789")
             .returning(|_: &str, _: &str| Box::pin(async move { Ok(()) }));
 
         let result = mock.cancel_order("BTC-USDT", "123456789").await;
@@ -651,12 +695,39 @@ mod tests {
     async fn test_cancel_order_error() {
         let mut mock = MockClientInterface::new();
         mock.expect_cancel_order()
-            .withf(|inst_id: &str, ord_id: &str| {
-                inst_id == "INVALID" && ord_id == "999"
-            })
-            .returning(|_: &str, _: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .withf(|inst_id: &str, ord_id: &str| inst_id == "INVALID" && ord_id == "999")
+            .returning(|_: &str, _: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.cancel_order("INVALID", "999").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_order_success() {
+        let mut mock = MockClientInterface::new();
+        mock.expect_get_order()
+            .withf(|inst_id: &str, ord_id: &str| inst_id == "BTC-USDT" && ord_id == "123456789")
+            .returning(|_, _| Box::pin(async move { Ok(mock_okx_order("BTC-USDT", "buy")) }));
+
+        let result = mock.get_order("BTC-USDT", "123456789").await;
+        assert!(result.is_ok());
+        let order = result.unwrap();
+        assert_eq!(order.ord_id, "123456789");
+        assert_eq!(order.state, "live");
+    }
+
+    #[tokio::test]
+    async fn test_get_order_error() {
+        let mut mock = MockClientInterface::new();
+        mock.expect_get_order()
+            .withf(|inst_id: &str, ord_id: &str| inst_id == "INVALID" && ord_id == "999")
+            .returning(|_, _| {
+                Box::pin(async move { Err(Error::NotFound("order missing".into())) })
+            });
+
+        let result = mock.get_order("INVALID", "999").await;
         assert!(result.is_err());
     }
 
@@ -669,7 +740,9 @@ mod tests {
             .withf(|inst_id: &str, bar: &str, limit: &Option<u32>| {
                 inst_id == "BTC-USDT" && bar == "1m" && *limit == Some(5)
             })
-            .returning(|_: &str, _: &str, _: Option<u32>| Box::pin(async move { Ok(mock_okx_candles(5)) }));
+            .returning(|_: &str, _: &str, _: Option<u32>| {
+                Box::pin(async move { Ok(mock_okx_candles(5)) })
+            });
 
         let result = mock.get_candles("BTC-USDT", "1m", Some(5)).await;
         assert!(result.is_ok());
@@ -699,9 +772,7 @@ mod tests {
     async fn test_get_candles_error() {
         let mut mock = MockClientInterface::new();
         mock.expect_get_candles()
-            .withf(|inst_id: &str, _bar: &str, _limit: &Option<u32>| {
-                inst_id == "INVALID"
-            })
+            .withf(|inst_id: &str, _bar: &str, _limit: &Option<u32>| inst_id == "INVALID")
             .returning(|_: &str, _: &str, _: Option<u32>| {
                 Box::pin(async move { Err(Error::Internal("test error".into())) })
             });
@@ -737,7 +808,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_instruments()
             .withf(|inst_type: &str| inst_type == "BAD")
-            .returning(|_: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_instruments("BAD").await;
         assert!(result.is_err());
@@ -766,7 +839,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_ticker()
             .withf(|inst_id: &str| inst_id == "NONEXISTENT")
-            .returning(|_: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_ticker("NONEXISTENT").await;
         assert!(result.is_err());
@@ -779,7 +854,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_funding_rate()
             .withf(|inst_id: &str| inst_id == "BTC-USDT-SWAP")
-            .returning(|_: &str| Box::pin(async move { Ok(mock_okx_funding_rate("BTC-USDT-SWAP")) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Ok(mock_okx_funding_rate("BTC-USDT-SWAP")) })
+            });
 
         let result = mock.get_funding_rate("BTC-USDT-SWAP").await;
         assert!(result.is_ok());
@@ -794,7 +871,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_funding_rate()
             .withf(|inst_id: &str| inst_id == "INVALID")
-            .returning(|_: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_funding_rate("INVALID").await;
         assert!(result.is_err());
@@ -821,7 +900,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_mark_price()
             .withf(|inst_id: &str| inst_id == "INVALID")
-            .returning(|_: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_mark_price("INVALID").await;
         assert!(result.is_err());
@@ -848,7 +929,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_index_price()
             .withf(|inst_id: &str| inst_id == "INVALID")
-            .returning(|_: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_index_price("INVALID").await;
         assert!(result.is_err());
@@ -875,7 +958,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_open_interest()
             .withf(|inst_id: &str| inst_id == "INVALID")
-            .returning(|_: &str| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_open_interest("INVALID").await;
         assert!(result.is_err());
@@ -887,16 +972,11 @@ mod tests {
     async fn test_get_trades_success() {
         let mut mock = MockClientInterface::new();
         mock.expect_get_trades()
-            .withf(|inst_id: &str, limit: &Option<u32>| {
-                inst_id == "BTC-USDT" && *limit == Some(10)
-            })
+            .withf(|inst_id: &str, limit: &Option<u32>| inst_id == "BTC-USDT" && *limit == Some(10))
             .returning(|_: &str, _: Option<u32>| {
-                Box::pin(async move {
-                    Ok(vec![
-                        mock_okx_trade("BTC-USDT"),
-                        mock_okx_trade("BTC-USDT"),
-                    ])
-                })
+                Box::pin(
+                    async move { Ok(vec![mock_okx_trade("BTC-USDT"), mock_okx_trade("BTC-USDT")]) },
+                )
             });
 
         let result = mock.get_trades("BTC-USDT", Some(10)).await;
@@ -910,9 +990,7 @@ mod tests {
     async fn test_get_trades_limit_boundary() {
         let mut mock = MockClientInterface::new();
         mock.expect_get_trades()
-            .withf(|inst_id: &str, limit: &Option<u32>| {
-                inst_id == "BTC-USDT" && *limit == Some(0)
-            })
+            .withf(|inst_id: &str, limit: &Option<u32>| inst_id == "BTC-USDT" && *limit == Some(0))
             .returning(|_: &str, _: Option<u32>| Box::pin(async move { Ok(vec![]) }));
 
         let result = mock.get_trades("BTC-USDT", Some(0)).await;
@@ -927,7 +1005,9 @@ mod tests {
             .withf(|inst_id: &str, limit: &Option<u32>| {
                 inst_id == "BTC-USDT" && *limit == Some(500)
             })
-            .returning(|_: &str, _: Option<u32>| Box::pin(async move { Ok(vec![mock_okx_trade("BTC-USDT")]) }));
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async move { Ok(vec![mock_okx_trade("BTC-USDT")]) })
+            });
 
         let result = mock.get_trades("BTC-USDT", Some(500)).await;
         assert!(result.is_ok());
@@ -939,7 +1019,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_trades()
             .withf(|inst_id: &str, _limit: &Option<u32>| inst_id == "INVALID")
-            .returning(|_: &str, _: Option<u32>| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_trades("INVALID", Some(10)).await;
         assert!(result.is_err());
@@ -951,10 +1033,10 @@ mod tests {
     async fn test_get_order_book_success() {
         let mut mock = MockClientInterface::new();
         mock.expect_get_order_book()
-            .withf(|inst_id: &str, sz: &Option<u32>| {
-                inst_id == "BTC-USDT" && *sz == Some(5)
-            })
-            .returning(|_: &str, _: Option<u32>| Box::pin(async move { Ok(mock_okx_order_book()) }));
+            .withf(|inst_id: &str, sz: &Option<u32>| inst_id == "BTC-USDT" && *sz == Some(5))
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async move { Ok(mock_okx_order_book()) })
+            });
 
         let result = mock.get_order_book("BTC-USDT", Some(5)).await;
         assert!(result.is_ok());
@@ -968,10 +1050,10 @@ mod tests {
     async fn test_get_order_book_sz_zero() {
         let mut mock = MockClientInterface::new();
         mock.expect_get_order_book()
-            .withf(|inst_id: &str, sz: &Option<u32>| {
-                inst_id == "BTC-USDT" && *sz == Some(0)
-            })
-            .returning(|_: &str, _: Option<u32>| Box::pin(async move { Ok(mock_empty_order_book()) }));
+            .withf(|inst_id: &str, sz: &Option<u32>| inst_id == "BTC-USDT" && *sz == Some(0))
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async move { Ok(mock_empty_order_book()) })
+            });
 
         let result = mock.get_order_book("BTC-USDT", Some(0)).await;
         assert!(result.is_ok());
@@ -984,10 +1066,10 @@ mod tests {
     async fn test_get_order_book_sz_max() {
         let mut mock = MockClientInterface::new();
         mock.expect_get_order_book()
-            .withf(|inst_id: &str, sz: &Option<u32>| {
-                inst_id == "BTC-USDT" && *sz == Some(400)
-            })
-            .returning(|_: &str, _: Option<u32>| Box::pin(async move { Ok(mock_single_level_order_book()) }));
+            .withf(|inst_id: &str, sz: &Option<u32>| inst_id == "BTC-USDT" && *sz == Some(400))
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async move { Ok(mock_single_level_order_book()) })
+            });
 
         let result = mock.get_order_book("BTC-USDT", Some(400)).await;
         assert!(result.is_ok());
@@ -999,7 +1081,9 @@ mod tests {
         let mut mock = MockClientInterface::new();
         mock.expect_get_order_book()
             .withf(|inst_id: &str, _sz: &Option<u32>| inst_id == "INVALID")
-            .returning(|_: &str, _: Option<u32>| Box::pin(async move { Err(Error::Internal("test error".into())) }));
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async move { Err(Error::Internal("test error".into())) })
+            });
 
         let result = mock.get_order_book("INVALID", Some(5)).await;
         assert!(result.is_err());
@@ -1034,13 +1118,12 @@ mod tests {
     #[tokio::test]
     async fn test_get_announcements_multi_page() {
         let mut mock = MockClientInterface::new();
-        mock.expect_get_announcements()
-            .returning(|| Box::pin(async move { Ok(vec![mock_announcement_page(), mock_announcement_page()]) }));
+        mock.expect_get_announcements().returning(|| {
+            Box::pin(async move { Ok(vec![mock_announcement_page(), mock_announcement_page()]) })
+        });
 
         let result = mock.get_announcements().await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
     }
 }
-
-

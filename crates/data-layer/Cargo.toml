@@ -22,8 +22,6 @@ tracing = { workspace = true }
 
 # Database
 sqlx = { workspace = true }
-redis = { workspace = true }
-deadpool-redis = { workspace = true }
 
 # Data processing
 csv = { workspace = true }

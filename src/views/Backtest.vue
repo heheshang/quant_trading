@@ -208,6 +208,28 @@ watch(activeTab, (tab) => {
     chartRef.value?.refresh()
   }
 })
+
+defineExpose({
+  strategies,
+  backtestResult,
+  tradeRecords,
+  activeTab,
+  running,
+  templates,
+  historyRecords,
+  historyLoading,
+  configRef,
+  chartRef,
+  handleSaveTemplate,
+  handleLoadTemplate,
+  handleReset,
+  fetchStrategies,
+  fetchHistory,
+  viewHistoryDetail,
+  deleteHistoryRecord,
+  handleRun,
+  exportResult,
+})
 </script>
 
 <style scoped>

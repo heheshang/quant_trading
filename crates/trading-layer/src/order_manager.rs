@@ -97,7 +97,7 @@ impl OrderManager {
         let mut orders = self.orders.write().await;
         let mut cancelled_count = 0;
 
-        for (_, order) in orders.iter_mut() {
+        for order in orders.values_mut() {
             if let Some(ref sid) = strategy_id {
                 if &order.strategy_id != sid {
                     continue;

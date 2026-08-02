@@ -151,7 +151,11 @@ impl OkxService {
         })
     }
 
-    pub async fn get_trades(&self, inst_id: &str, limit: Option<u32>) -> ServiceResult<Vec<OkxTrade>> {
+    pub async fn get_trades(
+        &self,
+        inst_id: &str,
+        limit: Option<u32>,
+    ) -> ServiceResult<Vec<OkxTrade>> {
         with_okx_client!(self, |client| {
             client
                 .get_trades(inst_id, limit)
@@ -160,7 +164,11 @@ impl OkxService {
         })
     }
 
-    pub async fn get_order_book(&self, inst_id: &str, sz: Option<u32>) -> ServiceResult<OkxOrderBook> {
+    pub async fn get_order_book(
+        &self,
+        inst_id: &str,
+        sz: Option<u32>,
+    ) -> ServiceResult<OkxOrderBook> {
         with_okx_client!(self, |client| {
             client
                 .get_order_book(inst_id, sz)
@@ -506,8 +514,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_balance_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_account_balance()
-            .returning(|_| Box::pin(async {
+        mock.expect_get_account_balance().returning(|_| {
+            Box::pin(async {
                 Ok(vec![
                     OkxBalance {
                         ccy: "BTC".into(),
@@ -524,7 +532,8 @@ mod tests {
                         frozen_bal: "0".into(),
                     },
                 ])
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_balance(Some("BTC")).await;
         assert!(result.is_ok());
@@ -537,8 +546,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_positions_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_positions()
-            .returning(|_| Box::pin(async {
+        mock.expect_get_positions().returning(|_| {
+            Box::pin(async {
                 Ok(vec![
                     OkxPosition {
                         inst_id: "BTC-USDT".into(),
@@ -557,7 +566,8 @@ mod tests {
                         upl_ratio: "-0.01".into(),
                     },
                 ])
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_positions(None).await;
         assert!(result.is_ok());
@@ -571,21 +581,23 @@ mod tests {
     async fn test_place_order_with_mock() {
         let mut mock = MockOkxClient::new();
         mock.expect_place_order()
-            .returning(|_: OkxPlaceOrderRequest| Box::pin(async {
-                Ok(OkxOrder {
-                    ord_id: "mock-ord-123".into(),
-                    cl_ord_id: "cl-mock".into(),
-                    inst_id: "BTC-USDT".into(),
-                    side: "buy".into(),
-                    ord_type: "market".into(),
-                    px: "0".into(),
-                    sz: "1".into(),
-                    state: "live".into(),
-                    avg_px: "0".into(),
-                    acc_fill_sz: "0".into(),
-                    u_time: "1597026383085".into(),
+            .returning(|_: OkxPlaceOrderRequest| {
+                Box::pin(async {
+                    Ok(OkxOrder {
+                        ord_id: "mock-ord-123".into(),
+                        cl_ord_id: "cl-mock".into(),
+                        inst_id: "BTC-USDT".into(),
+                        side: "buy".into(),
+                        ord_type: "market".into(),
+                        px: "0".into(),
+                        sz: "1".into(),
+                        state: "live".into(),
+                        avg_px: "0".into(),
+                        acc_fill_sz: "0".into(),
+                        u_time: "1597026383085".into(),
+                    })
                 })
-            }));
+            });
         let svc = make_service_with_mock(mock);
         let request = OkxPlaceOrderRequest {
             inst_id: "BTC-USDT".into(),
@@ -624,28 +636,30 @@ mod tests {
     async fn test_get_candles_with_mock() {
         let mut mock = MockOkxClient::new();
         mock.expect_get_candles()
-            .returning(|_: &str, _: &str, _: Option<u32>| Box::pin(async {
-                Ok(vec![
-                    OkxCandle {
-                        ts: "1597026383000".into(),
-                        open: "45000".into(),
-                        high: "45500".into(),
-                        low: "44900".into(),
-                        close: "45200".into(),
-                        vol: "100.0".into(),
-                        vol_ccy: "4500000".into(),
-                    },
-                    OkxCandle {
-                        ts: "1597026384000".into(),
-                        open: "45200".into(),
-                        high: "45600".into(),
-                        low: "45100".into(),
-                        close: "45400".into(),
-                        vol: "150.0".into(),
-                        vol_ccy: "6780000".into(),
-                    },
-                ])
-            }));
+            .returning(|_: &str, _: &str, _: Option<u32>| {
+                Box::pin(async {
+                    Ok(vec![
+                        OkxCandle {
+                            ts: "1597026383000".into(),
+                            open: "45000".into(),
+                            high: "45500".into(),
+                            low: "44900".into(),
+                            close: "45200".into(),
+                            vol: "100.0".into(),
+                            vol_ccy: "4500000".into(),
+                        },
+                        OkxCandle {
+                            ts: "1597026384000".into(),
+                            open: "45200".into(),
+                            high: "45600".into(),
+                            low: "45100".into(),
+                            close: "45400".into(),
+                            vol: "150.0".into(),
+                            vol_ccy: "6780000".into(),
+                        },
+                    ])
+                })
+            });
         let svc = make_service_with_mock(mock);
         let result = svc.get_candles("BTC-USDT", "1m", Some(2)).await;
         assert!(result.is_ok());
@@ -657,13 +671,14 @@ mod tests {
     #[tokio::test]
     async fn test_get_instruments_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_instruments()
-            .returning(|_: &str| Box::pin(async {
+        mock.expect_get_instruments().returning(|_: &str| {
+            Box::pin(async {
                 Ok(serde_json::json!([{
                     "instType": "SPOT",
                     "instId": "BTC-USDT"
                 }]))
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_instruments("SPOT").await;
         assert!(result.is_ok());
@@ -675,8 +690,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_ticker_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_ticker()
-            .returning(|_: &str| Box::pin(async {
+        mock.expect_get_ticker().returning(|_: &str| {
+            Box::pin(async {
                 Ok(OkxTicker {
                     inst_id: "BTC-USDT".into(),
                     last: "45200.0".into(),
@@ -692,7 +707,8 @@ mod tests {
                     sod_utc8: "45000.0".into(),
                     ts: "1597026383085".into(),
                 })
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_ticker("BTC-USDT").await;
         assert!(result.is_ok());
@@ -704,8 +720,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_funding_rate_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_funding_rate()
-            .returning(|_: &str| Box::pin(async {
+        mock.expect_get_funding_rate().returning(|_: &str| {
+            Box::pin(async {
                 Ok(OkxFundingRate {
                     inst_id: "BTC-USDT-SWAP".into(),
                     funding_rate: "0.0001".into(),
@@ -713,7 +729,8 @@ mod tests {
                     funding_time: "1597026383085".into(),
                     inst_type: "SWAP".into(),
                 })
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_funding_rate("BTC-USDT-SWAP").await;
         assert!(result.is_ok());
@@ -725,14 +742,15 @@ mod tests {
     #[tokio::test]
     async fn test_get_mark_price_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_mark_price()
-            .returning(|_: &str| Box::pin(async {
+        mock.expect_get_mark_price().returning(|_: &str| {
+            Box::pin(async {
                 Ok(OkxMarkPrice {
                     inst_id: "BTC-USDT".into(),
                     mark_px: "45200.0".into(),
                     ts: "1597026383085".into(),
                 })
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_mark_price("BTC-USDT").await;
         assert!(result.is_ok());
@@ -744,14 +762,15 @@ mod tests {
     #[tokio::test]
     async fn test_get_index_price_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_index_price()
-            .returning(|_: &str| Box::pin(async {
+        mock.expect_get_index_price().returning(|_: &str| {
+            Box::pin(async {
                 Ok(OkxIndexPrice {
                     inst_id: "BTC-USDT".into(),
                     idx_px: "45205.0".into(),
                     ts: "1597026383085".into(),
                 })
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_index_price("BTC-USDT").await;
         assert!(result.is_ok());
@@ -763,15 +782,16 @@ mod tests {
     #[tokio::test]
     async fn test_get_open_interest_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_open_interest()
-            .returning(|_: &str| Box::pin(async {
+        mock.expect_get_open_interest().returning(|_: &str| {
+            Box::pin(async {
                 Ok(OkxOpenInterest {
                     inst_id: "BTC-USDT".into(),
                     oi: "50000".into(),
                     oi_ccy: "45000".into(),
                     ts: "1597026383085".into(),
                 })
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_open_interest("BTC-USDT").await;
         assert!(result.is_ok());
@@ -784,26 +804,28 @@ mod tests {
     async fn test_get_trades_with_mock() {
         let mut mock = MockOkxClient::new();
         mock.expect_get_trades()
-            .returning(|_: &str, _: Option<u32>| Box::pin(async {
-                Ok(vec![
-                    OkxTrade {
-                        inst_id: "BTC-USDT".into(),
-                        trade_id: "123456".into(),
-                        px: "45200.0".into(),
-                        sz: "0.5".into(),
-                        side: "buy".into(),
-                        ts: "1597026383085".into(),
-                    },
-                    OkxTrade {
-                        inst_id: "BTC-USDT".into(),
-                        trade_id: "123457".into(),
-                        px: "45210.0".into(),
-                        sz: "0.3".into(),
-                        side: "sell".into(),
-                        ts: "1597026383086".into(),
-                    },
-                ])
-            }));
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async {
+                    Ok(vec![
+                        OkxTrade {
+                            inst_id: "BTC-USDT".into(),
+                            trade_id: "123456".into(),
+                            px: "45200.0".into(),
+                            sz: "0.5".into(),
+                            side: "buy".into(),
+                            ts: "1597026383085".into(),
+                        },
+                        OkxTrade {
+                            inst_id: "BTC-USDT".into(),
+                            trade_id: "123457".into(),
+                            px: "45210.0".into(),
+                            sz: "0.3".into(),
+                            side: "sell".into(),
+                            ts: "1597026383086".into(),
+                        },
+                    ])
+                })
+            });
         let svc = make_service_with_mock(mock);
         let result = svc.get_trades("BTC-USDT", Some(2)).await;
         assert!(result.is_ok());
@@ -816,19 +838,21 @@ mod tests {
     async fn test_get_order_book_with_mock() {
         let mut mock = MockOkxClient::new();
         mock.expect_get_order_book()
-            .returning(|_: &str, _: Option<u32>| Box::pin(async {
-                Ok(OkxOrderBook {
-                    asks: vec![
-                        vec!["45210.0".into(), "1.0".into(), "0".into(), "1".into()],
-                        vec!["45220.0".into(), "2.0".into(), "0".into(), "1".into()],
-                    ],
-                    bids: vec![
-                        vec!["45190.0".into(), "1.5".into(), "0".into(), "1".into()],
-                        vec!["45180.0".into(), "2.5".into(), "0".into(), "1".into()],
-                    ],
-                    ts: "1597026383085".into(),
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async {
+                    Ok(OkxOrderBook {
+                        asks: vec![
+                            vec!["45210.0".into(), "1.0".into(), "0".into(), "1".into()],
+                            vec!["45220.0".into(), "2.0".into(), "0".into(), "1".into()],
+                        ],
+                        bids: vec![
+                            vec!["45190.0".into(), "1.5".into(), "0".into(), "1".into()],
+                            vec!["45180.0".into(), "2.5".into(), "0".into(), "1".into()],
+                        ],
+                        ts: "1597026383085".into(),
+                    })
                 })
-            }));
+            });
         let svc = make_service_with_mock(mock);
         let result = svc.get_order_book("BTC-USDT", Some(2)).await;
         assert!(result.is_ok());
@@ -841,8 +865,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_announcements_with_mock() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_announcements()
-            .returning(|| Box::pin(async {
+        mock.expect_get_announcements().returning(|| {
+            Box::pin(async {
                 Ok(vec![
                     okx::api::announcements::announcements_api::AnnouncementPage {
                         details: vec![
@@ -856,7 +880,8 @@ mod tests {
                         total_page: "1".into(),
                     },
                 ])
-            }));
+            })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_announcements().await;
         assert!(result.is_ok());
@@ -869,8 +894,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_balance_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_account_balance()
-            .returning(|_| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_account_balance().returning(|_| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_balance(None).await;
         assert!(result.is_err());
@@ -883,8 +909,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_positions_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_positions()
-            .returning(|_| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_positions().returning(|_| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_positions(None).await;
         assert!(result.is_err());
@@ -898,7 +925,9 @@ mod tests {
     async fn test_place_order_api_error() {
         let mut mock = MockOkxClient::new();
         mock.expect_place_order()
-            .returning(|_: OkxPlaceOrderRequest| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+            .returning(|_: OkxPlaceOrderRequest| {
+                Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+            });
         let svc = make_service_with_mock(mock);
         let request = OkxPlaceOrderRequest {
             inst_id: "BTC-USDT".into(),
@@ -927,8 +956,9 @@ mod tests {
     #[tokio::test]
     async fn test_cancel_order_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_cancel_order()
-            .returning(|_: &str, _: &str| Box::pin(async { Err(quant_common::Error::Internal("cancel failed".into())) }));
+        mock.expect_cancel_order().returning(|_: &str, _: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("cancel failed".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.cancel_order("BTC-USDT", "ord123").await;
         assert!(result.is_err());
@@ -942,9 +972,9 @@ mod tests {
     async fn test_get_candles_api_error() {
         let mut mock = MockOkxClient::new();
         mock.expect_get_candles()
-            .returning(|_: &str, _: &str, _: Option<u32>| Box::pin(async {
-                Err(quant_common::Error::Internal("api error".into()))
-            }));
+            .returning(|_: &str, _: &str, _: Option<u32>| {
+                Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+            });
         let svc = make_service_with_mock(mock);
         let result = svc.get_candles("BTC-USDT", "1m", None).await;
         assert!(result.is_err());
@@ -957,8 +987,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_instruments_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_instruments()
-            .returning(|_: &str| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_instruments().returning(|_: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_instruments("SPOT").await;
         assert!(result.is_err());
@@ -971,8 +1002,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_ticker_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_ticker()
-            .returning(|_: &str| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_ticker().returning(|_: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_ticker("BTC-USDT").await;
         assert!(result.is_err());
@@ -985,8 +1017,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_funding_rate_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_funding_rate()
-            .returning(|_: &str| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_funding_rate().returning(|_: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_funding_rate("BTC-USDT-SWAP").await;
         assert!(result.is_err());
@@ -999,8 +1032,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_mark_price_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_mark_price()
-            .returning(|_: &str| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_mark_price().returning(|_: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_mark_price("BTC-USDT").await;
         assert!(result.is_err());
@@ -1013,8 +1047,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_index_price_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_index_price()
-            .returning(|_: &str| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_index_price().returning(|_: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_index_price("BTC-USDT").await;
         assert!(result.is_err());
@@ -1027,8 +1062,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_open_interest_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_open_interest()
-            .returning(|_: &str| Box::pin(async { Err(quant_common::Error::Internal("api error".into())) }));
+        mock.expect_get_open_interest().returning(|_: &str| {
+            Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_open_interest("BTC-USDT").await;
         assert!(result.is_err());
@@ -1042,9 +1078,9 @@ mod tests {
     async fn test_get_trades_api_error() {
         let mut mock = MockOkxClient::new();
         mock.expect_get_trades()
-            .returning(|_: &str, _: Option<u32>| Box::pin(async {
-                Err(quant_common::Error::Internal("api error".into()))
-            }));
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+            });
         let svc = make_service_with_mock(mock);
         let result = svc.get_trades("BTC-USDT", None).await;
         assert!(result.is_err());
@@ -1058,9 +1094,9 @@ mod tests {
     async fn test_get_order_book_api_error() {
         let mut mock = MockOkxClient::new();
         mock.expect_get_order_book()
-            .returning(|_: &str, _: Option<u32>| Box::pin(async {
-                Err(quant_common::Error::Internal("api error".into()))
-            }));
+            .returning(|_: &str, _: Option<u32>| {
+                Box::pin(async { Err(quant_common::Error::Internal("api error".into())) })
+            });
         let svc = make_service_with_mock(mock);
         let result = svc.get_order_book("BTC-USDT", None).await;
         assert!(result.is_err());
@@ -1073,8 +1109,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_announcements_api_error() {
         let mut mock = MockOkxClient::new();
-        mock.expect_get_announcements()
-            .returning(|| Box::pin(async { Err(quant_common::Error::Internal("fetch failed".into())) }));
+        mock.expect_get_announcements().returning(|| {
+            Box::pin(async { Err(quant_common::Error::Internal("fetch failed".into())) })
+        });
         let svc = make_service_with_mock(mock);
         let result = svc.get_announcements().await;
         assert!(result.is_err());

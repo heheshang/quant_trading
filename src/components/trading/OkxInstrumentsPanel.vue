@@ -50,6 +50,8 @@ defineEmits<{
 }>()
 
 const showAll = ref(false)
+
+defineExpose({ showAll })
 </script>
 
 <style scoped>

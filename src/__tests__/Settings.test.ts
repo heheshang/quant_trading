@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Settings from '@/views/Settings.vue'
+import SettingsExchange from '@/components/settings/SettingsExchange.vue'
 import { invoke } from '@tauri-apps/api/core'
 
 vi.mock('element-plus', async () => {
@@ -31,6 +32,10 @@ async function mountComponent(): Promise<any> {
   for (let i = 0; i < 5; i++) await wrapper.vm.$nextTick()
   await new Promise(r => setTimeout(r, 30))
   return wrapper
+}
+
+function exchangeVm(wrapper: any) {
+  return wrapper.findComponent(SettingsExchange).vm
 }
 
 describe('Settings.vue - 按钮测试', () => {
@@ -90,7 +95,7 @@ describe('Settings.vue - 按钮测试', () => {
     const wrapper = await mountComponent()
     mockInvoke.mockClear()
 
-    wrapper.vm.fetchOkxConnStatus()
+    exchangeVm(wrapper).fetchConnStatus()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 

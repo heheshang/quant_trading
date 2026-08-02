@@ -63,6 +63,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance"]
     async fn test_connection() {
         let config = DatabaseConfig {
             host: dotenv::var("DATABASE_HOST").unwrap(),

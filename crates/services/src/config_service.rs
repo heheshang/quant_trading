@@ -45,11 +45,10 @@ impl ConfigService {
 
         // Persist to file if a config path is configured
         if let Some(ref path) = self.config_path {
-            let toml_str = toml::to_string(&new_config)
-                .unwrap_or_else(|e| {
-                    warn!("Failed to serialize config: {}", e);
-                    String::new()
-                });
+            let toml_str = toml::to_string(&new_config).unwrap_or_else(|e| {
+                warn!("Failed to serialize config: {}", e);
+                String::new()
+            });
             if toml_str.is_empty() {
                 return "Config updated in memory, but serialization failed".to_string();
             }

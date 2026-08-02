@@ -4,8 +4,8 @@
 //! in risk-layer, trading-layer, and data-layer. Downstream crates
 //! (e.g., services) provide the implementations.
 
-use async_trait::async_trait;
 use crate::signals::Signal;
+use async_trait::async_trait;
 
 /// Risk check abstraction.
 ///

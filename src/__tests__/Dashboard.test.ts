@@ -262,9 +262,9 @@ describe('Dashboard', () => {
   })
 
   // -----------------------------------------------------------------------
-  // 4. PnL colors: positive (#f56c6c red), negative (#67c23a green)
+  // 4. PnL colors: positive green, negative red (Vue renders hex as rgb())
   // -----------------------------------------------------------------------
-  it('applies red (#f56c6c) for positive PnL values', async () => {
+  it('applies green for positive PnL values', async () => {
     vi.mocked(getAccountInfo).mockResolvedValue({ ...defaultAccount, total_pnl: 50_000 })
     vi.mocked(getPositions).mockResolvedValue([
       { symbol: 'BTC-USDT', quantity: 1, available_quantity: 1, avg_price: 40000, market_value: 50000, unrealized_pnl: 10000, realized_pnl: 0, updated_at: '2024-01-01T00:00:00Z' },
@@ -275,12 +275,11 @@ describe('Dashboard', () => {
     await nextTick()
 
     const pnlValues = wrapper.findAll('.pnl-value')
-    // Vue renders hex colors as rgb() in the DOM
-    expect(pnlValues[0].attributes('style')).toContain('rgb(245, 108, 108)')
-    expect(pnlValues[1].attributes('style')).toContain('rgb(245, 108, 108)')
+    expect(pnlValues[0].attributes('style')).toContain('rgb(103, 194, 58)')
+    expect(pnlValues[1].attributes('style')).toContain('rgb(103, 194, 58)')
   })
 
-  it('applies green (#67c23a) for negative PnL values', async () => {
+  it('applies red for negative PnL values', async () => {
     vi.mocked(getAccountInfo).mockResolvedValue({ ...defaultAccount, total_pnl: -10_000 })
     vi.mocked(getPositions).mockResolvedValue([
       { symbol: 'BTC-USDT', quantity: 1, available_quantity: 1, avg_price: 40000, market_value: 50000, unrealized_pnl: -5000, realized_pnl: 0, updated_at: '2024-01-01T00:00:00Z' },
@@ -291,9 +290,8 @@ describe('Dashboard', () => {
     await nextTick()
 
     const pnlValues = wrapper.findAll('.pnl-value')
-    // Both are negative → green (Vue renders hex as rgb())
-    expect(pnlValues[0].attributes('style')).toContain('rgb(103, 194, 58)')
-    expect(pnlValues[1].attributes('style')).toContain('rgb(103, 194, 58)')
+    expect(pnlValues[0].attributes('style')).toContain('rgb(245, 108, 108)')
+    expect(pnlValues[1].attributes('style')).toContain('rgb(245, 108, 108)')
   })
 
   it('applies different colors when total and unrealized PnL have opposite signs', async () => {
@@ -307,9 +305,8 @@ describe('Dashboard', () => {
     await nextTick()
 
     const pnlValues = wrapper.findAll('.pnl-value')
-    // total_pnl positive → red, unrealized negative → green (Vue renders hex as rgb())
-    expect(pnlValues[0].attributes('style')).toContain('rgb(245, 108, 108)')
-    expect(pnlValues[1].attributes('style')).toContain('rgb(103, 194, 58)')
+    expect(pnlValues[0].attributes('style')).toContain('rgb(103, 194, 58)')
+    expect(pnlValues[1].attributes('style')).toContain('rgb(245, 108, 108)')
   })
 
   // -----------------------------------------------------------------------

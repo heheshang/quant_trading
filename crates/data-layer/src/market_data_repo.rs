@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn test_market_data_record_roundtrip() {
         let now = Utc::now();
-        let records = vec![
+        let records = [
             NewMarketDataRecord {
                 instrument_id: "ETH-USDT".to_string(),
                 timeframe: "15m".to_string(),

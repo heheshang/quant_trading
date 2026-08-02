@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import { createPinia } from 'pinia'
 import Profile from '@/views/Profile.vue'
+import PasswordChange from '@/components/profile/PasswordChange.vue'
 import { invoke } from '@tauri-apps/api/core'
 
 vi.mock('element-plus', async () => {
@@ -58,7 +60,7 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('编辑信息按钮 - 切换到编辑模式', async () => {
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -74,23 +76,19 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('保存按钮 - 调用 updateProfile', async () => {
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
-    wrapper.vm.isEditing = true
-    wrapper.vm.profileFormRef = mockFormRefAsync()
+    await wrapper.vm.handleSaveProfile(defaultProfile as any)
     await wrapper.vm.$nextTick()
 
-    await wrapper.vm.saveProfile()
-    await wrapper.vm.$nextTick()
-
-    expect(mockInvoke).toHaveBeenCalledWith('update_profile', { profileData: expect.any(Object) })
+    expect(mockInvoke).toHaveBeenCalledWith('update_profile', { profileData: defaultProfile })
   })
 
   it('取消按钮 - 退出编辑模式', async () => {
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -107,7 +105,7 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('修改密码按钮 - 打开对话框', async () => {
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -123,29 +121,33 @@ describe('Profile.vue - 按钮测试', () => {
   })
 
   it('修改密码 - 调用 changePassword', async () => {
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     wrapper.vm.showPasswordDialog = true
-    wrapper.vm.passwordFormRef = mockFormRefAsync()
-    wrapper.vm.passwordForm.currentPassword = 'old'
-    wrapper.vm.passwordForm.newPassword = 'new123'
-    wrapper.vm.passwordForm.confirmPassword = 'new123'
     await wrapper.vm.$nextTick()
 
-    await wrapper.vm.changePassword()
+    const passwordChange = wrapper.findComponent(PasswordChange)
+    Object.assign(passwordChange.vm.passwordForm, {
+      currentPassword: 'old',
+      newPassword: 'new123',
+      confirmPassword: 'new123',
+    })
+    passwordChange.vm.passwordFormRef = mockFormRefAsync()
+    await passwordChange.vm.handleChangePassword()
     await wrapper.vm.$nextTick()
 
     expect(mockInvoke).toHaveBeenCalledWith('change_password', {
       currentPassword: 'old',
       newPassword: 'new123',
+      username: undefined,
     })
   })
 
   it('双因素认证按钮 - 打开 2FA 对话框', async () => {
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -163,7 +165,7 @@ describe('Profile.vue - 按钮测试', () => {
   it('API 调用失败 - 显示错误消息且不崩溃', async () => {
     mockInvoke.mockRejectedValue(new Error('Network error'))
 
-    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus] } })
+    const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()

@@ -114,6 +114,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import type { FormInstance } from 'element-plus'
+import type { OrderSide, OrderType } from '@/services/types'
 
 interface Strategy {
   strategy_id: string | number
@@ -123,8 +124,8 @@ interface Strategy {
 export interface OrderFormData {
   strategy_id: string
   symbol: string
-  side: string
-  order_type: string
+  side: OrderSide
+  order_type: OrderType
   price: number
   quantity: number
 }
@@ -178,10 +179,22 @@ async function handleSubmit() {
 }
 
 function handleReset() {
-  Object.assign(formData, createDefaultFormData())
+  resetFormData()
   formRef.value?.resetFields()
   emit('reset')
 }
+
+function resetFormData() {
+  Object.assign(formData, createDefaultFormData())
+}
+
+defineExpose({
+  formRef,
+  formData,
+  handleSubmit,
+  handleReset,
+  resetFormData,
+})
 </script>
 
 <style scoped>

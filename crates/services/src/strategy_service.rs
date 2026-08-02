@@ -1,17 +1,17 @@
 use crate::error::{ServiceError, ServiceResult};
 use crate::market_data_provider::MarketDataProvider;
 use quant_common::types::{
-    BacktestResult, ParameterSchema, ParamType, StrategyParams, StrategyStatus, StrategyType,
+    BacktestResult, ParamType, ParameterSchema, StrategyParams, StrategyStatus, StrategyType,
 };
-use quant_repository::{BacktestRepository, BacktestResultSummaryRow, PostgresClient};
 use quant_repository::StrategyRepository as StRepo;
+use quant_repository::{BacktestRepository, BacktestResultSummaryRow, PostgresClient};
 use rust_decimal::Decimal;
 use std::sync::Arc;
 use std::time::Instant;
+use strategy_engine::backtest::BacktestOptions;
 use strategy_engine::registry::StrategyRegistry;
 use strategy_engine::scheduler::StrategyScheduler;
 use strategy_engine::{BacktestEngine, Strategy};
-use strategy_engine::backtest::BacktestOptions;
 use tracing::{error, info, instrument, warn};
 
 /// 策略服务 — 管理策略注册、生命周期、回测与调度
@@ -50,7 +50,9 @@ impl StrategyService {
     }
 
     /// 获取策略类型元数据列表（来自注册中心）
-    pub fn list_strategy_types(&self) -> ServiceResult<Vec<strategy_engine::registry::StrategyTypeInfo>> {
+    pub fn list_strategy_types(
+        &self,
+    ) -> ServiceResult<Vec<strategy_engine::registry::StrategyTypeInfo>> {
         let reg = self.registry.as_ref().ok_or_else(|| {
             ServiceError::NotInitialized("Strategy registry not initialized".into())
         })?;
@@ -73,9 +75,8 @@ impl StrategyService {
         let reg = self.registry.as_ref().ok_or_else(|| {
             ServiceError::NotInitialized("Strategy registry not initialized".into())
         })?;
-        reg.get_type_info(type_name).ok_or_else(|| {
-            ServiceError::NotFound(format!("Unknown strategy type '{}'", type_name))
-        })
+        reg.get_type_info(type_name)
+            .ok_or_else(|| ServiceError::NotFound(format!("Unknown strategy type '{}'", type_name)))
     }
 
     /// Validate user-supplied params against the parameter schema for a strategy type.
@@ -204,11 +205,10 @@ impl StrategyService {
 
         Self::validate_strategy_params_with_info(&type_info, &params)?;
 
-        let strategy_type = quant_common::types::StrategyType::from_type_name(type_name).ok_or_else(
-            || {
+        let strategy_type = quant_common::types::StrategyType::from_type_name(type_name)
+            .ok_or_else(|| {
                 ServiceError::InvalidParameter(format!("Unknown strategy type '{}'", type_name))
-            },
-        )?;
+            })?;
 
         let now = chrono::Utc::now();
         let strategy_id = uuid::Uuid::now_v7().to_string();
@@ -260,15 +260,16 @@ impl StrategyService {
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let (rows, _total) = repo.find_all(None, None, None, None, 10000, 0).await?;
 
-        let strategies: Vec<StrategyParams> = rows.iter().filter_map(|row| {
-            match row.to_domain() {
+        let strategies: Vec<StrategyParams> = rows
+            .iter()
+            .filter_map(|row| match row.to_domain() {
                 Ok(p) => Some(p),
                 Err(e) => {
                     error!("Failed to convert strategy row {}: {}", row.strategy_id, e);
                     None
                 }
-            }
-        }).collect();
+            })
+            .collect();
         info!(count = strategies.len(), "Strategies retrieved");
         Ok(strategies)
     }
@@ -283,7 +284,10 @@ impl StrategyService {
     ) -> ServiceResult<Vec<StrategyParams>> {
         if !(1..=100).contains(&page_size) || page < 1 {
             return Err(ServiceError::PaginationInvalid {
-                reason: format!("Page must be >= 1, page_size must be 1-100 (got page={}, page_size={})", page, page_size)
+                reason: format!(
+                    "Page must be >= 1, page_size must be 1-100 (got page={}, page_size={})",
+                    page, page_size
+                ),
             });
         }
         let repo = self
@@ -291,17 +295,20 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let offset = (page - 1) * page_size;
-        let (rows, _total) = repo.find_all(None, None, status_filter, None, page_size, offset).await?;
+        let (rows, _total) = repo
+            .find_all(None, None, status_filter, None, page_size, offset)
+            .await?;
 
-        let strategies: Vec<StrategyParams> = rows.iter().filter_map(|row| {
-            match row.to_domain() {
+        let strategies: Vec<StrategyParams> = rows
+            .iter()
+            .filter_map(|row| match row.to_domain() {
                 Ok(p) => Some(p),
                 Err(e) => {
                     error!("Failed to convert strategy row {}: {}", row.strategy_id, e);
                     None
                 }
-            }
-        }).collect();
+            })
+            .collect();
         info!(count = strategies.len(), "Strategies listed");
         Ok(strategies)
     }
@@ -348,15 +355,17 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
 
-        let current = repo.find_by_id(&strategy.strategy_id).await?.ok_or_else(|| {
-            ServiceError::NotFound(format!(
-                "Strategy '{}' not found",
-                strategy.strategy_id
-            ))
-        })?;
+        let current = repo
+            .find_by_id(&strategy.strategy_id)
+            .await?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Strategy '{}' not found", strategy.strategy_id))
+            })?;
 
         let expected_version = current.version;
-        let updated = repo.update_with_version(&strategy.strategy_id, strategy, expected_version).await?;
+        let updated = repo
+            .update_with_version(&strategy.strategy_id, strategy, expected_version)
+            .await?;
 
         if !updated {
             return Err(ServiceError::Conflict(format!(
@@ -489,10 +498,13 @@ impl StrategyService {
         }
 
         let mut engine = BacktestEngine::new(initial_capital, commission_rate, slippage);
-        let result = engine.run_with_options(&*strategy, market_data, BacktestOptions::default()).await.map_err(|e| {
-            error!("Backtest execution failed: {}", e);
-            ServiceError::Backtest(e.to_string())
-        })?;
+        let result = engine
+            .run_with_options(&*strategy, market_data, BacktestOptions::default())
+            .await
+            .map_err(|e| {
+                error!("Backtest execution failed: {}", e);
+                ServiceError::Backtest(e.to_string())
+            })?;
 
         let backtest_result = BacktestResult {
             id: None,
@@ -512,8 +524,7 @@ impl StrategyService {
             commission_rate,
             slippage,
         )
-        .await
-        ?;
+        .await?;
 
         let duration_ms = start_time.elapsed().as_millis();
         info!(
@@ -540,8 +551,13 @@ impl StrategyService {
         target: StrategyStatus,
         expected: StrategyStatus,
     ) -> ServiceResult<()> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let updated = repo.update_status_if(strategy_id, target, expected, None).await?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let updated = repo
+            .update_status_if(strategy_id, target, expected, None)
+            .await?;
         if !updated {
             return Err(ServiceError::ConcurrentModification {
                 strategy_id: strategy_id.to_string(),
@@ -554,8 +570,13 @@ impl StrategyService {
     /// 部署策略（Draft → Deployed）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn deploy_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let target = StrategyStatus::Deployed;
         let current_status = params.status;
@@ -567,7 +588,10 @@ impl StrategyService {
         }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_deploy().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        strategy
+            .on_deploy()
+            .await
+            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
         self.cas_status(strategy_id, target, current_status).await?;
 
         info!(strategy_id = %strategy_id, "Strategy deployed");
@@ -577,8 +601,13 @@ impl StrategyService {
     /// 启动策略（Deployed → Running）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn start_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let target = StrategyStatus::Running;
         let current_status = params.status;
@@ -590,21 +619,27 @@ impl StrategyService {
         }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_start().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        strategy
+            .on_start()
+            .await
+            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
         self.cas_status(strategy_id, target, current_status).await?;
 
         // Register with scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             let interval_secs = scheduler.config().default_interval_secs;
-            scheduler.start_strategy(
-                strategy_id.to_string(),
-                params.strategy_name.clone(),
-                strategy,
-                interval_secs,
-            ).await.map_err(|e| {
-                error!("Failed to start scheduler for {}: {}", strategy_id, e);
-                ServiceError::Scheduler(e.to_string())
-            })?;
+            scheduler
+                .start_strategy(
+                    strategy_id.to_string(),
+                    params.strategy_name.clone(),
+                    strategy,
+                    interval_secs,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to start scheduler for {}: {}", strategy_id, e);
+                    ServiceError::Scheduler(e.to_string())
+                })?;
         }
 
         info!(strategy_id = %strategy_id, "Strategy started");
@@ -614,8 +649,13 @@ impl StrategyService {
     /// 停止策略（Running → Archived）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn stop_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let target = StrategyStatus::Archived;
         let current_status = params.status;
@@ -627,15 +667,21 @@ impl StrategyService {
         }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_stop().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        strategy
+            .on_stop()
+            .await
+            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
         self.cas_status(strategy_id, target, current_status).await?;
 
         // Unregister from scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             match scheduler.stop_strategy(strategy_id).await {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(e) => {
-                    warn!("Strategy not found in scheduler (already stopped?): {}: {}", strategy_id, e);
+                    warn!(
+                        "Strategy not found in scheduler (already stopped?): {}: {}",
+                        strategy_id, e
+                    );
                 }
             }
         }
@@ -647,8 +693,13 @@ impl StrategyService {
     /// 暂停策略（Running → Paused）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn pause_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let target = StrategyStatus::Paused;
         let current_status = params.status;
@@ -660,15 +711,21 @@ impl StrategyService {
         }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_pause().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        strategy
+            .on_pause()
+            .await
+            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
         self.cas_status(strategy_id, target, current_status).await?;
 
         // Unregister from scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             match scheduler.stop_strategy(strategy_id).await {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(e) => {
-                    warn!("Strategy not found in scheduler (already paused?): {}: {}", strategy_id, e);
+                    warn!(
+                        "Strategy not found in scheduler (already paused?): {}: {}",
+                        strategy_id, e
+                    );
                 }
             }
         }
@@ -680,8 +737,13 @@ impl StrategyService {
     /// 恢复策略（Paused → Running）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn resume_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let target = StrategyStatus::Running;
         let current_status = params.status;
@@ -693,21 +755,27 @@ impl StrategyService {
         }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_resume().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        strategy
+            .on_resume()
+            .await
+            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
         self.cas_status(strategy_id, target, current_status).await?;
 
         // Re-register with scheduler AFTER successful DB update
         if let Some(ref scheduler) = self.scheduler {
             let interval_secs = scheduler.config().default_interval_secs;
-            scheduler.start_strategy(
-                strategy_id.to_string(),
-                params.strategy_name.clone(),
-                strategy,
-                interval_secs,
-            ).await.map_err(|e| {
-                error!("Failed to start scheduler for {}: {}", strategy_id, e);
-                ServiceError::Scheduler(e.to_string())
-            })?;
+            scheduler
+                .start_strategy(
+                    strategy_id.to_string(),
+                    params.strategy_name.clone(),
+                    strategy,
+                    interval_secs,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to start scheduler for {}: {}", strategy_id, e);
+                    ServiceError::Scheduler(e.to_string())
+                })?;
         }
 
         info!(strategy_id = %strategy_id, "Strategy resumed");
@@ -717,8 +785,13 @@ impl StrategyService {
     /// 归档策略（任何状态 → Archived）
     #[instrument(skip(self), fields(strategy_id = %strategy_id))]
     pub async fn archive_strategy(&self, strategy_id: &str) -> ServiceResult<StrategyStatus> {
-        let repo = self.strategy_repo.as_ref().ok_or(ServiceError::DatabaseNotConnected)?;
-        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id)))?;
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
 
         let target = StrategyStatus::Archived;
         let current_status = params.status;
@@ -730,7 +803,10 @@ impl StrategyService {
         }
 
         let (_, mut strategy) = self.build_strategy_from_params(&params).await?;
-        strategy.on_archive().await.map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        strategy
+            .on_archive()
+            .await
+            .map_err(|e| ServiceError::Strategy(e.to_string()))?;
         self.cas_status(strategy_id, target, current_status).await?;
 
         info!(strategy_id = %strategy_id, "Strategy archived");
@@ -765,10 +841,13 @@ impl StrategyService {
     // ── Scheduler Queries ──────────────────────────────────────────────────
 
     /// Return the list of currently running strategies from the scheduler.
-    pub async fn get_running_strategies(&self) -> ServiceResult<Vec<quant_common::types::SchedulerTaskInfo>> {
-        let scheduler = self.scheduler.as_ref().ok_or_else(|| {
-            ServiceError::NotInitialized("Scheduler not initialized".into())
-        })?;
+    pub async fn get_running_strategies(
+        &self,
+    ) -> ServiceResult<Vec<quant_common::types::SchedulerTaskInfo>> {
+        let scheduler = self
+            .scheduler
+            .as_ref()
+            .ok_or_else(|| ServiceError::NotInitialized("Scheduler not initialized".into()))?;
         Ok(scheduler.list_running().await)
     }
 
@@ -785,7 +864,9 @@ impl StrategyService {
             .backtest_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        repo.find_all(limit, offset).await.map_err(ServiceError::from)
+        repo.find_all(limit, offset)
+            .await
+            .map_err(ServiceError::from)
     }
 
     /// Query a single backtest result by ID (includes equity_curve).
@@ -796,8 +877,7 @@ impl StrategyService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         repo.find_by_id(id)
-            .await
-            ?
+            .await?
             .ok_or_else(|| ServiceError::NotFound(format!("Backtest result '{}' not found", id)))
     }
 
@@ -821,11 +901,11 @@ impl StrategyService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::prelude::FromPrimitive;
     use async_trait::async_trait;
     use mockall::mock;
     use quant_common::config::SchedulerConfig;
     use quant_repository::{RepoError, StrategyStats, StrategySummaryRow};
+    use rust_decimal::prelude::FromPrimitive;
 
     fn make_service_no_db() -> StrategyService {
         StrategyService::new(None, None, None, None, None)
@@ -1384,7 +1464,9 @@ mod tests {
     async fn test_list_strategies_page_size_max() {
         let mut mock_repo = MockStrategyRepo::new();
 
-        let rows = (1..=3).map(|i| mock_summary_row(i, &format!("strat_{:03}", i))).collect::<Vec<_>>();
+        let rows = (1..=3)
+            .map(|i| mock_summary_row(i, &format!("strat_{:03}", i)))
+            .collect::<Vec<_>>();
 
         mock_repo
             .expect_find_all()
@@ -1626,7 +1708,11 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             ServiceError::InvalidParameter(msg) => {
-                assert!(msg.contains("out of range"), "Expected range error, got: {}", msg);
+                assert!(
+                    msg.contains("out of range"),
+                    "Expected range error, got: {}",
+                    msg
+                );
             }
             other => panic!("Expected InvalidParameter, got: {:?}", other),
         }
@@ -1675,7 +1761,11 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             ServiceError::InvalidParameter(msg) => {
-                assert!(msg.contains("Missing required parameter"), "Expected missing param error, got: {}", msg);
+                assert!(
+                    msg.contains("Missing required parameter"),
+                    "Expected missing param error, got: {}",
+                    msg
+                );
             }
             other => panic!("Expected InvalidParameter, got: {:?}", other),
         }
@@ -1733,7 +1823,10 @@ mod tests {
         );
         let results = [&res_a, &res_b];
         let oks = results.iter().filter(|r| r.is_ok()).count();
-        let conflicts = results.iter().filter(|r| matches!(r, Err(ServiceError::ConcurrentModification { .. }))).count();
+        let conflicts = results
+            .iter()
+            .filter(|r| matches!(r, Err(ServiceError::ConcurrentModification { .. })))
+            .count();
         assert_eq!(oks, 1, "results: {:?} / {:?}", res_a, res_b);
         assert_eq!(conflicts, 1, "results: {:?} / {:?}", res_a, res_b);
     }

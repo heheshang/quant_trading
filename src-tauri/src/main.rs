@@ -11,10 +11,11 @@ mod commands;
 mod state;
 mod ws_commands;
 
-use data_layer::{market_data_repo::MarketDataRepository, OkxDataSource, RedisCache};
+use data_layer::{market_data_repo::MarketDataRepository, OkxDataSource};
 use data_puller::DataPuller;
 use exchange_okx::{types::OkxEnvironment, Client, ClientInterface};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
+use quant_clients::RedisCache;
 use quant_services::AppServices;
 use state::AppState;
 use trading_layer::{OkxExecutor, OrderManager};
@@ -24,8 +25,8 @@ async fn main() {
     // 加载 .env 环境变量
     dotenv::dotenv().ok();
 
-    // 加载配置
-    let config = AppConfig::default();
+    // 加载配置；容器部署通过 DATABASE_*/REDIS_* 等环境变量覆盖默认值
+    let config = AppConfig::from_env();
 
     // 初始化日志（从 AppConfig 读取，LOG_LEVEL 环境变量可覆写）
     let log_level =
@@ -57,46 +58,47 @@ async fn main() {
         .await;
 
     // 初始化 OKX 客户端
-    let (okx_client, okx_executor, okx_data_source, okx_executor_arc) =
-        if config.okx.enable && !config.okx.api_key.is_empty() {
-            match Client::new(
-                config.okx.api_key.clone(),
-                config.okx.api_secret.clone(),
-                config.okx.passphrase.clone(),
-                if config.okx.environment == "live" {
-                    OkxEnvironment::Live
-                } else {
-                    OkxEnvironment::Demo
-                },
-            ) {
-                Ok(client) => {
-                    info!(
-                        "OKX client initialized successfully in {} mode",
-                        config.okx.environment
-                    );
+    let (okx_client, okx_executor, okx_data_source, okx_executor_arc) = if config.okx.enable
+        && !config.okx.api_key.is_empty()
+    {
+        match Client::new(
+            config.okx.api_key.clone(),
+            config.okx.api_secret.clone(),
+            config.okx.passphrase.clone(),
+            if config.okx.environment == "live" {
+                OkxEnvironment::Live
+            } else {
+                OkxEnvironment::Demo
+            },
+        ) {
+            Ok(client) => {
+                info!(
+                    "OKX client initialized successfully in {} mode",
+                    config.okx.environment
+                );
 
-                    // Wrap client in Arc for sharing across executor and data source
-                    let client_arc = Arc::new(RwLock::new(client));
+                // Wrap client in Arc for sharing across executor and data source
+                let client_arc = Arc::new(RwLock::new(client));
 
-                    // Create executor and data source from the Arc'd client
-                    let executor = OkxExecutor::new(client_arc.clone());
-                    let data_source = OkxDataSource::new(client_arc.clone());
-                    // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
-                    let executor_arc = Arc::new(OkxExecutor::new(client_arc.clone()));
+                // Create executor and data source from the Arc'd client
+                let executor = OkxExecutor::new(client_arc.clone());
+                let data_source = OkxDataSource::new(client_arc.clone());
+                // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
+                let executor_arc = Arc::new(OkxExecutor::new(client_arc.clone()));
 
-                    // Coerce to trait object for the shared state (enables mocking in tests)
-                    let client_trait: Arc<RwLock<dyn ClientInterface + Send + Sync>> = client_arc;
+                // Coerce to trait object for the shared state (enables mocking in tests)
+                let client_trait: Arc<RwLock<dyn ClientInterface + Send + Sync>> = client_arc;
 
-                    (
-                        Some(client_trait),
-                        Some(executor),
-                        Some(data_source),
-                        Some(executor_arc),
-                    )
-                }
-                Err(e) => {
-                    warn!("Failed to initialize OKX client: {}", e);
-                    log_buffer
+                (
+                    Some(client_trait),
+                    Some(executor),
+                    Some(data_source),
+                    Some(executor_arc),
+                )
+            }
+            Err(e) => {
+                warn!("Failed to initialize OKX client: {}", e);
+                log_buffer
                         .add_entry(quant_common::types::LogEntry {
                             timestamp: Utc::now(),
                             level: "error".to_string(),
@@ -104,13 +106,13 @@ async fn main() {
                             module: Some("okx".to_string()),
                         })
                         .await;
-                    (None, None, None, None)
-                }
+                (None, None, None, None)
             }
-        } else {
-            info!("OKX integration disabled");
-            (None, None, None, None)
-        };
+        }
+    } else {
+        info!("OKX integration disabled");
+        (None, None, None, None)
+    };
 
     // 初始化数据库连接（可选，需要数据库运行）
     let pg_client = data_layer::PostgresClient::new(&config.database).await.ok();
@@ -125,8 +127,11 @@ async fn main() {
         warn!("PostgreSQL connection failed, running without database");
     }
 
-    // 为 AppServices 创建 quant_repository::PostgresClient
-    let repo_pg_client = quant_repository::PostgresClient::new(&config.database).await.ok();
+    // 为 AppServices 创建 quant_repository::PostgresClient，复用同一个 PgPool，
+    // 避免为同一数据库打开第二套连接池。
+    let repo_pg_client = pg_client
+        .as_ref()
+        .map(|pg| quant_repository::PostgresClient::from_pool(pg.pool().clone()));
     let repo_pg = repo_pg_client.map(Arc::new);
 
     let redis_cache = RedisCache::new(&config.redis).ok();
@@ -258,6 +263,7 @@ async fn main() {
             // WebSocket commands
             ws_commands::start_market_data,
             ws_commands::subscribe_market_data,
+            ws_commands::unsubscribe_market_data,
             ws_commands::stop_market_data,
             ws_commands::get_subscriptions,
         ])

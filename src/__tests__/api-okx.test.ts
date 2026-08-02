@@ -36,6 +36,7 @@ import {
   getOkxHistoricalData,
   subscribeMarketData,
   stopMarketData,
+  unsubscribeChannel,
 } from '../services/market'
 
 // ---------------------------------------------------------------------------
@@ -132,8 +133,8 @@ describe('OKX API wrappers', () => {
       const result = await getOkxPositions()
 
       expect(result).toHaveLength(3)
-      expect(result[0]).toHaveProperty('inst_id', 'BTC-USDT')
-      expect(result[0]).toHaveProperty('pos_side')
+      expect(result[0]).toHaveProperty('instId', 'BTC-USDT')
+      expect(result[0]).toHaveProperty('availPos')
       expect(result[0]).toHaveProperty('pos')
     })
 
@@ -167,12 +168,12 @@ describe('OKX API wrappers', () => {
   // -----------------------------------------------------------------------
   describe('placeOkxOrder', () => {
     const sampleRequest: OkxPlaceOrderRequest = {
-      inst_id: 'BTC-USDT',
-      td_mode: 'cross',
+      instId: 'BTC-USDT',
+      tdMode: 'cross',
       side: 'Buy',
-      ord_type: 'Limit',
-      sz: 0.1,
-      px: 50000,
+      ordType: 'Limit',
+      sz: '0.1',
+      px: '50000',
     }
 
     it('returns OkxOrder on success', async () => {
@@ -181,8 +182,8 @@ describe('OKX API wrappers', () => {
 
       const result = await placeOkxOrder(sampleRequest)
 
-      expect(result).toHaveProperty('ord_id', 'ord-12345')
-      expect(result).toHaveProperty('inst_id', 'BTC-USDT')
+      expect(result).toHaveProperty('ordId', 'ord-12345')
+      expect(result).toHaveProperty('instId', 'BTC-USDT')
       expect(result).toHaveProperty('side', 'buy')
     })
 
@@ -300,8 +301,8 @@ describe('OKX API wrappers', () => {
       const result = await getOkxInstruments()
 
       expect(result).toHaveLength(5)
-      expect(result[0]).toHaveProperty('inst_id', 'BTC-USDT')
-      expect(result[0]).toHaveProperty('inst_type', 'SPOT')
+      expect(result[0]).toHaveProperty('instId', 'BTC-USDT')
+      expect(result[0]).toHaveProperty('instType', 'SPOT')
     })
 
     it('passes instType to Tauri command', async () => {
@@ -510,6 +511,27 @@ describe('OKX API wrappers', () => {
       await expect(
         subscribeMarketData('tickers', 'BTC-USDT'),
       ).rejects.toThrow('Subscribe failed')
+    })
+  })
+
+  describe('unsubscribeChannel', () => {
+    it('calls unsubscribe_market_data with channel and symbol', async () => {
+      mockTauriInvoke('unsubscribe_market_data', undefined)
+
+      await unsubscribeChannel('BTC-USDT', 'tickers')
+
+      expect(mockInvoke).toHaveBeenCalledWith('unsubscribe_market_data', {
+        channel: 'tickers',
+        symbol: 'BTC-USDT',
+      })
+    })
+
+    it('rejects on error', async () => {
+      mockTauriInvokeError('unsubscribe_market_data', 'Unsubscribe failed')
+
+      await expect(
+        unsubscribeChannel('BTC-USDT', 'tickers'),
+      ).rejects.toThrow('Unsubscribe failed')
     })
   })
 

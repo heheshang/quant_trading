@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use exchange_okx::ClientInterface;
 use data_layer::market_data_repo::{
-    MarketDataRepository, NewAccountSnapshot, NewFundingRate, NewMarkPrice,
-    NewMarketDataRecord, NewPositionSnapshot, NewTickerSnapshot,
+    MarketDataRepository, NewAccountSnapshot, NewFundingRate, NewMarkPrice, NewMarketDataRecord,
+    NewPositionSnapshot, NewTickerSnapshot,
 };
+use exchange_okx::ClientInterface;
 use quant_common::config::{CandlePullConfig, DataPullerConfig, IntervalConfig, TickerPullConfig};
 use quant_common::error::Result;
 use rust_decimal::Decimal;
@@ -50,7 +50,9 @@ where
         operation = operation,
         max_attempts = max_attempts,
     );
-    Err(last_err.unwrap())
+    Err(last_err.unwrap_or_else(|| {
+        quant_common::Error::Internal(format!("{operation} failed before any retry attempt"))
+    }))
 }
 
 /// Background task that periodically pulls market data from OKX and persists it.
@@ -191,21 +193,30 @@ impl DataPuller {
         config: CandlePullConfig,
     ) {
         let interval = Duration::from_secs(config.interval_secs);
-        info!("Starting candle pull: {} / {} every {:?}", symbol, bar, interval);
+        info!(
+            "Starting candle pull: {} / {} every {:?}",
+            symbol, bar, interval
+        );
 
         loop {
             sleep(interval).await;
 
-            let candles = match api_call_with_retry(&format!("get_candles/{}/{}", symbol, bar), 4, || async {
-                let client = client_lock.read().await;
-                client.get_candles(&symbol, &bar, Some(config.limit)).await
-            }).await {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("Failed to fetch candles for {} / {} after retries: {}", symbol, bar, e);
-                    continue;
-                }
-            };
+            let candles =
+                match api_call_with_retry(&format!("get_candles/{}/{}", symbol, bar), 4, || async {
+                    let client = client_lock.read().await;
+                    client.get_candles(&symbol, &bar, Some(config.limit)).await
+                })
+                .await
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        error!(
+                            "Failed to fetch candles for {} / {} after retries: {}",
+                            symbol, bar, e
+                        );
+                        continue;
+                    }
+                };
 
             let records: Vec<NewMarketDataRecord> = candles
                 .into_iter()
@@ -256,7 +267,9 @@ impl DataPuller {
             let ticker = match api_call_with_retry(&format!("get_ticker/{}", symbol), 4, || async {
                 let client = client_lock.read().await;
                 client.get_ticker(&symbol).await
-            }).await {
+            })
+            .await
+            {
                 Ok(t) => t,
                 Err(e) => {
                     error!("Failed to fetch ticker for {} after retries: {}", symbol, e);
@@ -303,21 +316,30 @@ impl DataPuller {
         config: IntervalConfig,
     ) {
         let interval = Duration::from_secs(config.interval_secs);
-        info!("Starting funding rate pull: {} every {:?}", symbol, interval);
+        info!(
+            "Starting funding rate pull: {} every {:?}",
+            symbol, interval
+        );
 
         loop {
             sleep(interval).await;
 
-            let rate = match api_call_with_retry(&format!("get_funding_rate/{}", symbol), 4, || async {
-                let client = client_lock.read().await;
-                client.get_funding_rate(&symbol).await
-            }).await {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Failed to fetch funding rate for {} after retries: {}", symbol, e);
-                    continue;
-                }
-            };
+            let rate =
+                match api_call_with_retry(&format!("get_funding_rate/{}", symbol), 4, || async {
+                    let client = client_lock.read().await;
+                    client.get_funding_rate(&symbol).await
+                })
+                .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!(
+                            "Failed to fetch funding rate for {} after retries: {}",
+                            symbol, e
+                        );
+                        continue;
+                    }
+                };
 
             let record = NewFundingRate {
                 inst_id: symbol.clone(),
@@ -354,10 +376,15 @@ impl DataPuller {
             let mp = match api_call_with_retry(&format!("get_mark_price/{}", symbol), 4, || async {
                 let client = client_lock.read().await;
                 client.get_mark_price(&symbol).await
-            }).await {
+            })
+            .await
+            {
                 Ok(p) => p,
                 Err(e) => {
-                    error!("Failed to fetch mark price for {} after retries: {}", symbol, e);
+                    error!(
+                        "Failed to fetch mark price for {} after retries: {}",
+                        symbol, e
+                    );
                     continue;
                 }
             };
@@ -395,7 +422,9 @@ impl DataPuller {
             let balances = match api_call_with_retry("get_account_balance", 4, || async {
                 let client = client_lock.read().await;
                 client.get_account_balance(None).await
-            }).await {
+            })
+            .await
+            {
                 Ok(b) => b,
                 Err(e) => {
                     error!("Failed to fetch account balance after retries: {}", e);
@@ -416,7 +445,10 @@ impl DataPuller {
                 };
 
                 if let Err(e) = repo.insert_account_snapshot(&record).await {
-                    error!("Failed to insert account snapshot for {}: {}", balance.ccy, e);
+                    error!(
+                        "Failed to insert account snapshot for {}: {}",
+                        balance.ccy, e
+                    );
                 }
             }
             info!("Inserted {} account balance snapshots", count);
@@ -438,7 +470,9 @@ impl DataPuller {
             let positions = match api_call_with_retry("get_positions", 4, || async {
                 let client = client_lock.read().await;
                 client.get_positions(None).await
-            }).await {
+            })
+            .await
+            {
                 Ok(p) => p,
                 Err(e) => {
                     error!("Failed to fetch positions after retries: {}", e);
@@ -460,7 +494,10 @@ impl DataPuller {
                 };
 
                 if let Err(e) = repo.insert_position_snapshot(&record).await {
-                    error!("Failed to insert position snapshot for {}: {}", pos.inst_id, e);
+                    error!(
+                        "Failed to insert position snapshot for {}: {}",
+                        pos.inst_id, e
+                    );
                 }
             }
             info!("Inserted {} position snapshots", count);
@@ -485,8 +522,8 @@ fn parse_decimal(s: &str) -> Option<Decimal> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use quant_common::error::Error;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Helper: a test error that is distinct for assertion purposes.
     fn test_error(msg: &str) -> Error {

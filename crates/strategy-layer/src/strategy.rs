@@ -467,8 +467,16 @@ impl Strategy for TrendFollowingStrategy {
             return Ok(Vec::new());
         }
 
-        let side = if bullish_cross { OrderSide::Buy } else { OrderSide::Sell };
-        let label = if bullish_cross { "golden cross" } else { "death cross" };
+        let side = if bullish_cross {
+            OrderSide::Buy
+        } else {
+            OrderSide::Sell
+        };
+        let label = if bullish_cross {
+            "golden cross"
+        } else {
+            "death cross"
+        };
 
         info!(
             strategy_id = %self.params.strategy_id,
@@ -579,11 +587,7 @@ mod tests {
         assert!(orders.is_empty());
     }
 
-    fn make_full_market_data(
-        timestamp: DateTime<Utc>,
-        close: Decimal,
-        symbol: &str,
-    ) -> MarketData {
+    fn make_full_market_data(timestamp: DateTime<Utc>, close: Decimal, symbol: &str) -> MarketData {
         MarketData {
             timestamp,
             symbol: symbol.to_string(),
@@ -625,8 +629,7 @@ mod tests {
 
         for i in 0..trend {
             let t = (i + 1) as f64 / trend as f64;
-            let close_f =
-                stable_price as f64 + (extreme_price - stable_price) as f64 * t;
+            let close_f = stable_price as f64 + (extreme_price - stable_price) as f64 * t;
             let close = Decimal::from_f64(close_f).unwrap();
             data.push(make_full_market_data(
                 utc + chrono::Duration::hours((stable + i) as i64),
@@ -662,7 +665,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         strategy.initialize(params).await.unwrap();
 
@@ -704,7 +707,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         strategy.initialize(params).await.unwrap();
 
@@ -749,7 +752,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         strategy.initialize(initial_params).await.unwrap();
 
@@ -776,7 +779,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         strategy.update_params(new_params.clone()).await.unwrap();
 
@@ -822,7 +825,7 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         strategy.initialize(initial_params).await.unwrap();
         assert_eq!(strategy.lookback_period, 10);
@@ -847,11 +850,14 @@ mod tests {
             symbols: vec![],
             instance_label: None,
             user_id: 0,
-        version: 0,
+            version: 0,
         };
         strategy.reinitialize(new_params).await.unwrap();
 
-        assert_eq!(strategy.lookback_period, 50, "reinitialize must re-parse lookback_period");
+        assert_eq!(
+            strategy.lookback_period, 50,
+            "reinitialize must re-parse lookback_period"
+        );
         assert!((strategy.entry_threshold - 4.0).abs() < f64::EPSILON);
         assert!((strategy.exit_threshold - 1.0).abs() < f64::EPSILON);
     }
@@ -876,11 +882,27 @@ mod tests {
         let utc = Utc::now();
         let mut data = Vec::with_capacity(31);
         for i in 0..30 {
-            let close = if up { Decimal::from(100 - i) } else { Decimal::from(100 + i) };
-            data.push(make_full_market_data(utc + chrono::Duration::hours(i as i64), close, symbol));
+            let close = if up {
+                Decimal::from(100 - i)
+            } else {
+                Decimal::from(100 + i)
+            };
+            data.push(make_full_market_data(
+                utc + chrono::Duration::hours(i as i64),
+                close,
+                symbol,
+            ));
         }
-        let last = if up { Decimal::from(200) } else { Decimal::from(40) };
-        data.push(make_full_market_data(utc + chrono::Duration::hours(30), last, symbol));
+        let last = if up {
+            Decimal::from(200)
+        } else {
+            Decimal::from(40)
+        };
+        data.push(make_full_market_data(
+            utc + chrono::Duration::hours(30),
+            last,
+            symbol,
+        ));
         data
     }
 

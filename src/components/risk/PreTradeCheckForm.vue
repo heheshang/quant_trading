@@ -121,6 +121,15 @@ function resetForm() {
   testOrder.quantity = 100
   checkResult.value = null
 }
+
+defineExpose({
+  formRef,
+  testOrder,
+  checkResult,
+  checking,
+  runCheck,
+  resetForm,
+})
 </script>
 
 <style scoped>

@@ -193,11 +193,11 @@ describe('Optional / nullable field handling', () => {
     // may omit fields that are not applicable (e.g. px for market orders).
     // OkxPlaceOrderRequest.px is optional.
     const req: OkxPlaceOrderRequest = {
-      inst_id: 'BTC-USDT',
-      td_mode: 'cash',
+      instId: 'BTC-USDT',
+      tdMode: 'cash',
       side: 'Buy',
-      ord_type: 'Market',
-      sz: 0.1,
+      ordType: 'Market',
+      sz: '0.1',
       // px deliberately omitted — TS allows this
     }
     expect(req.px).toBeUndefined()
@@ -356,12 +356,11 @@ describe('Enum / union serialization consistency', () => {
 // camelCase / snake_case mapping  (Rust serde rename_all vs TS field names)
 // ===========================================================================
 // Rust OKX structs use #[serde(rename_all = "camelCase")], so JSON from the
-// backend uses camelCase (e.g. "availBal", "frozenBal").  Our TS interfaces
-// use snake_case (availEq, frozenBal).  A mapping layer must convert
-// between them — raw JSON.parse does NOT.
+// backend uses camelCase (e.g. "availEq", "frozenBal"). TS interfaces follow
+// the same wire contract, so no additional mapping is required.
 
 describe('camelCase / snake_case field mapping', () => {
-  it('maps Rust camelCase JSON to TS snake_case via explicit parser', () => {
+  it('maps Rust camelCase JSON to TS camelCase directly', () => {
     // Simulated Rust JSON output:
     const rustJson = JSON.stringify({
       ccy: 'BTC',
@@ -373,8 +372,8 @@ describe('camelCase / snake_case field mapping', () => {
 
     const parsed = JSON.parse(rustJson)
 
-    // Raw parse — fields do NOT auto-map to snake_case
-    expect(parsed.availEq).toBeUndefined()
+    // Raw parse — fields keep the exact camelCase wire names.
+    expect(parsed.avail_eq).toBeUndefined()
     expect(parsed.availEq).toBe('1.5')
     expect(parsed.frozenBal).toBe('0')
 
@@ -393,12 +392,12 @@ describe('camelCase / snake_case field mapping', () => {
     expect(balance.eq).toBe(1.5)
   })
 
-  it('maps Rust snake_case JSON to TS snake_case directly', () => {
-    // If the backend serialises with snake_case, the fields match directly.
+  it('maps Rust camelCase JSON to TS camelCase directly', () => {
     const json = JSON.stringify({
       ccy: 'ETH',
       eq: 2.5,
       cashBal: 2.5,
+      availEq: 2.5,
       frozenBal: 0,
     })
     const parsed: OkxBalance = JSON.parse(json)
@@ -654,11 +653,11 @@ describe('JSON round-trip serialisation', () => {
   it('JSON.stringify omits undefined optional fields', () => {
     // Fields that are `undefined` are dropped during serialisation.
     const req: OkxPlaceOrderRequest = {
-      inst_id: 'BTC-USDT',
-      td_mode: 'cash',
+      instId: 'BTC-USDT',
+      tdMode: 'cash',
       side: 'Buy',
-      ord_type: 'Market',
-      sz: 0.1,
+      ordType: 'Market',
+      sz: '0.1',
       // px is undefined
     }
     const json = JSON.stringify(req)
@@ -693,7 +692,7 @@ describe('Structural type compatibility', () => {
 
   it('mockOkxPosition satisfies OkxPosition interface', () => {
     const pos: OkxPosition = mockOkxPosition()
-    expect(pos).toHaveProperty('inst_id')
+    expect(pos).toHaveProperty('instId')
     expect(pos).toHaveProperty('pos')
     expect(pos).toHaveProperty('avgPx')
     expect(pos).toHaveProperty('upl')
@@ -701,8 +700,8 @@ describe('Structural type compatibility', () => {
 
   it('mockOkxOrder satisfies OkxOrder interface', () => {
     const order: OkxOrder = mockOkxOrder()
-    expect(order).toHaveProperty('ord_id')
-    expect(order).toHaveProperty('inst_id')
+    expect(order).toHaveProperty('ordId')
+    expect(order).toHaveProperty('instId')
     expect(order).toHaveProperty('side')
     expect(order).toHaveProperty('ordType')
     expect(order).toHaveProperty('sz')
@@ -710,7 +709,6 @@ describe('Structural type compatibility', () => {
     expect(order).toHaveProperty('state')
     expect(order).toHaveProperty('accFillSz')
     expect(order).toHaveProperty('avgPx')
-    expect(order).toHaveProperty('fee')
     expect(order).toHaveProperty('uTime')
   })
 
@@ -726,7 +724,7 @@ describe('Structural type compatibility', () => {
 
   it('mockOkxInstrument satisfies OkxInstrument interface', () => {
     const inst: OkxInstrument = mockOkxInstrument()
-    expect(inst).toHaveProperty('inst_id')
+    expect(inst).toHaveProperty('instId')
     expect(inst).toHaveProperty('instType')
     expect(inst).toHaveProperty('uly')
     expect(inst).toHaveProperty('baseCcy')

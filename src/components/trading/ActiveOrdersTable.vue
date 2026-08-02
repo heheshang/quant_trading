@@ -148,6 +148,8 @@ function exportCSV() {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+defineExpose({ exportCSV })
 </script>
 
 <style scoped>

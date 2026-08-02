@@ -75,9 +75,11 @@ async fn run_migrations(pool: &PgPool) -> Result<()> {
 #[ignore]
 async fn test_full_migration_cycle() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -100,63 +102,86 @@ async fn test_full_migration_cycle() {
             "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)",
         )
         .bind(table)
-        .fetch_one(&*pool)
+        .fetch_one(pool.as_ref())
         .await
-        .expect(&format!("Failed to check {} table", table));
+        .unwrap_or_else(|_| panic!("Failed to check {} table", table));
         assert!(exists, "Table {} should exist after migration", table);
     }
 
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_migration_idempotency() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("First migration should succeed");
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("Second migration should succeed (no-op)");
 
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM _sqlx_migrations",
-    )
-    .fetch_one(&*pool)
-    .await
-    .expect("Failed to count migrations");
-    assert!(count >= 6, "Should have at least 6 migration records, got {}", count);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+        .fetch_one(pool.as_ref())
+        .await
+        .expect("Failed to count migrations");
+    assert!(
+        count >= 6,
+        "Should have at least 6 migration records, got {}",
+        count
+    );
 
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_table_structure() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
     let columns: Vec<(String,)> = sqlx::query_as(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts' ORDER BY ordinal_position"
     )
-    .fetch_all(&*pool)
+    .fetch_all(pool.as_ref())
     .await
     .expect("Failed to get columns");
 
     let expected_columns = vec![
-        "account_id", "user_id", "account_type",
-        "total_assets", "available_cash", "frozen_cash",
-        "market_value", "total_pnl", "daily_pnl",
-        "margin", "margin_ratio", "created_at", "updated_at",
+        "account_id",
+        "user_id",
+        "account_type",
+        "total_assets",
+        "available_cash",
+        "frozen_cash",
+        "market_value",
+        "total_pnl",
+        "daily_pnl",
+        "margin",
+        "margin_ratio",
+        "created_at",
+        "updated_at",
     ];
-    assert_eq!(columns.len(), expected_columns.len(), "Accounts table should have correct number of columns");
+    assert_eq!(
+        columns.len(),
+        expected_columns.len(),
+        "Accounts table should have correct number of columns"
+    );
     for (i, col) in columns.iter().enumerate() {
         assert_eq!(col.0, expected_columns[i], "Column {} should match", i);
     }
@@ -168,21 +193,29 @@ async fn test_table_structure() {
         AND table_name IN ('accounts', 'orders', 'positions', 'strategies', 'backtest_results')
         "#,
     )
-    .fetch_one(&*pool)
+    .fetch_one(pool.as_ref())
     .await
     .expect("Failed to count foreign keys");
-    assert!(fk_count >= 5, "Should have at least 5 foreign key constraints, got {}", fk_count);
+    assert!(
+        fk_count >= 5,
+        "Should have at least 5 foreign key constraints, got {}",
+        fk_count
+    );
 
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_data_insertion_after_migration() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -196,12 +229,12 @@ async fn test_data_insertion_after_migration() {
     .bind(account_id)
     .bind("SPOT")
     .bind("10000")
-    .execute(&*pool)
+    .execute(pool.as_ref())
     .await
     .expect("Failed to insert account");
 
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts")
-        .fetch_one(&*pool)
+        .fetch_one(pool.as_ref())
         .await
         .expect("Failed to count accounts");
     assert_eq!(count, 1, "Should have 1 account");
@@ -220,40 +253,44 @@ async fn test_data_insertion_after_migration() {
     .bind("BUY")
     .bind("1")
     .bind("PENDING")
-    .execute(&*pool)
+    .execute(pool.as_ref())
     .await
     .expect("Failed to insert order");
 
     sqlx::query("DELETE FROM accounts WHERE account_id = $1")
         .bind(account_id)
-        .execute(&*pool)
+        .execute(pool.as_ref())
         .await
         .expect("Failed to delete account");
 
     let order_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE order_id = $1")
         .bind(order_id)
-        .fetch_one(&*pool)
+        .fetch_one(pool.as_ref())
         .await
         .expect("Failed to count orders");
     assert_eq!(order_count, 0, "Order should be deleted via CASCADE");
 
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_market_data_partitions() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
     let parent_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'market_data')",
     )
-    .fetch_one(&*pool)
+    .fetch_one(pool.as_ref())
     .await
     .expect("Failed to check market_data table");
     assert!(parent_exists, "market_data parent table should exist");
@@ -267,7 +304,7 @@ async fn test_market_data_partitions() {
         )
         "#,
     )
-    .fetch_one(&*pool)
+    .fetch_one(pool.as_ref())
     .await
     .expect("Failed to count partitions");
     assert!(
@@ -276,16 +313,20 @@ async fn test_market_data_partitions() {
         partition_count
     );
 
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_alter_table_json_fields() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 
-    run_migrations(&*pool)
+    run_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -297,10 +338,13 @@ async fn test_alter_table_json_fields() {
         )
         "#,
     )
-    .fetch_one(&*pool)
+    .fetch_one(pool.as_ref())
     .await
     .expect("Failed to check column");
-    assert!(param_col_exists, "backtest_results.parameters_json should exist");
+    assert!(
+        param_col_exists,
+        "backtest_results.parameters_json should exist"
+    );
 
     let config_col_exists: bool = sqlx::query_scalar(
         r#"
@@ -310,10 +354,15 @@ async fn test_alter_table_json_fields() {
         )
         "#,
     )
-    .fetch_one(&*pool)
+    .fetch_one(pool.as_ref())
     .await
     .expect("Failed to check column");
-    assert!(config_col_exists, "strategies.indicator_config_json should exist");
+    assert!(
+        config_col_exists,
+        "strategies.indicator_config_json should exist"
+    );
 
-    cleanup_test_db(&*pool).await.expect("Failed to cleanup");
+    cleanup_test_db(pool.as_ref())
+        .await
+        .expect("Failed to cleanup");
 }

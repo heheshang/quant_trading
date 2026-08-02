@@ -31,6 +31,8 @@ pub struct OkxWebSocket {
     message_tx: mpsc::UnboundedSender<WsMessage>,
     message_rx: Arc<RwLock<mpsc::UnboundedReceiver<WsMessage>>>,
     command_tx: broadcast::Sender<WsCommand>,
+    unsubscribe_tx: broadcast::Sender<WsCommand>,
+    shutdown_tx: broadcast::Sender<()>,
 }
 
 impl OkxWebSocket {
@@ -38,6 +40,8 @@ impl OkxWebSocket {
     pub fn new(environment: OkxEnvironment) -> Self {
         let (message_tx, message_rx) = mpsc::unbounded_channel();
         let (command_tx, _) = broadcast::channel(256);
+        let (unsubscribe_tx, _) = broadcast::channel(256);
+        let (shutdown_tx, _) = broadcast::channel(1);
 
         Self {
             environment,
@@ -45,6 +49,8 @@ impl OkxWebSocket {
             message_tx,
             message_rx: Arc::new(RwLock::new(message_rx)),
             command_tx,
+            unsubscribe_tx,
+            shutdown_tx,
         }
     }
 
@@ -55,8 +61,19 @@ impl OkxWebSocket {
             inst_id: inst_id.to_string(),
         };
 
-        let mut subs = self.subscriptions.write().await;
-        subs.push(subscription);
+        {
+            let mut subs = self.subscriptions.write().await;
+            if !subs
+                .iter()
+                .any(|s| s.channel == subscription.channel && s.inst_id == subscription.inst_id)
+            {
+                subs.push(subscription);
+            }
+        }
+        // 连接已启动时立即推送；尚未启动时仅记录本地订阅，首次连接会统一订阅。
+        let _ = self
+            .command_tx
+            .send((channel.to_string(), inst_id.to_string()));
 
         Ok(())
     }
@@ -96,6 +113,24 @@ impl OkxWebSocket {
         Ok(())
     }
 
+    /// 退订公共频道，并从本地订阅列表中移除。
+    pub async fn unsubscribe_public(&self, channel: &str, inst_id: &str) -> Result<()> {
+        {
+            let mut subs = self.subscriptions.write().await;
+            subs.retain(|s| s.channel != channel || s.inst_id != inst_id);
+        }
+        // 连接尚未启动时没有接收者，本地订阅列表仍需保持正确。
+        let _ = self
+            .unsubscribe_tx
+            .send((channel.to_string(), inst_id.to_string()));
+        Ok(())
+    }
+
+    /// 停止后台连接循环。
+    pub fn stop(&self) {
+        let _ = self.shutdown_tx.send(());
+    }
+
     /// 处理单条 WS 消息并返回是否应该断开
     async fn handle_ws_message(
         message: std::result::Result<Message, tokio_tungstenite::tungstenite::Error>,
@@ -115,9 +150,8 @@ impl OkxWebSocket {
                                 "error" => {
                                     let msg_clone = format!("{:?}", msg);
                                     error!("Subscription error: {}", msg_clone);
-                                    let _ = message_tx.send(WsMessage::Error(
-                                        msg.msg.unwrap_or_default(),
-                                    ));
+                                    let _ = message_tx
+                                        .send(WsMessage::Error(msg.msg.unwrap_or_default()));
                                 }
                                 _ => {}
                             }
@@ -170,19 +204,30 @@ impl OkxWebSocket {
         let message_tx = self.message_tx.clone();
         let subscriptions = self.subscriptions.clone();
         let mut command_rx = self.command_tx.subscribe();
+        let mut unsubscribe_rx = self.unsubscribe_tx.subscribe();
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         // 指数退避重连循环 (后台任务)
         tokio::spawn(async move {
             let mut retry_delay = 1u64;
 
             loop {
+                if shutdown_rx.try_recv().is_ok() {
+                    info!("WebSocket shutdown requested");
+                    break;
+                }
+
                 let _ = message_tx.send(WsMessage::ConnectionStatus("connecting".to_string()));
-                info!("Connecting to OKX WebSocket (delay={}s): {}", retry_delay, url);
+                info!(
+                    "Connecting to OKX WebSocket (delay={}s): {}",
+                    retry_delay, url
+                );
 
                 match connect_async(url.clone()).await {
                     Ok((ws_stream, _)) => {
                         info!("WebSocket connected");
-                        let _ = message_tx.send(WsMessage::ConnectionStatus("connected".to_string()));
+                        let _ =
+                            message_tx.send(WsMessage::ConnectionStatus("connected".to_string()));
                         retry_delay = 1;
 
                         let (mut write, mut read) = ws_stream.split();
@@ -190,7 +235,8 @@ impl OkxWebSocket {
 
                         // 发送初始订阅
                         if !subs.is_empty() {
-                            let subscribe_msg = serde_json::json!({"op": "subscribe", "args": subs});
+                            let subscribe_msg =
+                                serde_json::json!({"op": "subscribe", "args": subs});
                             if let Ok(msg_str) = serde_json::to_string(&subscribe_msg) {
                                 let _ = write.send(Message::Text(msg_str)).await;
                             }
@@ -199,8 +245,6 @@ impl OkxWebSocket {
                         // 读循环: WS 消息 + new subscriptions + 心跳
                         loop {
                             tokio::select! {
-                                biased; // 优先处理 WS 消息
-
                                 msg_result = read.next() => {
                                     match msg_result {
                                         Some(msg) => {
@@ -232,6 +276,12 @@ impl OkxWebSocket {
                                     }
                                 }
 
+                                // 优雅停止
+                                _ = shutdown_rx.recv() => {
+                                    info!("WebSocket shutdown requested while connected");
+                                    break;
+                                }
+
                                 // 处理 broadcast 命令 (新订阅)
                                 Ok(cmd) = command_rx.recv() => {
                                     let (channel, inst_id) = cmd;
@@ -249,6 +299,23 @@ impl OkxWebSocket {
                                     }
                                 }
 
+                                // 处理退订命令
+                                Ok(cmd) = unsubscribe_rx.recv() => {
+                                    let (channel, inst_id) = cmd;
+                                    let sub = OkxWsSubscription {
+                                        channel: channel.clone(),
+                                        inst_id: inst_id.clone(),
+                                    };
+                                    let unsubscribe_msg = serde_json::json!({
+                                        "op": "unsubscribe",
+                                        "args": [sub]
+                                    });
+                                    if let Ok(msg_str) = serde_json::to_string(&unsubscribe_msg) {
+                                        debug!("Sending unsubscription: {}", msg_str);
+                                        let _ = write.send(Message::Text(msg_str)).await;
+                                    }
+                                }
+
                                 else => {
                                     // 所有信道关闭，退出重连
                                     break;
@@ -258,7 +325,8 @@ impl OkxWebSocket {
                     }
                     Err(e) => {
                         error!("WebSocket connection failed: {}", e);
-                        let _ = message_tx.send(WsMessage::Error(format!("Connection failed: {}", e)));
+                        let _ =
+                            message_tx.send(WsMessage::Error(format!("Connection failed: {}", e)));
                     }
                 }
 
@@ -294,7 +362,10 @@ mod tests {
     async fn test_initial_state() {
         let ws = OkxWebSocket::new(OkxEnvironment::Demo);
         let subs = ws.subscriptions().await;
-        assert!(subs.is_empty(), "new WebSocket should have no subscriptions");
+        assert!(
+            subs.is_empty(),
+            "new WebSocket should have no subscriptions"
+        );
     }
 
     #[tokio::test]
@@ -386,6 +457,28 @@ mod tests {
         assert_eq!(subs[0].channel, "tickers");
         assert_eq!(subs[1].channel, "trades");
         assert_eq!(subs[2].channel, "books5");
+    }
+
+    #[tokio::test]
+    async fn test_unsubscribe_removes_subscription() {
+        let ws = OkxWebSocket::new(OkxEnvironment::Demo);
+        ws.subscribe_ticker("BTC-USDT").await.unwrap();
+        ws.subscribe_trades("BTC-USDT").await.unwrap();
+        ws.unsubscribe_public("tickers", "BTC-USDT").await.unwrap();
+
+        let subs = ws.subscriptions().await;
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].channel, "trades");
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_duplicate_is_idempotent() {
+        let ws = OkxWebSocket::new(OkxEnvironment::Demo);
+        ws.subscribe_ticker("BTC-USDT").await.unwrap();
+        ws.subscribe_ticker("BTC-USDT").await.unwrap();
+
+        let subs = ws.subscriptions().await;
+        assert_eq!(subs.len(), 1);
     }
 
     #[tokio::test]

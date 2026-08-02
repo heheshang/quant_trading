@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import { createPinia } from 'pinia'
 import Login from '@/views/Login.vue'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -19,7 +20,7 @@ const mockInvoke = vi.mocked(invoke)
 
 /** Mount Login and wait for onMounted to settle. */
 async function mountLogin(): Promise<any> {
-  const wrapper = mount(Login, { global: { plugins: [ElementPlus] } })
+  const wrapper = mount(Login, { global: { plugins: [ElementPlus, createPinia()] } })
   await wrapper.vm.$nextTick()
   await wrapper.vm.$nextTick()
   return wrapper
@@ -113,7 +114,7 @@ describe('Login.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.loading).toBe(true)
+    expect(wrapper.find('.login-button').classes()).toContain('is-loading')
   })
 
   it('表单验证失败 - 不调用 login API', async () => {
@@ -130,8 +131,9 @@ describe('Login.vue - 按钮测试', () => {
   })
 
   it('已认证用户自动跳转', async () => {
+    localStorage.setItem('authToken', 'test-token')
     localStorage.setItem('isAuthenticated', 'true')
-    mount(Login, { global: { plugins: [ElementPlus] } })
+    mount(Login, { global: { plugins: [ElementPlus, createPinia()] } })
     await new Promise(r => setTimeout(r, 100))
     expect(mockRouterPush).toHaveBeenCalledWith('/dashboard')
   })

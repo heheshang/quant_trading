@@ -9,9 +9,9 @@
     <el-tabs v-model="activeTradeTab" class="trade-tabs">
       <el-tab-pane label="模拟交易" name="paper">
         <PaperAccountCard :account="accountInfo" />
-        <PaperOrderForm :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+        <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
         <PositionsTable :positions="positions" />
-        <ActiveOrdersTable :orders="activeOrders" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
+        <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
       </el-tab-pane>
 
       <el-tab-pane label="OKX 交易所" name="okx">
@@ -21,13 +21,14 @@
           :balance-loading="okxBalanceLoading" :positions-loading="okxPositionsLoading"
           @refresh-balance="fetchOkxBalance" @refresh-positions="fetchOkxPositions"
         />
-        <OkxOrderForm :instruments="okxInstruments" :connected="okxConnected" :submitting="okxSubmitting" @submit="submitOkxOrder" />
+        <OkxOrderForm ref="okxOrderFormRef" :instruments="okxInstruments" :connected="okxConnected" :submitting="okxSubmitting" @submit="submitOkxOrder" />
         <el-row :gutter="20">
           <el-col :span="12">
-            <OkxCandleChart :instruments="okxInstruments" />
+            <OkxCandleChart ref="okxCandleChartRef" :instruments="okxInstruments" />
           </el-col>
           <el-col :span="12">
             <OkxInstrumentsPanel
+              ref="okxInstrumentsPanelRef"
               :instruments="okxInstruments"
               :instruments-loading="okxInstrumentsLoading"
               :announcements="okxAnnouncements"
@@ -63,6 +64,18 @@ import {
   checkOkxStatus, getOkxAnnouncements, cancelOkxOrder,
 } from '@/services/okx'
 import { useOrderStore } from '@/stores/order'
+import type {
+  AccountInfo,
+  OkxAnnouncementPage,
+  OkxBalance,
+  OkxConnectionStatus,
+  OkxInstrument,
+  OkxPlaceOrderRequest,
+  OkxPosition,
+  Order,
+  Position,
+  StrategyParams,
+} from '@/services/types'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import PaperAccountCard from '@/components/trading/PaperAccountCard.vue'
 import PaperOrderForm from '@/components/trading/PaperOrderForm.vue'
@@ -73,51 +86,95 @@ import OkxBalancePositions from '@/components/trading/OkxBalancePositions.vue'
 import OkxOrderForm from '@/components/trading/OkxOrderForm.vue'
 import OkxCandleChart from '@/components/trading/OkxCandleChart.vue'
 import OkxInstrumentsPanel from '@/components/trading/OkxInstrumentsPanel.vue'
+import type { OrderFormData } from '@/components/trading/PaperOrderForm.vue'
+import type { OkxOrderFormData } from '@/components/trading/OkxOrderForm.vue'
 
 const activeTradeTab = ref('paper')
 const cancelDialogVisible = ref(false)
 const orderIdToCancel = ref<number | null>(null)
 
 // Paper trading state
-const accountInfo = ref<any>({ account_id: 0, total_assets: 0, available_cash: 0, market_value: 0, daily_pnl: 0 })
-const positions = ref<any[]>([])
-const activeOrders = ref<any[]>([])
-const strategies = ref<any[]>([])
+const accountInfo = ref<AccountInfo>({
+  account_id: 0,
+  total_assets: 0,
+  available_cash: 0,
+  frozen_cash: 0,
+  market_value: 0,
+  total_pnl: 0,
+  daily_pnl: 0,
+  margin: 0,
+  margin_ratio: 0,
+  updated_at: new Date().toISOString(),
+})
+const positions = ref<Position[]>([])
+const activeOrders = ref<Order[]>([])
+const strategies = ref<StrategyParams[]>([])
 const orderStore = useOrderStore()
 const submitting = ref(false)
 
 // OKX state
-const okxStatus = ref<any>(null)
-const okxBalance = ref<any[]>([])
-const okxPositions = ref<any[]>([])
-const okxInstruments = ref<any[]>([])
+const okxStatus = ref<OkxConnectionStatus | null>(null)
+const okxBalance = ref<OkxBalance[]>([])
+const okxPositions = ref<OkxPosition[]>([])
+const okxInstruments = ref<OkxInstrument[]>([])
 const okxInstrumentsLoading = ref(false)
-const okxAnnouncements = ref<any[]>([])
+const okxAnnouncements = ref<OkxAnnouncementPage[]>([])
 const okxAnnouncementsLoading = ref(false)
 const okxBalanceLoading = ref(false)
 const okxPositionsLoading = ref(false)
 const okxConnected = computed(() => okxStatus.value?.connected === true)
 const okxSubmitting = ref(false)
+const paperOrderFormRef = ref<InstanceType<typeof PaperOrderForm>>()
+const activeOrdersTableRef = ref<InstanceType<typeof ActiveOrdersTable>>()
+const okxCandleChartRef = ref<InstanceType<typeof OkxCandleChart>>()
+const okxOrderFormRef = ref<InstanceType<typeof OkxOrderForm>>()
+const okxInstrumentsPanelRef = ref<InstanceType<typeof OkxInstrumentsPanel>>()
+
+const orderForm = computed<OrderFormData | undefined>(
+  () => paperOrderFormRef.value?.formData,
+)
+const okxOrderForm = computed<OkxOrderFormData | undefined>(
+  () => okxOrderFormRef.value?.formData,
+)
+const okxCandleError = computed(
+  () => okxCandleChartRef.value?.candleError ?? '',
+)
+const showAllInstruments = computed({
+  get: () => okxInstrumentsPanelRef.value?.showAll ?? false,
+  set: (value: boolean) => {
+    if (okxInstrumentsPanelRef.value) {
+      okxInstrumentsPanelRef.value.showAll = value
+    }
+  },
+})
 
 function generateOrderId(): number { return Date.now() }
 
 async function fetchAccountInfo() {
-  try { accountInfo.value = await getAccountInfo() as any } catch { ElMessage.error('获取账户信息失败') }
+  try { accountInfo.value = await getAccountInfo() } catch { ElMessage.error('获取账户信息失败') }
 }
 async function fetchPositions() {
-  try { positions.value = await getPositions() as any } catch { ElMessage.error('获取持仓信息失败') }
+  try { positions.value = await getPositions() } catch { ElMessage.error('获取持仓信息失败') }
 }
 async function fetchActiveOrders() {
-  try { activeOrders.value = await getActiveOrders() as any } catch { ElMessage.error('获取活跃订单失败') }
+  try { activeOrders.value = await getActiveOrders() } catch { ElMessage.error('获取活跃订单失败') }
 }
 async function fetchStrategies() {
-  try { strategies.value = await getStrategies() as any } catch { ElMessage.error('获取策略列表失败') }
+  try { strategies.value = await getStrategies() } catch { ElMessage.error('获取策略列表失败') }
 }
 
-async function submitOrder(formData: any) {
+async function submitOrder(formData: OrderFormData = orderForm.value ?? {
+  strategy_id: '',
+  symbol: '',
+  side: 'Buy',
+  order_type: 'Limit',
+  price: 0,
+  quantity: 0,
+}) {
+  if (!formData) return
   submitting.value = true
   try {
-    const order = {
+    const order: Order = {
       order_id: generateOrderId(), strategy_id: formData.strategy_id,
       symbol: formData.symbol, order_type: formData.order_type, side: formData.side,
       price: formData.order_type === 'Limit' ? formData.price : null,
@@ -125,7 +182,7 @@ async function submitOrder(formData: any) {
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       commission: 0, slippage: 0,
     }
-    const orderId = await orderStore.placeOrder(order as any)
+    const orderId = await orderStore.placeOrder(order)
     if (orderId) {
       ElMessage.success('订单提交成功: ' + orderId)
       await fetchActiveOrders()
@@ -133,13 +190,27 @@ async function submitOrder(formData: any) {
   } catch { ElMessage.error('订单提交失败') }
   finally { submitting.value = false }
 }
-function resetOrderForm() { /* handled internally by PaperOrderForm */ }
+function resetOrderForm() {
+  paperOrderFormRef.value?.resetFormData()
+}
+
+function refreshOrders() {
+  return fetchActiveOrders()
+}
+
+function exportOrdersCSV() {
+  activeOrdersTableRef.value?.exportCSV()
+}
+
+async function fetchOkxCandles() {
+  return okxCandleChartRef.value?.fetchCandles()
+}
 
 function cancelOrder(orderId: number) { orderIdToCancel.value = orderId; cancelDialogVisible.value = true }
 async function confirmCancelOrder() {
   const orderId = orderIdToCancel.value
   if (orderId === null) return
-  const order = activeOrders.value.find((o: any) => o.order_id === orderId)
+  const order = activeOrders.value.find((o) => o.order_id === orderId)
   if (!order) { ElMessage.error('未找到对应订单'); cancelDialogVisible.value = false; orderIdToCancel.value = null; return }
   try {
     const cancelled = await cancelOkxOrder(order.symbol, orderId.toString())
@@ -170,16 +241,33 @@ async function fetchOkxInstruments() {
 }
 async function fetchOkxAnnouncements() {
   okxAnnouncementsLoading.value = true
-  try { okxAnnouncements.value = await getOkxAnnouncements() as any } catch { ElMessage.error('获取公告失败') }
+  try { okxAnnouncements.value = await getOkxAnnouncements() } catch { ElMessage.error('获取公告失败') }
   finally { okxAnnouncementsLoading.value = false }
 }
-async function submitOkxOrder(orderData: any) {
+async function submitOkxOrder(orderData: OkxOrderFormData = okxOrderForm.value ?? {
+  instId: '',
+  side: 'buy',
+  ordType: 'limit',
+  px: 0,
+  sz: 0,
+}) {
+  if (!orderData) return
   okxSubmitting.value = true
   try {
-    const result = await placeOkxOrder(orderData as any)
+    const request: OkxPlaceOrderRequest = {
+      instId: orderData.instId,
+      tdMode: 'cash',
+      side: orderData.side,
+      ordType: orderData.ordType,
+      sz: String(orderData.sz),
+      ...(orderData.px > 0 ? { px: String(orderData.px) } : {}),
+    }
+    const result = await placeOkxOrder(request)
     ElMessage.success('OKX 订单提交成功: ' + result.ordId)
     fetchOkxBalance(); fetchOkxPositions()
-  } catch (err: any) { ElMessage.error('OKX 下单失败: ' + (err?.message || '')) }
+  } catch (err: unknown) {
+    ElMessage.error('OKX 下单失败: ' + (err instanceof Error ? err.message : '未知错误'))
+  }
   finally { okxSubmitting.value = false }
 }
 
@@ -192,6 +280,51 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (orderEventUnlisten) orderEventUnlisten.then(fn => fn())
+})
+
+defineExpose({
+  activeTradeTab,
+  cancelDialogVisible,
+  orderIdToCancel,
+  accountInfo,
+  positions,
+  activeOrders,
+  strategies,
+  submitting,
+  orderForm,
+  okxStatus,
+  okxBalance,
+  okxPositions,
+  okxInstruments,
+  okxInstrumentsLoading,
+  okxAnnouncements,
+  okxAnnouncementsLoading,
+  okxBalanceLoading,
+  okxPositionsLoading,
+  okxConnected,
+  okxSubmitting,
+  okxOrderFormRef,
+  okxOrderForm,
+  okxCandleChartRef,
+  okxCandleError,
+  showAllInstruments,
+  fetchAccountInfo,
+  fetchPositions,
+  fetchActiveOrders,
+  fetchStrategies,
+  submitOrder,
+  resetOrderForm,
+  refreshOrders,
+  exportOrdersCSV,
+  cancelOrder,
+  confirmCancelOrder,
+  fetchOkxStatus,
+  fetchOkxBalance,
+  fetchOkxPositions,
+  fetchOkxInstruments,
+  fetchOkxAnnouncements,
+  fetchOkxCandles,
+  submitOkxOrder,
 })
 </script>
 

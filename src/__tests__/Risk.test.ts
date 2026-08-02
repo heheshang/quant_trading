@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Risk from '@/views/Risk.vue'
+import PreTradeCheckForm from '@/components/risk/PreTradeCheckForm.vue'
+import RiskAlertsTable from '@/components/risk/RiskAlertsTable.vue'
 import { invoke } from '@tauri-apps/api/core'
 
 vi.mock('element-plus', async () => {
@@ -51,7 +53,7 @@ describe('Risk.vue - 按钮测试', () => {
     const wrapper = await mountComponent()
     mockInvoke.mockClear()
 
-    await wrapper.vm.refreshMetrics()
+    await wrapper.vm.fetchRiskMetrics()
     await wrapper.vm.$nextTick()
 
     expect(mockInvoke).toHaveBeenCalledWith('get_risk_metrics')
@@ -59,10 +61,16 @@ describe('Risk.vue - 按钮测试', () => {
 
   it('保存配置 - 调用 update_risk_config', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.riskConfigFormRef = mockFormRef()
     mockInvoke.mockClear()
 
-    wrapper.vm.saveConfig()
+    await wrapper.vm.saveConfig({
+      max_position_size: 0.2,
+      max_daily_loss: 0.05,
+      max_drawdown: 0.15,
+      enable_pre_trade_check: true,
+      enable_real_time_monitor: true,
+      var_confidence_level: 0.95,
+    })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -72,10 +80,16 @@ describe('Risk.vue - 按钮测试', () => {
 
   it('保存配置 loading 状态', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.riskConfigFormRef = mockFormRef()
     mockInvoke.mockImplementation(() => new Promise(() => {}))
 
-    wrapper.vm.saveConfig()
+    wrapper.vm.saveConfig({
+      max_position_size: 0.2,
+      max_daily_loss: 0.05,
+      max_drawdown: 0.15,
+      enable_pre_trade_check: true,
+      enable_real_time_monitor: true,
+      var_confidence_level: 0.95,
+    })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.saving).toBe(true)
@@ -83,10 +97,11 @@ describe('Risk.vue - 按钮测试', () => {
 
   it('风控检查 - 调用 pre_trade_check', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.testOrderFormRef = mockFormRef()
+    const preTrade = wrapper.findComponent(PreTradeCheckForm)
+    preTrade.vm.formRef = mockFormRef()
     mockInvoke.mockClear()
 
-    wrapper.vm.runPreTradeCheck()
+    await preTrade.vm.runCheck()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
@@ -96,18 +111,19 @@ describe('Risk.vue - 按钮测试', () => {
 
   it('重置风控测试 - 恢复默认值', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.testOrder.symbol = 'CHANGED'
+    const preTrade = wrapper.findComponent(PreTradeCheckForm)
+    preTrade.vm.testOrder.symbol = 'CHANGED'
     await wrapper.vm.$nextTick()
-    wrapper.vm.resetTestOrder()
+    preTrade.vm.resetForm()
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.testOrder.symbol).toBeDefined()
+    expect(preTrade.vm.testOrder.symbol).toBe('600519.SH')
   })
 
   it('刷新告警 - 调用 get_alerts', async () => {
     const wrapper = await mountComponent()
     mockInvoke.mockClear()
 
-    wrapper.vm.refreshAlerts()
+    wrapper.vm.fetchRiskAlerts()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -122,9 +138,10 @@ describe('Risk.vue - 按钮测试', () => {
 
   it('告警级别筛选 - 更新 filteredAlerts', async () => {
     const wrapper = await mountComponent()
-    wrapper.vm.alertLevelFilter = 'Warning'
+    const alertsTable = wrapper.findComponent(RiskAlertsTable)
+    alertsTable.vm.levelFilter = 'Warning'
     await wrapper.vm.$nextTick()
-    for (const alert of wrapper.vm.filteredAlerts) {
+    for (const alert of alertsTable.vm.filteredAlerts) {
       expect(['Warning', undefined, null]).toContain(alert.level)
     }
   })

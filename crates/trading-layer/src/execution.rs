@@ -223,11 +223,7 @@ mod tests {
             order_timeout_seconds: 30,
             simulation_delay_ms: 100,
         };
-        let mut engine = ExecutionEngine::new(
-            Arc::new(OrderManager::new()),
-            config,
-            None,
-        );
+        let mut engine = ExecutionEngine::new(Arc::new(OrderManager::new()), config, None);
         engine.register_callback(Box::new(TestCallback));
         assert_eq!(engine.callbacks.len(), 1);
     }

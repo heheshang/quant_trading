@@ -101,7 +101,12 @@ mod tests {
         assert_eq!(bands.middle.len(), 1);
         let last_close = data.last().unwrap();
         let upper = bands.upper.last().unwrap();
-        assert!(last_close > upper, "last close {} should exceed upper band {}", last_close, upper);
+        assert!(
+            last_close > upper,
+            "last close {} should exceed upper band {}",
+            last_close,
+            upper
+        );
     }
 
     #[test]
@@ -112,7 +117,12 @@ mod tests {
         assert_eq!(bands.middle.len(), 1);
         let last_close = data.last().unwrap();
         let lower = bands.lower.last().unwrap();
-        assert!(last_close < lower, "last close {} should be below lower band {}", last_close, lower);
+        assert!(
+            last_close < lower,
+            "last close {} should be below lower band {}",
+            last_close,
+            lower
+        );
     }
 
     #[test]

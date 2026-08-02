@@ -83,8 +83,8 @@ import type { FormInstance } from 'element-plus'
 
 export interface OkxOrderFormData {
   instId: string
-  side: string
-  ordType: string
+  side: 'buy' | 'sell'
+  ordType: 'limit' | 'market' | string
   px: number
   sz: number
 }
@@ -136,6 +136,12 @@ async function handleSubmit() {
     emit('submit', { ...formData })
   })
 }
+
+defineExpose({
+  formRef,
+  formData,
+  handleSubmit,
+})
 </script>
 
 <style scoped>

@@ -50,7 +50,7 @@ interface PaperAccountInfo {
   daily_pnl: number
   margin: number
   margin_ratio: number
-  updated_at: Date
+  updated_at: string
 }
 
 defineProps<{

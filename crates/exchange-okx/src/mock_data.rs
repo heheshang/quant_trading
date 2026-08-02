@@ -183,7 +183,14 @@ pub fn mock_okx_candles(count: usize) -> Vec<OkxCandle> {
         let high = open + 50.0;
         let low = open - 50.0;
         let close = open + 10.0;
-        candles.push(mock_okx_candle(&ts, &open.to_string(), &high.to_string(), &low.to_string(), &close.to_string(), "100.0"));
+        candles.push(mock_okx_candle(
+            &ts,
+            &open.to_string(),
+            &high.to_string(),
+            &low.to_string(),
+            &close.to_string(),
+            "100.0",
+        ));
     }
     candles
 }
@@ -283,14 +290,44 @@ pub fn mock_okx_trade(inst_id: &str) -> OkxTrade {
 pub fn mock_okx_order_book() -> OkxOrderBook {
     OkxOrderBook {
         asks: vec![
-            vec!["45210.0".to_string(), "1.0".to_string(), "0".to_string(), "1".to_string()],
-            vec!["45220.0".to_string(), "2.0".to_string(), "0".to_string(), "1".to_string()],
-            vec!["45230.0".to_string(), "3.0".to_string(), "0".to_string(), "1".to_string()],
+            vec![
+                "45210.0".to_string(),
+                "1.0".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+            ],
+            vec![
+                "45220.0".to_string(),
+                "2.0".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+            ],
+            vec![
+                "45230.0".to_string(),
+                "3.0".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+            ],
         ],
         bids: vec![
-            vec!["45190.0".to_string(), "1.5".to_string(), "0".to_string(), "1".to_string()],
-            vec!["45180.0".to_string(), "2.5".to_string(), "0".to_string(), "1".to_string()],
-            vec!["45170.0".to_string(), "3.5".to_string(), "0".to_string(), "1".to_string()],
+            vec![
+                "45190.0".to_string(),
+                "1.5".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+            ],
+            vec![
+                "45180.0".to_string(),
+                "2.5".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+            ],
+            vec![
+                "45170.0".to_string(),
+                "3.5".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+            ],
         ],
         ts: default_ts().to_string(),
     }
@@ -299,12 +336,18 @@ pub fn mock_okx_order_book() -> OkxOrderBook {
 /// Create an [`OkxOrderBook`] with a single price level on each side.
 pub fn mock_single_level_order_book() -> OkxOrderBook {
     OkxOrderBook {
-        asks: vec![
-            vec!["45210.0".to_string(), "1.0".to_string(), "0".to_string(), "1".to_string()],
-        ],
-        bids: vec![
-            vec!["45190.0".to_string(), "1.5".to_string(), "0".to_string(), "1".to_string()],
-        ],
+        asks: vec![vec![
+            "45210.0".to_string(),
+            "1.0".to_string(),
+            "0".to_string(),
+            "1".to_string(),
+        ]],
+        bids: vec![vec![
+            "45190.0".to_string(),
+            "1.5".to_string(),
+            "0".to_string(),
+            "1".to_string(),
+        ]],
         ts: default_ts().to_string(),
     }
 }

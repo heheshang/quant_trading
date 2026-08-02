@@ -39,9 +39,9 @@ async fn setup_migrations(pool: &PgPool) -> Result<()> {
 #[ignore]
 async fn test_repo_insert_batch() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool)
+    setup_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -87,14 +87,14 @@ async fn test_repo_insert_batch() {
         .expect("Batch insert should succeed");
     assert_eq!(inserted, 3, "Should insert 3 records");
 
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_repo_insert_batch_empty() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 
     let repo = MarketDataRepository::new((*pool).clone());
 
@@ -104,16 +104,16 @@ async fn test_repo_insert_batch_empty() {
         .expect("Empty batch should succeed");
     assert_eq!(inserted, 0, "Empty batch should return 0");
 
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_repo_insert_duplicate() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool)
+    setup_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -132,27 +132,27 @@ async fn test_repo_insert_duplicate() {
     };
 
     let first = repo
-        .insert_batch(&[item.clone()])
+        .insert_batch(std::slice::from_ref(&item))
         .await
         .expect("First insert should succeed");
     assert_eq!(first, 1, "First insert should return 1");
 
     let second = repo
-        .insert_batch(&[item.clone()])
+        .insert_batch(std::slice::from_ref(&item))
         .await
         .expect("Duplicate insert should succeed");
     assert_eq!(second, 0, "ON CONFLICT DO NOTHING should skip duplicate");
 
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_repo_query_by_range() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool)
+    setup_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -165,10 +165,10 @@ async fn test_repo_query_by_range() {
             instrument_id: "BTC-USDT".to_string(),
             timeframe: "1h".to_string(),
             timestamp: base + TimeDelta::try_hours(i).unwrap(),
-            open: Decimal::new(50000 + i as i64 * 100, 2),
-            high: Decimal::new(51000 + i as i64 * 100, 2),
-            low: Decimal::new(49000 + i as i64 * 100, 2),
-            close: Decimal::new(50500 + i as i64 * 100, 2),
+            open: Decimal::new(50000 + i * 100, 2),
+            high: Decimal::new(51000 + i * 100, 2),
+            low: Decimal::new(49000 + i * 100, 2),
+            close: Decimal::new(50500 + i * 100, 2),
             volume: Decimal::new(1000, 0),
         });
     }
@@ -190,16 +190,16 @@ async fn test_repo_query_by_range() {
     assert_eq!(first.instrument_id, "BTC-USDT");
     assert_eq!(first.timeframe, "1h");
 
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_repo_query_empty_range() {
     let pool = get_test_pool().await.expect("Failed to get test pool");
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 
-    setup_migrations(&*pool)
+    setup_migrations(pool.as_ref())
         .await
         .expect("Migrations should succeed");
 
@@ -215,5 +215,5 @@ async fn test_repo_query_empty_range() {
         .expect("Query should succeed");
     assert!(results.is_empty(), "Should return empty for no data");
 
-    cleanup(&*pool).await.expect("Failed to cleanup");
+    cleanup(pool.as_ref()).await.expect("Failed to cleanup");
 }

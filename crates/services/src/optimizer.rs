@@ -2,8 +2,8 @@ use crate::error::{ServiceError, ServiceResult};
 use async_trait::async_trait;
 use quant_common::config::ParamOptimizerConfig;
 use quant_common::types::{BacktestResult, MarketData, StrategyParams};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
 use std::sync::Arc;
 use strategy_engine::{run_backtest_multi, MultiStrategyResult, StrategyRegistry};
 use tracing::{error, instrument};
@@ -61,7 +61,9 @@ impl SearchAlgorithm for GridSearch {
     ) -> ServiceResult<OptimizationResult> {
         let total = param_grid.len();
         if total == 0 {
-            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+            return Err(ServiceError::InvalidParameter(
+                "Parameter grid is empty".to_string(),
+            ));
         }
 
         let parsed_type = parse_strategy_type(strategy_type)?;
@@ -115,7 +117,10 @@ impl SearchAlgorithm for GridSearch {
                     .strip_prefix("combo-")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
-                let params = param_grid.get(idx).cloned().unwrap_or(serde_json::json!({}));
+                let params = param_grid
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
                 ParameterCombo {
                     label,
                     params,
@@ -125,8 +130,16 @@ impl SearchAlgorithm for GridSearch {
             .collect();
 
         combinations.sort_by(|a, b| {
-            let a_sharpe = a.result.as_ref().map(|r| r.sharpe_ratio).unwrap_or(Decimal::ZERO);
-            let b_sharpe = b.result.as_ref().map(|r| r.sharpe_ratio).unwrap_or(Decimal::ZERO);
+            let a_sharpe = a
+                .result
+                .as_ref()
+                .map(|r| r.sharpe_ratio)
+                .unwrap_or(Decimal::ZERO);
+            let b_sharpe = b
+                .result
+                .as_ref()
+                .map(|r| r.sharpe_ratio)
+                .unwrap_or(Decimal::ZERO);
             b_sharpe.cmp(&a_sharpe)
         });
 
@@ -161,7 +174,9 @@ impl SearchAlgorithm for BayesianOptimization {
     ) -> ServiceResult<OptimizationResult> {
         let total = param_grid.len();
         if total == 0 {
-            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+            return Err(ServiceError::InvalidParameter(
+                "Parameter grid is empty".to_string(),
+            ));
         }
 
         // Baseline stub: pick a random sample and return empty results.
@@ -195,7 +210,9 @@ impl SearchAlgorithm for GeneticAlgorithm {
     ) -> ServiceResult<OptimizationResult> {
         let total = param_grid.len();
         if total == 0 {
-            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+            return Err(ServiceError::InvalidParameter(
+                "Parameter grid is empty".to_string(),
+            ));
         }
 
         // Stub: full Genetic Algorithm implementation is future work.
@@ -209,9 +226,8 @@ impl SearchAlgorithm for GeneticAlgorithm {
 }
 
 fn parse_strategy_type(s: &str) -> ServiceResult<quant_common::types::StrategyType> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| {
-        ServiceError::InvalidParameter(format!("Unknown strategy type '{s}': {e}"))
-    })
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .map_err(|e| ServiceError::InvalidParameter(format!("Unknown strategy type '{s}': {e}")))
 }
 
 /// 参数优化器
@@ -235,7 +251,11 @@ impl ParamOptimizer {
         config: ParamOptimizerConfig,
         algorithm: Box<dyn SearchAlgorithm>,
     ) -> Self {
-        Self { registry, config, algorithm }
+        Self {
+            registry,
+            config,
+            algorithm,
+        }
     }
 
     #[instrument(skip(self, market_data), fields(strategy_type = %strategy_type, combos = %param_grid.len()))]
@@ -250,7 +270,9 @@ impl ParamOptimizer {
     ) -> ServiceResult<OptimizationResult> {
         let total = param_grid.len();
         if total == 0 {
-            return Err(ServiceError::InvalidParameter("Parameter grid is empty".to_string()));
+            return Err(ServiceError::InvalidParameter(
+                "Parameter grid is empty".to_string(),
+            ));
         }
 
         let max_iter = self.config.max_iterations as usize;

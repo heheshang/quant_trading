@@ -1,0 +1,14 @@
+.git
+.harness
+.env
+.env.*
+target
+src-tauri/target
+node_modules
+dist
+logs
+data
+backtest_results
+docs
+*.log
+*.md

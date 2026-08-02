@@ -40,8 +40,8 @@ import { ElCard, ElTag, ElButton, ElRow, ElCol } from 'element-plus'
 interface OkxStatus {
   connected?: boolean
   demo_trading?: boolean
-  exchange_time?: string
-  message?: string
+  exchange_time?: string | null
+  message?: string | null
 }
 
 defineProps<{

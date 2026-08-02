@@ -393,12 +393,20 @@ export interface OkxPosition {
 }
 
 export interface OkxPlaceOrderRequest {
-  inst_id: string
-  td_mode: string
-  side: OrderSide
-  ord_type: OrderType
-  sz: number
-  px?: number
+  instId: string
+  tdMode: string
+  side: string
+  ordType: string
+  sz: string
+  px?: string
+  clOrdId?: string
+  tag?: string
+  posSide?: string
+  ccy?: string
+  pxUsd?: string
+  pxVol?: string
+  reduceOnly?: boolean
+  tgtCcy?: string
 }
 
 export interface OkxOrder {
@@ -434,6 +442,30 @@ export interface OkxInstrument {
   tickSz: string
   lotSz: number
   minSz: number
+}
+
+export interface OkxAnnouncementDetail {
+  ann_type?: string
+  p_time?: string
+  title?: string
+  url?: string
+  [key: string]: unknown
+}
+
+export interface OkxAnnouncementPage {
+  details?: OkxAnnouncementDetail[]
+  total_page?: string
+  [key: string]: unknown
+}
+
+export interface OkxConnectionStatus {
+  connected: boolean
+  demo_trading: boolean
+  environment?: string
+  has_credentials?: boolean
+  exchange_time?: string | null
+  message?: string | null
+  [key: string]: unknown
 }
 
 export interface WsTicker {

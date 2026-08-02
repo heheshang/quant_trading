@@ -150,6 +150,7 @@ vi.mock('@/components/dashboard/RealtimeTickerPanel.vue', () => ({
 // Imports (after all vi.mock calls so hoisting works)
 // ---------------------------------------------------------------------------
 import Dashboard from '@/views/Dashboard.vue'
+import MarketOverview from '@/components/dashboard/MarketOverview.vue'
 import { getMarketData } from '@/services/market'
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,10 @@ function createWrapper(): any {
   })
 }
 
+function marketVm(wrapper: any) {
+  return wrapper.findComponent(MarketOverview).vm
+}
+
 // ---------------------------------------------------------------------------
 // Tests — OKX market data section
 // ---------------------------------------------------------------------------
@@ -231,7 +236,7 @@ describe('Dashboard.vue - OKX market data section', () => {
     await nextTick()
 
     // Call fetchMarketData directly
-    await wrapper.vm.fetchMarketData()
+    await marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 
@@ -266,18 +271,18 @@ describe('Dashboard.vue - OKX market data section', () => {
     let resolvePromise!: (v: any) => void
     vi.mocked(getMarketData).mockReturnValue(new Promise((resolve: any) => { resolvePromise = resolve }))
 
-    wrapper.vm.fetchMarketData()
+    marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 
-    expect(wrapper.vm.marketLoading).toBe(true)
+    expect(marketVm(wrapper).marketLoading).toBe(true)
 
     // Resolve the promise
     resolvePromise(okxMarketData)
     await flushPromises()
     await nextTick()
 
-    expect(wrapper.vm.marketLoading).toBe(false)
+    expect(marketVm(wrapper).marketLoading).toBe(false)
   })
 
   // -----------------------------------------------------------------------
@@ -291,7 +296,7 @@ describe('Dashboard.vue - OKX market data section', () => {
     // Mock failure
     vi.mocked(getMarketData).mockRejectedValue(new Error('Connection timeout'))
 
-    await wrapper.vm.fetchMarketData()
+    await marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 
@@ -312,7 +317,7 @@ describe('Dashboard.vue - OKX market data section', () => {
 
     vi.mocked(getMarketData).mockRejectedValue(new Error('Not implemented'))
 
-    await wrapper.vm.fetchMarketData()
+    await marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 
@@ -327,11 +332,11 @@ describe('Dashboard.vue - OKX market data section', () => {
     await flushPromises()
     await nextTick()
 
-    const fetchSpy = vi.spyOn(wrapper.vm, 'fetchMarketData')
+    const fetchSpy = vi.spyOn(marketVm(wrapper), 'fetchMarketData')
 
     // Find the refresh button inside the market data card header
     // The refresh button has a stub, so trigger via the vm instead
-    wrapper.vm.fetchMarketData()
+    marketVm(wrapper).fetchMarketData()
     expect(fetchSpy).toHaveBeenCalled()
   })
 
@@ -345,7 +350,7 @@ describe('Dashboard.vue - OKX market data section', () => {
 
     vi.mocked(getMarketData).mockClear()
 
-    await wrapper.vm.fetchMarketData()
+    await marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 
@@ -361,16 +366,16 @@ describe('Dashboard.vue - OKX market data section', () => {
     await nextTick()
 
     // Set an error first
-    wrapper.vm.marketError = 'Previous error'
+    marketVm(wrapper).marketError = 'Previous error'
     await nextTick()
 
     // Fetch successfully
-    await wrapper.vm.fetchMarketData()
+    await marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 
     // Error should be cleared
-    expect(wrapper.vm.marketError).toBe('')
+    expect(marketVm(wrapper).marketError).toBe('')
   })
 
   // -----------------------------------------------------------------------
@@ -383,7 +388,7 @@ describe('Dashboard.vue - OKX market data section', () => {
 
     vi.mocked(getMarketData).mockRejectedValue(new Error('Network error'))
 
-    await wrapper.vm.fetchMarketData()
+    await marketVm(wrapper).fetchMarketData()
     await flushPromises()
     await nextTick()
 

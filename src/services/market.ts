@@ -40,11 +40,8 @@ export function subscribeChannel(symbol: string, channel: string): Promise<void>
   return invoke<void>('subscribe_market_data', { channel, symbol })
 }
 
-// NOTE: Backend has no independent "unsubscribe" command yet,
-// so this calls stop_market_data (stops ALL subscriptions).
-// TODO: Replace with a dedicated backend command when available.
-export function unsubscribeChannel(_symbol: string, _channel: string): Promise<void> {
-  return invoke<void>('stop_market_data')
+export function unsubscribeChannel(symbol: string, channel: string): Promise<void> {
+  return invoke<void>('unsubscribe_market_data', { channel, symbol })
 }
 
 export function getSubscriptions(): Promise<string[]> {

@@ -330,8 +330,10 @@ impl StrategyStatus {
     pub fn can_transition_to(&self, to: StrategyStatus) -> bool {
         matches!(
             (*self, to),
-            (Self::Draft, Self::Backtesting | Self::Deployed | Self::Archived)
-                | (Self::Backtesting, Self::Deployed | Self::Draft)
+            (
+                Self::Draft,
+                Self::Backtesting | Self::Deployed | Self::Archived
+            ) | (Self::Backtesting, Self::Deployed | Self::Draft)
                 | (Self::Deployed, Self::Running | Self::Draft)
                 | (Self::Running, Self::Paused | Self::Archived)
                 | (Self::Paused, Self::Running | Self::Archived)
@@ -363,17 +365,61 @@ impl std::fmt::Debug for StatusTransition {
 pub fn allowed_transitions() -> Vec<StatusTransition> {
     use StrategyStatus::*;
     vec![
-        StatusTransition { from: Draft, to: Backtesting, guard: None },
-        StatusTransition { from: Draft, to: Deployed, guard: None },
-        StatusTransition { from: Draft, to: Archived, guard: None },
-        StatusTransition { from: Backtesting, to: Deployed, guard: None },
-        StatusTransition { from: Backtesting, to: Draft, guard: None },
-        StatusTransition { from: Deployed, to: Running, guard: None },
-        StatusTransition { from: Deployed, to: Draft, guard: None },
-        StatusTransition { from: Running, to: Paused, guard: None },
-        StatusTransition { from: Running, to: Archived, guard: None },
-        StatusTransition { from: Paused, to: Running, guard: None },
-        StatusTransition { from: Paused, to: Archived, guard: None },
+        StatusTransition {
+            from: Draft,
+            to: Backtesting,
+            guard: None,
+        },
+        StatusTransition {
+            from: Draft,
+            to: Deployed,
+            guard: None,
+        },
+        StatusTransition {
+            from: Draft,
+            to: Archived,
+            guard: None,
+        },
+        StatusTransition {
+            from: Backtesting,
+            to: Deployed,
+            guard: None,
+        },
+        StatusTransition {
+            from: Backtesting,
+            to: Draft,
+            guard: None,
+        },
+        StatusTransition {
+            from: Deployed,
+            to: Running,
+            guard: None,
+        },
+        StatusTransition {
+            from: Deployed,
+            to: Draft,
+            guard: None,
+        },
+        StatusTransition {
+            from: Running,
+            to: Paused,
+            guard: None,
+        },
+        StatusTransition {
+            from: Running,
+            to: Archived,
+            guard: None,
+        },
+        StatusTransition {
+            from: Paused,
+            to: Running,
+            guard: None,
+        },
+        StatusTransition {
+            from: Paused,
+            to: Archived,
+            guard: None,
+        },
     ]
 }
 
@@ -479,7 +525,10 @@ impl StrategyParams {
     /// # Errors
     ///
     /// Returns `StrategyError::InvalidTransition` if the transition is not permitted.
-    pub fn transition_to(&mut self, target: StrategyStatus) -> Result<StrategyStatus, StrategyError> {
+    pub fn transition_to(
+        &mut self,
+        target: StrategyStatus,
+    ) -> Result<StrategyStatus, StrategyError> {
         if !self.status.can_transition_to(target) {
             return Err(StrategyError::InvalidTransition {
                 from: self.status,
@@ -496,7 +545,10 @@ impl StrategyParams {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StrategyError {
     #[error("Invalid status transition: {from:?} → {to:?} is not allowed")]
-    InvalidTransition { from: StrategyStatus, to: StrategyStatus },
+    InvalidTransition {
+        from: StrategyStatus,
+        to: StrategyStatus,
+    },
 }
 
 // ─── Backtest Result ─────────────────────────────────────────────────────────
@@ -1549,17 +1601,38 @@ mod tests {
 
     #[test]
     fn test_strategy_status_from_str_all_variants() {
-        assert_eq!("Draft".parse::<StrategyStatus>().unwrap(), StrategyStatus::Draft);
-        assert_eq!("Backtesting".parse::<StrategyStatus>().unwrap(), StrategyStatus::Backtesting);
-        assert_eq!("Deployed".parse::<StrategyStatus>().unwrap(), StrategyStatus::Deployed);
-        assert_eq!("Running".parse::<StrategyStatus>().unwrap(), StrategyStatus::Running);
-        assert_eq!("Paused".parse::<StrategyStatus>().unwrap(), StrategyStatus::Paused);
-        assert_eq!("Archived".parse::<StrategyStatus>().unwrap(), StrategyStatus::Archived);
+        assert_eq!(
+            "Draft".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Draft
+        );
+        assert_eq!(
+            "Backtesting".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Backtesting
+        );
+        assert_eq!(
+            "Deployed".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Deployed
+        );
+        assert_eq!(
+            "Running".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Running
+        );
+        assert_eq!(
+            "Paused".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Paused
+        );
+        assert_eq!(
+            "Archived".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Archived
+        );
     }
 
     #[test]
     fn test_strategy_status_from_str_unknown_defaults_to_draft() {
-        assert_eq!("unknown".parse::<StrategyStatus>().unwrap(), StrategyStatus::Draft);
+        assert_eq!(
+            "unknown".parse::<StrategyStatus>().unwrap(),
+            StrategyStatus::Draft
+        );
         assert_eq!("".parse::<StrategyStatus>().unwrap(), StrategyStatus::Draft);
     }
 

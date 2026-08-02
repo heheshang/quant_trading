@@ -63,6 +63,12 @@ async function fetchConnStatus() {
     checking.value = false
   }
 }
+
+defineExpose({
+  connStatus,
+  checking,
+  fetchConnStatus,
+})
 </script>
 
 <style scoped>

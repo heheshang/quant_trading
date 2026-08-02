@@ -27,7 +27,7 @@ async fn test_alert_manager() {
 
     // Create a test alert
     let alert = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "test".to_string(),
         message: "Test alert message".to_string(),
@@ -76,7 +76,7 @@ async fn test_alert_manager_rate_limiting() {
 
     // Create test alerts from the same source
     let alert1 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "rate_limit_test".to_string(),
         message: "First alert".to_string(),
@@ -85,7 +85,7 @@ async fn test_alert_manager_rate_limiting() {
     };
 
     let alert2 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "rate_limit_test".to_string(),
         message: "Second alert".to_string(),
@@ -130,7 +130,7 @@ async fn test_alert_counts() {
 
     // Add an alert
     let alert = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Critical,
         source: "count_test".to_string(),
         message: "Test alert for counting".to_string(),
@@ -188,7 +188,7 @@ async fn test_alert_statistics() {
 
     // Create alerts with different levels
     let alert1 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Info,
         source: "test".to_string(),
         message: "Info alert".to_string(),
@@ -197,7 +197,7 @@ async fn test_alert_statistics() {
     };
 
     let alert2 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "test".to_string(),
         message: "Warning alert".to_string(),
@@ -206,7 +206,7 @@ async fn test_alert_statistics() {
     };
 
     let alert3 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Critical,
         source: "test".to_string(),
         message: "Critical alert".to_string(),
@@ -244,7 +244,7 @@ async fn test_alert_time_range() {
 
     // Create alerts at different times
     let alert1 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Info,
         source: "test".to_string(),
         message: "Old alert".to_string(),
@@ -253,7 +253,7 @@ async fn test_alert_time_range() {
     };
 
     let alert2 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "test".to_string(),
         message: "Recent alert".to_string(),
@@ -278,7 +278,7 @@ async fn test_acknowledge_by_source() {
 
     // Create alerts from different sources
     let alert1 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "source_a".to_string(),
         message: "Alert from source A".to_string(),
@@ -287,7 +287,7 @@ async fn test_acknowledge_by_source() {
     };
 
     let alert2 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "source_a".to_string(),
         message: "Another alert from source A".to_string(),
@@ -296,7 +296,7 @@ async fn test_acknowledge_by_source() {
     };
 
     let alert3 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Warning,
         source: "source_b".to_string(),
         message: "Alert from source B".to_string(),
@@ -323,7 +323,7 @@ async fn test_acknowledge_by_level() {
 
     // Create alerts with different levels
     let alert1 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Info,
         source: "test".to_string(),
         message: "Info 1".to_string(),
@@ -332,7 +332,7 @@ async fn test_acknowledge_by_level() {
     };
 
     let alert2 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Info,
         source: "test".to_string(),
         message: "Info 2".to_string(),
@@ -341,7 +341,7 @@ async fn test_acknowledge_by_level() {
     };
 
     let alert3 = Alert {
-            alert_id: 0,
+        alert_id: 0,
         level: AlertLevel::Critical,
         source: "test".to_string(),
         message: "Critical".to_string(),
