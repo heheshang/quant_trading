@@ -106,8 +106,9 @@ async function handleLogin() {
   });
 }
 
-onMounted(() => {
-  if (auth.isLoggedIn) {
+onMounted(async () => {
+  const isValidSession = await auth.restoreSession();
+  if (isValidSession) {
     router.push('/dashboard');
     return;
   }

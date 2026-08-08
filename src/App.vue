@@ -119,17 +119,22 @@ const pageTitle = computed(() => {
 });
 
 // Restore session on mount and guard route
-onMounted(() => {
-  auth.restoreSession();
-  if (!auth.isLoggedIn && route.path !== '/login') {
+onMounted(async () => {
+  const isValidSession = await auth.restoreSession();
+  if (!isValidSession && route.path !== '/login') {
     auth.setRedirectPath(route.path);
-    router.push('/login');
+    await router.push('/login');
   }
 });
 
 // Keep auth state in sync across route changes
-router.afterEach(() => {
-  auth.restoreSession();
+router.afterEach((to) => {
+  void auth.restoreSession().then((isValidSession) => {
+    if (!isValidSession && to.path !== '/login') {
+      auth.setRedirectPath(to.path);
+      void router.push('/login');
+    }
+  });
 });
 
 // Logout

@@ -137,12 +137,34 @@ pub async fn submit_order(
     use trading_layer::ExecutionEngine;
 
     let order_manager = Arc::new(state.order_manager.clone());
+    let mut order = order;
 
     let app_config = state.config.read().await;
     let trading_config = app_config.trading.clone();
     let risk_config = app_config.risk.clone();
     let enable_pre_trade = app_config.risk.enable_pre_trade_check;
     drop(app_config);
+
+    let market_data = get_market_data_internal(&state, &order.symbol)
+        .await
+        .unwrap_or_else(|_| {
+            let fallback_price = order.price.unwrap_or(dec!(100));
+            MarketData {
+                symbol: order.symbol.clone(),
+                timestamp: chrono::Utc::now(),
+                open: fallback_price,
+                high: fallback_price,
+                low: fallback_price,
+                close: fallback_price,
+                volume: dec!(0),
+                turnover: dec!(0),
+                open_interest: None,
+                bid_prices: vec![],
+                bid_volumes: vec![],
+                ask_prices: vec![],
+                ask_volumes: vec![],
+            }
+        });
 
     if enable_pre_trade {
         let checker = risk_layer::PreTradeRiskChecker::new(risk_config);
@@ -154,7 +176,12 @@ pub async fn submit_order(
                 services.account_service.get_positions().await,
             ) {
                 checker
-                    .check_order(&order, &account, &positions)
+                    .check_order_with_reference_price(
+                        &order,
+                        &account,
+                        &positions,
+                        Some(market_data.close),
+                    )
                     .map_err(|e| format!("Risk check failed: {}", e))?;
             }
         }
@@ -174,8 +201,9 @@ pub async fn submit_order(
     let order_id = order_manager
         .submit_order(order.clone())
         .await
-        .map_err(|e| format!("Failed to submit order: {}", e))?
-        .to_string();
+        .map_err(|e| format!("Failed to submit order: {}", e))?;
+    order.order_id = order_id;
+    let order_id_str = order_id.to_string();
 
     // Log order submission
     state
@@ -183,7 +211,10 @@ pub async fn submit_order(
         .add_entry(quant_common::types::LogEntry {
             timestamp: Utc::now(),
             level: "info".to_string(),
-            message: format!("Order {} submitted for symbol {}", order_id, order.symbol),
+            message: format!(
+                "Order {} submitted for symbol {}",
+                order_id_str, order.symbol
+            ),
             module: Some("trading".to_string()),
         })
         .await;
@@ -236,29 +267,6 @@ pub async fn submit_order(
         }),
     );
 
-    // Fetch real market data from OKX data source for order execution
-    let market_data = get_market_data_internal(&state, &order.symbol)
-        .await
-        .unwrap_or_else(|_| {
-            // Fallback: build a minimal MarketData from order price so execution can proceed
-            let fallback_price = order.price.unwrap_or(dec!(100));
-            MarketData {
-                symbol: order.symbol.clone(),
-                timestamp: chrono::Utc::now(),
-                open: fallback_price,
-                high: fallback_price,
-                low: fallback_price,
-                close: fallback_price,
-                volume: dec!(0),
-                turnover: dec!(0),
-                open_interest: None,
-                bid_prices: vec![],
-                bid_volumes: vec![],
-                ask_prices: vec![],
-                ask_volumes: vec![],
-            }
-        });
-
     // Execute order asynchronously
     let log = state.log_buffer.clone();
     tokio::spawn(async move {
@@ -274,7 +282,7 @@ pub async fn submit_order(
         }
     });
 
-    Ok(order_id)
+    Ok(order_id_str)
 }
 
 #[tauri::command]
