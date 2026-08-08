@@ -1,5 +1,7 @@
+use chrono::Utc;
 use quant_common::types::{Order, OrderStatus};
 use quant_common::{Error, Result};
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -30,14 +32,30 @@ impl OrderManager {
         // 验证订单
         self.validate_order(&order)?;
 
-        order.status = OrderStatus::Submitted;
-        let order_id = order.order_id;
-
         let mut orders = self.orders.write().await;
+        let order_id = Self::allocate_order_id(&orders, order.order_id);
+        order.order_id = order_id;
+        order.status = OrderStatus::Submitted;
+
         orders.insert(order_id, order);
 
         info!("Order submitted: {}", order_id);
         Ok(order_id)
+    }
+
+    fn allocate_order_id(orders: &HashMap<i64, Order>, requested_order_id: i64) -> i64 {
+        if requested_order_id > 0 && !orders.contains_key(&requested_order_id) {
+            return requested_order_id;
+        }
+
+        let mut candidate = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let mut attempt = 0;
+        while candidate <= 0 || orders.contains_key(&candidate) {
+            attempt += 1;
+            candidate = Utc::now().timestamp_nanos_opt().unwrap_or_default() + attempt;
+        }
+
+        candidate
     }
 
     /// 更新订单状态
@@ -120,8 +138,6 @@ impl OrderManager {
 
     /// 验证订单
     fn validate_order(&self, order: &Order) -> Result<()> {
-        use rust_decimal::Decimal;
-
         if order.quantity <= Decimal::ZERO {
             return Err(Error::Validation(
                 "Order quantity must be positive".to_string(),
@@ -144,7 +160,6 @@ impl OrderManager {
 mod tests {
     use super::*;
     use quant_common::types::{OrderSide, OrderType};
-    use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     #[tokio::test]
     async fn test_order_manager() {
@@ -169,6 +184,8 @@ mod tests {
         let order_id = manager.submit_order(order).await.unwrap();
         let retrieved_order = manager.get_order(order_id).await.unwrap();
 
+        assert!(order_id > 0);
         assert_eq!(retrieved_order.status, OrderStatus::Submitted);
+        assert_eq!(retrieved_order.order_id, order_id);
     }
 }

@@ -13,6 +13,7 @@ pub struct Claims {
     pub iat: i64,           // 签发时间
     pub jti: String,        // JWT ID
     pub roles: Vec<String>, // 用户角色
+    pub version: i64,       // token 版本，用于密码变更后撤销旧会话
 }
 
 /// 认证服务
@@ -37,6 +38,17 @@ impl AuthService {
         username: &str,
         roles: Vec<String>,
     ) -> Result<String> {
+        self.generate_token_with_version(user_id, username, roles, None)
+    }
+
+    #[instrument(skip(self, roles))]
+    pub fn generate_token_with_version(
+        &self,
+        user_id: i64,
+        username: &str,
+        roles: Vec<String>,
+        token_version: Option<i64>,
+    ) -> Result<String> {
         info!(user = %username, "generating JWT token");
         let now = Utc::now();
         let exp = now + Duration::hours(self.token_expiry_hours);
@@ -48,6 +60,7 @@ impl AuthService {
             iat: now.timestamp(),
             jti: uuid::Uuid::new_v4().to_string(),
             roles,
+            version: token_version.unwrap_or(0),
         };
 
         encode(
@@ -77,6 +90,27 @@ impl AuthService {
         })
     }
 
+    #[instrument(skip(self, token))]
+    pub fn verify_token_with_version(
+        &self,
+        token: &str,
+        expected_version: Option<i64>,
+    ) -> Result<Claims> {
+        let claims = self.verify_token(token)?;
+        if let Some(expected) = expected_version {
+            if claims.version != expected {
+                warn!(
+                    username = %claims.username,
+                    actual_version = claims.version,
+                    expected_version = expected,
+                    "token version mismatch"
+                );
+                return Err(Error::Auth("Token version mismatch".into()));
+            }
+        }
+        Ok(claims)
+    }
+
     /// 检查权限
     #[instrument(skip(self, claims))]
     pub fn check_permission(&self, claims: &Claims, required_role: &str) -> Result<()> {
@@ -101,7 +135,12 @@ impl AuthService {
     #[instrument(skip(self, old_token))]
     pub fn refresh_token(&self, old_token: &str) -> Result<String> {
         let claims = self.verify_token(old_token)?;
-        self.generate_token(claims.sub, &claims.username, claims.roles)
+        self.generate_token_with_version(
+            claims.sub,
+            &claims.username,
+            claims.roles,
+            Some(claims.version),
+        )
     }
 }
 
@@ -121,6 +160,18 @@ mod tests {
         assert_eq!(claims.username, "testuser");
         assert_eq!(claims.roles, vec!["trader".to_string()]);
         assert_eq!(claims.sub, 123);
+        assert_eq!(claims.version, 0);
+    }
+
+    #[test]
+    fn test_token_version_mismatch_is_rejected() {
+        let auth = AuthService::new("test_secret".to_string(), 24);
+        let token = auth
+            .generate_token_with_version(123, "testuser", vec!["trader".to_string()], Some(1))
+            .unwrap();
+
+        let result = auth.verify_token_with_version(&token, Some(2));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -134,6 +185,7 @@ mod tests {
             iat: Utc::now().timestamp(),
             jti: uuid::Uuid::new_v4().to_string(),
             roles: vec!["trader".to_string()],
+            version: 0,
         };
 
         assert!(auth.check_permission(&claims, "trader").is_ok());

@@ -57,10 +57,34 @@ export const useAuthStore = defineStore('auth', () => {
   // ── Actions ──
 
   /** Check persisted auth on app start. */
-  function restoreSession(): void {
-    token.value = getItem(STORAGE_KEYS.AUTH_TOKEN)
-    username.value = getItem(STORAGE_KEYS.USERNAME) || '管理员'
-    isAuthenticated.value = getItem(STORAGE_KEYS.IS_AUTHENTICATED) === 'true'
+  async function restoreSession(): Promise<boolean> {
+    const persistedToken = getItem(STORAGE_KEYS.AUTH_TOKEN)
+    const persistedUsername = getItem(STORAGE_KEYS.USERNAME) || '管理员'
+
+    if (!persistedToken) {
+      clearSession()
+      return false
+    }
+
+    token.value = persistedToken
+    username.value = persistedUsername
+    isAuthenticated.value = true
+
+    try {
+      const valid = await apiVerifyToken(persistedToken)
+      if (!valid) {
+        clearSession()
+        return false
+      }
+
+      setItem(STORAGE_KEYS.AUTH_TOKEN, persistedToken)
+      setItem(STORAGE_KEYS.USERNAME, persistedUsername)
+      setItem(STORAGE_KEYS.IS_AUTHENTICATED, 'true')
+      return true
+    } catch (err) {
+      clearSession()
+      return false
+    }
   }
 
   /** Persist auth state after successful login. */

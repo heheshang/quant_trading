@@ -34,23 +34,25 @@ impl AuthService {
 
         if let Some(ref client) = self.postgres {
             let pool = client.pool();
-            let row =
-                sqlx::query("SELECT user_id, role, password_hash FROM users WHERE username = $1")
-                    .bind(username)
-                    .fetch_optional(pool)
-                    .await
-                    .map_err(|e| {
-                        error!("Login DB query failed: {}", e);
-                        ServiceError::from(e)
-                    })?
-                    .ok_or_else(|| {
-                        error!("Invalid credentials for user: {}", username);
-                        ServiceError::InvalidCredentials
-                    })?;
+            let row = sqlx::query(
+                "SELECT user_id, role, password_hash, token_version FROM users WHERE username = $1",
+            )
+            .bind(username)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| {
+                error!("Login DB query failed: {}", e);
+                ServiceError::from(e)
+            })?
+            .ok_or_else(|| {
+                error!("Invalid credentials for user: {}", username);
+                ServiceError::InvalidCredentials
+            })?;
 
             let user_id: i64 = row.get("user_id");
             let role: String = row.get("role");
             let stored_hash: String = row.get("password_hash");
+            let token_version: i64 = row.get("token_version");
 
             let valid = PasswordHasher::verify_password(password, &stored_hash).map_err(|e| {
                 error!("Password verification error: {}", e);
@@ -62,7 +64,7 @@ impl AuthService {
             }
 
             let token = auth_service
-                .generate_token(user_id, username, vec![role])
+                .generate_token_with_version(user_id, username, vec![role], Some(token_version))
                 .map_err(|e| {
                     error!("Token generation failed: {}", e);
                     ServiceError::TokenGeneration(e.to_string())
@@ -79,7 +81,34 @@ impl AuthService {
         let cfg = self.config.read().await;
         let auth_service = self.make_auth_service(&cfg);
         drop(cfg);
-        auth_service.verify_token(token).is_ok()
+
+        match auth_service.verify_token(token) {
+            Ok(claims) => {
+                let Some(ref client) = self.postgres else {
+                    return true;
+                };
+
+                let pool = client.pool();
+                let row = sqlx::query("SELECT token_version FROM users WHERE username = $1")
+                    .bind(&claims.username)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(|e| {
+                        error!(username = %claims.username, error = %e, "Token version lookup failed");
+                        e
+                    })
+                    .ok();
+
+                match row {
+                    Some(Some(row)) => {
+                        let current_version: i64 = row.get("token_version");
+                        current_version == claims.version
+                    }
+                    Some(None) | None => false,
+                }
+            }
+            Err(_) => false,
+        }
     }
 
     #[instrument(skip(self), fields(username = %username))]
@@ -222,15 +251,17 @@ impl AuthService {
             error!("Password hash failed: {}", e);
             ServiceError::PasswordHash(e.to_string())
         })?;
-        sqlx::query("UPDATE users SET password_hash = $1 WHERE username = $2")
-            .bind(&new_hash)
-            .bind(username)
-            .execute(pool)
-            .await
-            .map_err(|e| {
-                error!("Failed to update password: {}", e);
-                ServiceError::Database(e)
-            })?;
+        sqlx::query(
+            "UPDATE users SET password_hash = $1, token_version = COALESCE(token_version, 0) + 1 WHERE username = $2",
+        )
+        .bind(&new_hash)
+        .bind(username)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to update password: {}", e);
+            ServiceError::Database(e)
+        })?;
 
         info!(username = %username, "Password changed successfully");
         Ok(true)
@@ -240,6 +271,9 @@ impl AuthService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quant_common::config::DatabaseConfig;
+    use quant_repository::PostgresClient;
+    use security::encryption::PasswordHasher;
 
     #[tokio::test]
     async fn test_login_without_db_returns_error() {
@@ -316,5 +350,85 @@ mod tests {
             result.unwrap_err(),
             ServiceError::DatabaseNotConnected
         ));
+    }
+
+    #[tokio::test]
+    async fn test_login_change_password_invalidates_old_token_with_real_db() {
+        let db_config = DatabaseConfig {
+            host: std::env::var("DATABASE_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            port: std::env::var("DATABASE_PORT")
+                .unwrap_or_else(|_| "15432".to_string())
+                .parse::<u16>()
+                .unwrap_or(15432),
+            username: std::env::var("DATABASE_USERNAME")
+                .unwrap_or_else(|_| "quant".to_string()),
+            password: std::env::var("DATABASE_PASSWORD")
+                .unwrap_or_else(|_| "quant_password".to_string()),
+            database: std::env::var("DATABASE_NAME")
+                .unwrap_or_else(|_| "quant_trading".to_string()),
+            max_connections: 5,
+        };
+
+        let postgres = PostgresClient::new(&db_config)
+            .await
+            .expect("expected docker PostgreSQL to be reachable");
+        let postgres = Arc::new(postgres);
+
+        let mut config = AppConfig::default();
+        config.security.jwt_secret = "docker-test-secret".to_string();
+        config.security.token_expiry_hours = 24;
+        let config = Arc::new(RwLock::new(config));
+
+        let auth_service = AuthService::new(config, Some(postgres.clone()));
+        let pool = postgres.pool();
+
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let username = format!("auth_flow_{suffix}");
+        let email = format!("{username}@example.com");
+        let initial_password = "old-password";
+        let new_password = "new-password";
+        let password_hash = PasswordHasher::hash_password(initial_password)
+            .expect("password hash should be created");
+
+        sqlx::query(
+            "INSERT INTO users (username, password_hash, email, role) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(&username)
+        .bind(&password_hash)
+        .bind(&email)
+        .bind("trader")
+        .execute(pool)
+        .await
+        .expect("user should be inserted for auth flow test");
+
+        let old_token = auth_service
+            .login(&username, initial_password)
+            .await
+            .expect("login should succeed for seeded user");
+        assert!(auth_service.verify_token(&old_token).await);
+
+        let password_changed = auth_service
+            .change_password(&username, initial_password, new_password)
+            .await
+            .expect("password change should succeed");
+        assert!(password_changed);
+
+        assert!(!auth_service.verify_token(&old_token).await);
+
+        let new_token = auth_service
+            .login(&username, new_password)
+            .await
+            .expect("login should succeed with the updated password");
+        assert!(auth_service.verify_token(&new_token).await);
+
+        sqlx::query("DELETE FROM users WHERE username = $1")
+            .bind(&username)
+            .execute(pool)
+            .await
+            .expect("temporary user should be cleaned up");
     }
 }
