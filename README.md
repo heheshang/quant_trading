@@ -28,10 +28,11 @@ quant-trading-system/
 │       ├── commands.rs             # Tauri 命令层（17 个测试）
 │       ├── ws_commands.rs          # WebSocket 命令
 │       └── state.rs                # 应用状态
-├── crates/                         # Rust 工作空间（13 crates）
+├── crates/                         # Rust 工作空间（13 个业务 crates + src-tauri）
 │   ├── common/                     # 公共类型、配置、工具
 │   ├── domain/                     # 领域层（纯业务逻辑，零 IO）
 │   ├── data-layer/                 # 数据层（PostgreSQL + Redis + OKX）
+│   ├── data-puller/                # 后台行情/账户快照拉取
 │   ├── repository/                 # 仓储层（数据库访问抽象）
 │   ├── clients/                    # 外部客户端（Redis 缓存等）
 │   ├── services/                   # 服务层（业务编排，typed errors）
@@ -282,10 +283,8 @@ match service.get_account().await {
 
 ### 测试覆盖
 
-- **213 个测试**全部通过，0 失败
-- **4 个集成测试**（需真实 PostgreSQL，默认 `#[ignore]`）
-- **Services crate**：43 个测试（含 7 个 strategy_service 测试）
-- **Tauri 命令层**：17 个测试
+- **前端**：33 个测试文件 / 423 个测试全部通过
+- **Rust workspace**：编译、Clippy、测试通过；真实 PostgreSQL/OKX 集成测试默认 `#[ignore]`
 - **风控层**：事前/事中/事后全流程测试
 
 ### 运行测试

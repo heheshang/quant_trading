@@ -26,3 +26,7 @@ export function getLogs(
 ): Promise<LogEntry[]> {
   return invoke<LogEntry[]>('get_logs', { level, limit })
 }
+
+export function checkRedisStatus(): Promise<boolean> {
+  return invoke<boolean>('check_redis_status')
+}

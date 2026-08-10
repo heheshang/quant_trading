@@ -114,17 +114,48 @@ async fn main() {
         (None, None, None, None)
     };
 
-    // 初始化数据库连接（可选，需要数据库运行）
-    let pg_client = data_layer::PostgresClient::new(&config.database).await.ok();
-    if let Some(ref client) = pg_client {
-        info!("PostgreSQL connection established successfully");
-        if let Err(e) = client.run_migrations().await {
-            warn!("Database migration failed: {}", e);
-        } else {
-            info!("Database migrations completed successfully");
+    // 初始化数据库连接池（懒加载，不阻塞 Tauri 启动）。
+    let pg_client = match data_layer::PostgresClient::new_lazy(&config.database) {
+        Ok(client) => {
+            info!("PostgreSQL connection pool configured; migrations will run in background");
+            Some(Arc::new(client))
         }
+        Err(e) => {
+            warn!("Failed to configure PostgreSQL connection pool: {}", e);
+            None
+        }
+    };
+
+    if let Some(ref client) = pg_client {
+        let migration_client = client.clone();
+        let migration_log = log_buffer.clone();
+        tokio::spawn(async move {
+            loop {
+                match migration_client.run_migrations().await {
+                    Ok(()) => {
+                        info!("Database migrations completed successfully");
+                        break;
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Database connection/migration failed, will retry in 5s: {}",
+                            e
+                        );
+                        migration_log
+                            .add_entry(quant_common::types::LogEntry {
+                                timestamp: Utc::now(),
+                                level: "warn".to_string(),
+                                message: format!("Database unavailable, retrying in 5s: {}", e),
+                                module: Some("database".to_string()),
+                            })
+                            .await;
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    }
+                }
+            }
+        });
     } else {
-        warn!("PostgreSQL connection failed, running without database");
+        warn!("PostgreSQL connection pool unavailable, running without database");
     }
 
     // 为 AppServices 创建 quant_repository::PostgresClient，复用同一个 PgPool，
@@ -226,6 +257,7 @@ async fn main() {
             commands::get_alerts,
             commands::acknowledge_alert,
             commands::get_logs,
+            commands::check_redis_status,
             commands::get_strategies,
             commands::save_strategy,
             commands::delete_strategy,

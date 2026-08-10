@@ -27,10 +27,18 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
+          <el-form-item label="最大集中度" prop="max_concentration">
+            <el-slider v-model="config.max_concentration" :min="0" :max="1" :step="0.01" show-input style="width: 100%" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row :gutter="20">
+        <el-col :span="12">
           <el-form-item label="VaR置信水平" prop="var_confidence_level">
             <el-slider v-model="config.var_confidence_level" :min="0.9" :max="0.999" :step="0.001" show-input style="width: 100%" />
           </el-form-item>
         </el-col>
+        <el-col :span="12"></el-col>
       </el-row>
       <el-row :gutter="20">
         <el-col :span="12">

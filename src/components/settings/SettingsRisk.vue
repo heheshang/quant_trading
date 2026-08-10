@@ -50,6 +50,21 @@
         </el-col>
 
         <el-col :span="12">
+          <el-form-item label="最大集中度" prop="max_concentration">
+            <el-slider
+              v-model="model.max_concentration"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              show-input
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
           <el-form-item label="VaR置信水平" prop="var_confidence_level">
             <el-slider
               v-model="model.var_confidence_level"
@@ -60,6 +75,9 @@
               style="width: 100%"
             />
           </el-form-item>
+        </el-col>
+
+        <el-col :span="12">
         </el-col>
       </el-row>
 
@@ -90,6 +108,7 @@ export interface RiskConfig {
   max_position_size: number
   max_daily_loss: number
   max_drawdown: number
+  max_concentration: number
   var_confidence_level: number
   enable_pre_trade_check: boolean
   enable_real_time_monitor: boolean
@@ -110,6 +129,10 @@ const rules: FormRules = {
   max_drawdown: [
     { required: true, message: '请输入最大回撤限制', trigger: 'blur' },
     { type: 'number', min: 0, max: 0.3, message: '回撤范围 0-0.3', trigger: 'blur' },
+  ],
+  max_concentration: [
+    { required: true, message: '请输入最大集中度', trigger: 'blur' },
+    { type: 'number', min: 0, max: 1, message: '集中度范围 0-1', trigger: 'blur' },
   ],
   var_confidence_level: [
     { required: true, message: '请输入VaR置信水平', trigger: 'blur' },

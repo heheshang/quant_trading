@@ -50,6 +50,8 @@
 - Vite 产物已拆分为 `element-plus` / `echarts` / `vue-vendor` / `axios` chunk。
 - `sqlx` 已从 0.7 升级到 0.8.6，并补齐 `tls-rustls-ring` TLS 后端；workspace 编译、测试、clippy 均通过。
 - 新增 Docker 部署与一键测试；修正 `20240101000013` 在全新库上重复添加 `strategies` 主键的问题。
+- `@tauri-apps/api 2.11.1` / `@tauri-apps/cli 2.11.4` 与 Rust `tauri 2.11.5` 对齐，修复 `tauri dev` 版本不匹配。
+- PostgreSQL 连接超时从默认 30 秒收敛到 3 秒，并支持 `DATABASE_CONNECT_TIMEOUT_SECONDS` / `connect_timeout_seconds` 覆盖；连接池懒加载，数据库/迁移改为后台重试。
 
 ## 4. 仍待处理
 

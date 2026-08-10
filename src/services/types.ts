@@ -322,6 +322,7 @@ export interface DatabaseConfig {
   password: string
   database: string
   max_connections: number
+  connect_timeout_seconds?: number
 }
 
 export interface RedisConfig {
@@ -344,6 +345,7 @@ export interface RiskConfig {
   max_position_size: number
   max_daily_loss: number
   max_drawdown: number
+  max_concentration: number
   enable_pre_trade_check: boolean
   enable_real_time_monitor: boolean
   var_confidence_level: number

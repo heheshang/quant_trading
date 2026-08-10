@@ -80,6 +80,7 @@ export interface DatabaseConfig {
   password: string | null
   database: string
   max_connections: number
+  connect_timeout_seconds?: number
 }
 
 const model = defineModel<DatabaseConfig>({ required: true })

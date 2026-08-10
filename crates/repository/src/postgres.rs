@@ -3,6 +3,7 @@ use quant_common::error::Error;
 use quant_common::Result;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{error, info, instrument};
 
 /// PostgreSQL 数据库客户端
@@ -24,6 +25,7 @@ impl PostgresClient {
 
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
+            .acquire_timeout(Duration::from_secs(config.connect_timeout_seconds))
             .connect(&connection_string)
             .await
             .map_err(|e| {
@@ -83,6 +85,7 @@ mod tests {
             password: dotenv::var("DATABASE_PASSWORD").unwrap_or_else(|_| "postgres".into()),
             database: dotenv::var("DATABASE_NAME").unwrap_or_else(|_| "quant_trading".into()),
             max_connections: 5,
+            connect_timeout_seconds: 5,
         };
 
         let client = PostgresClient::new(&config).await;

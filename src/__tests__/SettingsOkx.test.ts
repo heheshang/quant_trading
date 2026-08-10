@@ -27,7 +27,7 @@ const defaultConfig = {
   database: { host: 'localhost', port: 5432, username: 'postgres', password: '', database: 'quant_trading', max_connections: 10 },
   redis: { host: 'localhost', port: 6379, password: '', db: 0, pool_size: 10 },
   trading: { enable_paper_trading: true, max_orders_per_second: 10, default_commission_rate: 0.0003, default_slippage: 0.0001, order_timeout_seconds: 30 },
-  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
+  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, max_concentration: 0.2, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
   monitoring: { enable_prometheus: true, prometheus_port: 9090, log_level: 'info', alert_email: '', alert_webhook: '' },
   security: { enable_encryption: true, enable_2fa: false, jwt_secret: 'secret', token_expiry_hours: 24, allowed_ips: [] },
 }

@@ -57,12 +57,13 @@ interface SystemInfo { name: string; version: string; language: string; timezone
 const systemInfo = ref<SystemInfo>({ name: '量化交易系统', version: '1.0.0', language: 'zh-CN', timezone: 'UTC+8' })
 
 const config = ref({
-  database: { host: 'localhost', port: 5432, username: '', password: null as string | null, database: 'quant_trading', max_connections: 50 },
+  database: { host: 'localhost', port: 5432, username: '', password: null as string | null, database: 'quant_trading', max_connections: 50, connect_timeout_seconds: 3 },
   redis: { host: 'localhost', port: 6379, password: null as string | null, db: 0, pool_size: 20 },
   trading: { enable_paper_trading: false, max_orders_per_second: 100, default_commission_rate: 0.0003 as number, default_slippage: 0.0001 as number, order_timeout_seconds: 30 },
-  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
+  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, max_concentration: 0.2, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
   monitoring: { enable_prometheus: true, prometheus_port: 9090, log_level: 'info', alert_email: null as string | null, alert_webhook: null as string | null },
   security: { enable_encryption: true, jwt_secret: '', token_expiry_hours: 24, enable_2fa: false, allowed_ips: ['127.0.0.1'] },
+  okx: { api_key: '', api_secret: '', passphrase: '', environment: 'demo', enable: false },
 })
 
 function mergeConfig<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
@@ -95,7 +96,7 @@ function buildAppPayload(cfg: typeof config.value, sys: SystemInfo): AppConfig {
     trading: cfg.trading, risk: cfg.risk,
     monitoring: { ...cfg.monitoring, alert_email: cfg.monitoring.alert_email ?? '', alert_webhook: cfg.monitoring.alert_webhook ?? '' },
     security: cfg.security,
-    okx: { api_key: '', api_secret: '', passphrase: '', environment: 'demo', enable: false },
+    okx: cfg.okx,
   }
 }
 

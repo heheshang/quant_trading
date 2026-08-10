@@ -18,6 +18,8 @@ describe('Test.vue - 按钮测试', () => {
       switch (cmd) {
         case 'get_metrics':
           return { api_latency: 5, api_uptime: 99.9, db_connections: 5, redis_hit_rate: 0.95 }
+        case 'check_redis_status':
+          return true
         default:
           return {}
       }
@@ -69,6 +71,22 @@ describe('Test.vue - 按钮测试', () => {
     mount(Test, { global: { plugins: [ElementPlus] } })
     await new Promise(r => setTimeout(r, 50))
     expect(mockInvoke).toHaveBeenCalledWith('get_metrics')
+  })
+
+  it('Redis 检测 - 调用 check_redis_status', async () => {
+    const wrapper: any = mount(Test, { global: { plugins: [ElementPlus] } })
+    await new Promise(r => setTimeout(r, 50))
+    expect(mockInvoke).toHaveBeenCalledWith('check_redis_status')
+
+    await wrapper.find('.el-button--primary').trigger('click')
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    const redisResult = wrapper.vm.testResults.find((r: any) => r.name === 'Redis 缓存')
+    expect(redisResult.status).toBe('通过')
+    expect(redisResult.detail).toContain('PONG')
   })
 
   it('API 失败时 - 设置 apiStatus 正确', async () => {

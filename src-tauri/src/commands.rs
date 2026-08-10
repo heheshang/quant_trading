@@ -139,11 +139,15 @@ pub async fn submit_order(
     let order_manager = Arc::new(state.order_manager.clone());
     let mut order = order;
 
-    let app_config = state.config.read().await;
-    let trading_config = app_config.trading.clone();
-    let risk_config = app_config.risk.clone();
-    let enable_pre_trade = app_config.risk.enable_pre_trade_check;
-    drop(app_config);
+    let trading_config = state.config.read().await.trading.clone();
+    let mut risk_config = state.config.read().await.risk.clone();
+    let enable_pre_trade = risk_config.enable_pre_trade_check;
+
+    if let Some(ref services) = state.app_services {
+        if let Ok(db_risk_config) = services.risk_service.get_risk_config().await {
+            risk_config = db_risk_config;
+        }
+    }
 
     let market_data = get_market_data_internal(&state, &order.symbol)
         .await
@@ -544,6 +548,18 @@ pub async fn get_logs(
     Ok(logs)
 }
 
+/// 检查 Redis 连接状态
+#[tauri::command]
+pub async fn check_redis_status(state: State<'_, AppState>) -> Result<bool, String> {
+    match state.redis_cache.as_ref() {
+        Some(cache) => cache
+            .health_check()
+            .await
+            .map_err(|e| format!("Redis health check failed: {}", e)),
+        None => Err("Redis client not initialized".to_string()),
+    }
+}
+
 /// 获取所有策略
 #[tauri::command]
 pub async fn get_strategies(state: State<'_, AppState>) -> Result<Vec<StrategyParams>, String> {
@@ -848,6 +864,29 @@ pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<Stri
 pub async fn get_risk_config(
     state: State<'_, AppState>,
 ) -> Result<quant_common::config::RiskConfig, String> {
+    if let Some(ref services) = state.app_services {
+        match services.risk_service.get_risk_config().await {
+            Ok(config) => {
+                state.config.write().await.risk = config.clone();
+                return Ok(config);
+            }
+            Err(e) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: format!(
+                            "Risk config DB read failed, falling back to memory: {}",
+                            e
+                        ),
+                        module: Some("risk".to_string()),
+                    })
+                    .await;
+            }
+        }
+    }
+
     let config = state.config.read().await;
     Ok(config.risk.clone())
 }
@@ -858,11 +897,10 @@ pub async fn update_risk_config(
     state: State<'_, AppState>,
     config: quant_common::config::RiskConfig,
 ) -> Result<bool, String> {
-    // Delegate to ConfigService for persistence
     match state.app_services.as_ref() {
         Some(services) => {
             let mut new_config = services.config_service.get_config().await;
-            new_config.risk = config;
+            new_config.risk = config.clone();
             let status = services.config_service.update_config(new_config).await;
             state
                 .log_buffer
@@ -877,7 +915,48 @@ pub async fn update_risk_config(
                     module: Some("config".to_string()),
                 })
                 .await;
-            Ok(true)
+
+            match services.risk_service.update_risk_config(&config).await {
+                Ok(true) => {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "info".to_string(),
+                            message: "Risk config saved to database".to_string(),
+                            module: Some("risk".to_string()),
+                        })
+                        .await;
+                    Ok(true)
+                }
+                Ok(false) => {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "warn".to_string(),
+                            message: "Risk config row not found in database".to_string(),
+                            module: Some("risk".to_string()),
+                        })
+                        .await;
+                    Ok(false)
+                }
+                Err(e) => {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "warn".to_string(),
+                            message: format!(
+                                "Risk config DB update failed, kept memory/file config: {}",
+                                e
+                            ),
+                            module: Some("risk".to_string()),
+                        })
+                        .await;
+                    Ok(true)
+                }
+            }
         }
         None => {
             let mut app_config = state.config.write().await;
@@ -907,9 +986,12 @@ pub async fn pre_trade_check(
     use risk_layer::PreTradeRiskChecker;
 
     // Use the application's live risk configuration instead of hardcoded defaults
-    let app_config = state.config.read().await;
-    let risk_config = app_config.risk.clone();
-    drop(app_config);
+    let mut risk_config = state.config.read().await.risk.clone();
+    if let Some(ref services) = state.app_services {
+        if let Ok(db_risk_config) = services.risk_service.get_risk_config().await {
+            risk_config = db_risk_config;
+        }
+    }
 
     let checker = PreTradeRiskChecker::new(risk_config);
 
@@ -1573,6 +1655,16 @@ mod tests {
             orders[0].status,
             quant_common::types::OrderStatus::Submitted
         );
+    }
+
+    #[tokio::test]
+    async fn test_check_redis_status_without_redis_returns_error() {
+        let state = make_test_state();
+        let state_guard: tauri::State<'_, AppState> =
+            unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+        let result = check_redis_status(state_guard).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Redis client not initialized"));
     }
 
     #[tokio::test]

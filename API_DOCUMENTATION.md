@@ -138,7 +138,9 @@ boolean
     port: number,
     username: string,
     password: string,
-    database_name: string
+    database: string,
+    max_connections: number,
+    connect_timeout_seconds: number
   },
   redis: {
     host: string,
@@ -646,4 +648,18 @@ boolean
     module: string      // 模块名称
   }
 ]
+```
+
+### 8.5 检查 Redis 状态
+
+**命令名称**: `check_redis_status`
+
+**功能描述**: 通过 Redis PING 检查缓存服务是否可用
+
+**请求参数**: 无
+
+**返回值**:
+```typescript
+// Redis 健康时返回 true，未初始化或 PING 失败时返回错误
+boolean
 ```

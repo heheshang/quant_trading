@@ -39,6 +39,7 @@ const riskConfig = ref<RiskConfig>({
   max_position_size: 0.2,
   max_daily_loss: 0.05,
   max_drawdown: 0.15,
+  max_concentration: 0.2,
   enable_pre_trade_check: true,
   enable_real_time_monitor: true,
   var_confidence_level: 0.95,

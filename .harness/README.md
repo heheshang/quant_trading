@@ -115,18 +115,9 @@ Wiki 知识库中的业务文档不会主动加载，Agent 根据任务需要自
 
 ## 持续集成（CI）
 
-> 仓库已集成 GitHub Actions CI（`.github/workflows/harness-ci.yml`），
-> 在 push/PR 到 main 时自动执行：
-
-```yaml
-Job 1 (Init): 运行 init.sh + detect-build.sh → 验证构建工具检测
-Job 2 (QG):   运行 QG-1~4 质量门禁（reporting mode，不阻塞）
-Job 3 (Lint):  ShellCheck + Python 语法检查
-Job 4 (Docs):  验证关键文件完整性 + Markdown 链接检查
-```
-
-> **从 Reporting 切换到 Strict 模式**：移除 CI workflow 中的 `continue-on-error: true`，
-> 质量门禁失败将直接阻止 PR 合并。
+> 当前仓库尚未包含 `.github/workflows/`，GitHub Actions 未实际接入。
+> 历史文档曾误写为已集成；本地验证以 `.harness/scripts/` 和仓库根目录的
+> `cargo`/`npm` 命令为准。需要 CI 时应先补齐 workflow，再更新本节。
 
 ## 核心 / 扩展阶段流
 

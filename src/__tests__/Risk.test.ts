@@ -35,7 +35,7 @@ describe('Risk.vue - 按钮测试', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       switch (cmd) {
         case 'get_risk_metrics': return { var_95: 0.02, var_99: 0.04, max_position_size: 0.2, max_daily_loss: 0.05 }
-        case 'get_risk_config': return { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 }
+        case 'get_risk_config': return { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, max_concentration: 0.2, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 }
         case 'update_risk_config': return true
         case 'pre_trade_check': return true
         case 'get_alerts': return [{ alert_id: 1, level: 'Warning', source: 'Risk', message: 'Risk limit approaching', timestamp: new Date().toISOString(), acknowledged: false }, { alert_id: 2, level: 'Critical', source: 'System', message: 'Connection lost', timestamp: new Date().toISOString(), acknowledged: false }]
@@ -67,6 +67,7 @@ describe('Risk.vue - 按钮测试', () => {
       max_position_size: 0.2,
       max_daily_loss: 0.05,
       max_drawdown: 0.15,
+      max_concentration: 0.2,
       enable_pre_trade_check: true,
       enable_real_time_monitor: true,
       var_confidence_level: 0.95,
@@ -86,6 +87,7 @@ describe('Risk.vue - 按钮测试', () => {
       max_position_size: 0.2,
       max_daily_loss: 0.05,
       max_drawdown: 0.15,
+      max_concentration: 0.2,
       enable_pre_trade_check: true,
       enable_real_time_monitor: true,
       var_confidence_level: 0.95,

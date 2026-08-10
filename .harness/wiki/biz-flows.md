@@ -208,40 +208,29 @@
 ## 链路 4：CI 自动化流程
 
 ### 触发条件
-- `git push` 到 `main` 分支
-- PR 创建/更新
+- 本地执行 `.harness/scripts/verify-*.sh`
+- 将来接入 GitHub Actions 后，`push` / PR 到 `main` 触发
 
-### 完整链路
+### 当前状态
 
+> 仓库尚未包含 `.github/workflows/harness-ci.yml`，下述链路为规划中的 CI。
+> 当前可直接使用的验证命令：
+
+```bash
+bash .harness/scripts/verify-migrations.sh
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+npm test
+npm run build
 ```
-[git push origin main]
-    │
-    ▼
-GitHub Actions Workflow: harness-ci.yml
-    │
-    ├── Job 1: init
-    │   ├── detect-build.sh  → 设置 BUILD_TOOL
-    │   ├── detect-platform.sh → 设置 PLATFORM=github-actions
-    │   └── 缓存 restore
-    │
-    ├── Job 2: quality-gates (depends on init)
-    │   ├── QG-1: Compile Check    ($BUILD_CHECK_CMD)
-    │   ├── QG-2: Type Check       (tsc/basedpyright)
-    │   ├── QG-3: Code Style       (formatter check)
-    │   ├── QG-4: Complexity       (radon cc / lizard)
-    │   ├── QG-5: Long Functions   (radon raw)
-    │   ├── QG-6: Hardcoded Config (grep)
-    │   ├── QG-7: Test Execution   (test framework)
-    │   └── QG-8: Coverage         (coverage report)
-    │
-    ├── Job 3: lint-and-shellcheck
-    │   ├── ShellCheck (所有 .sh)
-    │   └── yamllint (所有 .yml .yaml)
-    │
-    └── Job 4: docs-integrity
-        ├── 检查所有 .md 链接有效性
-        └── 验证 template 完整性
-```
+
+计划中的 GitHub Actions Jobs：
+
+1. Init：运行 `detect-build.sh` / `detect-platform.sh`
+2. Quality Gates：编译、测试、迁移校验
+3. Lint：ShellCheck + YAML/格式检查
+4. Docs：Markdown 链接与模板完整性
 
 ---
 

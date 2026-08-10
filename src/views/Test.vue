@@ -86,7 +86,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { Connection } from '@element-plus/icons-vue';
-import { getMetrics } from '@/services/monitor'
+import { checkRedisStatus, getMetrics } from '@/services/monitor'
 import { getAccountInfo } from '@/services/account'
 import { verifyToken } from '@/services/auth';
 import { useWebSocketStatus } from '@/composables/useWebSocketStatus';
@@ -112,8 +112,13 @@ async function checkConnectivity() {
   } catch {
     apiStatus.api = false;
   }
+  try {
+    apiStatus.redis = await checkRedisStatus();
+  } catch {
+    apiStatus.redis = false;
+  }
 }
-checkConnectivity();
+void checkConnectivity();
 
 async function runSystemTests() {
   testing.value = true;
@@ -161,9 +166,12 @@ async function testDatabase(): Promise<{passed: boolean; detail?: string}> {
 
 async function testRedis(): Promise<{passed: boolean; detail?: string}> {
   try {
-    const result = await getMetrics();
-    apiStatus.redis = true;
-    return { passed: true, detail: `metrics_count=${Object.keys(result).length}` };
+    const healthy = await checkRedisStatus();
+    apiStatus.redis = healthy;
+    return {
+      passed: healthy,
+      detail: healthy ? 'Redis PING 返回 PONG' : 'Redis PING 未返回 PONG',
+    };
   } catch (e: any) {
     apiStatus.redis = false;
     return { passed: false, detail: e?.message || 'Redis 连接失败' };

@@ -469,12 +469,15 @@ impl StrategyService {
 
         let (db_type, strategy, params) = self.build_strategy_from_db(strategy_id).await?;
 
-        let symbol = params
-            .params
-            .get("symbol")
-            .and_then(|v| v.as_str())
-            .unwrap_or("BTC-USDT")
-            .to_string();
+        let symbol = Self::resolve_backtest_symbol(symbols, &params);
+        if symbols.len() > 1 {
+            warn!(
+                strategy_id = %strategy_id,
+                symbols = ?symbols,
+                primary_symbol = %symbol,
+                "Multi-symbol backtest currently uses the primary symbol for market data"
+            );
+        }
 
         let market_data = {
             let provider = self.market_data_provider.as_ref().ok_or_else(|| {
@@ -538,6 +541,19 @@ impl StrategyService {
             "Backtest completed"
         );
         Ok(backtest_result)
+    }
+
+    fn resolve_backtest_symbol(symbols: &[String], params: &StrategyParams) -> String {
+        if let Some(symbol) = symbols.iter().find(|s| !s.trim().is_empty()) {
+            return symbol.trim().to_string();
+        }
+
+        params
+            .params
+            .get("symbol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("BTC-USDT")
+            .to_string()
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -992,6 +1008,30 @@ mod tests {
             result.unwrap_err(),
             ServiceError::DatabaseNotConnected
         ));
+    }
+
+    #[test]
+    fn resolve_backtest_symbol_prefers_requested_symbols() {
+        let mut params = mock_strategy_params(StrategyStatus::Draft);
+        params.params = serde_json::json!({ "symbol": "ETH-USDT" });
+
+        assert_eq!(
+            StrategyService::resolve_backtest_symbol(&["BTC-USDT".to_string()], &params),
+            "BTC-USDT"
+        );
+        assert_eq!(
+            StrategyService::resolve_backtest_symbol(&["".to_string()], &params),
+            "ETH-USDT"
+        );
+        assert_eq!(
+            StrategyService::resolve_backtest_symbol(&[], &params),
+            "ETH-USDT"
+        );
+        params.params = serde_json::json!({});
+        assert_eq!(
+            StrategyService::resolve_backtest_symbol(&[], &params),
+            "BTC-USDT"
+        );
     }
 
     #[tokio::test]

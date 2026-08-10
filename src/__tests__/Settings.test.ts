@@ -16,9 +16,10 @@ const defaultConfig = {
   database: { host: 'localhost', port: 5432, username: 'postgres', password: '', database: 'quant_trading', max_connections: 10 },
   redis: { host: 'localhost', port: 6379, password: '', db: 0, pool_size: 10 },
   trading: { enable_paper_trading: true, max_orders_per_second: 10, default_commission_rate: 0.0003, default_slippage: 0.0001, order_timeout_seconds: 30 },
-  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
+  risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, max_concentration: 0.2, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
   monitoring: { enable_prometheus: true, prometheus_port: 9090, log_level: 'info', alert_email: '', alert_webhook: '' },
   security: { enable_encryption: true, enable_2fa: false, jwt_secret: 'secret', token_expiry_hours: 24, allowed_ips: [] },
+  okx: { api_key: 'okx-key', api_secret: 'okx-secret', passphrase: 'okx-pass', environment: 'demo', enable: true },
 }
 
 function mockFormRef() {
@@ -69,6 +70,24 @@ describe('Settings.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockInvoke).toHaveBeenCalledWith('update_config', { config: expect.any(Object) })
+  }, 30000)
+
+  it('保存配置 - 保留已有 OKX 配置', async () => {
+    const wrapper = await mountComponent()
+    const formRefs = ['systemInfoFormRef', 'databaseFormRef', 'redisFormRef', 'tradingFormRef', 'riskFormRef', 'monitoringFormRef', 'securityFormRef']
+    formRefs.forEach(name => { (wrapper.vm as any)[name] = mockFormRef() })
+    mockInvoke.mockClear()
+
+    await wrapper.vm.saveConfig()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'update_config',
+      expect.objectContaining({
+        config: expect.objectContaining({ okx: defaultConfig.okx }),
+      }),
+    )
   }, 30000)
 
   it('重置按钮 - 打开确认对话框', async () => {

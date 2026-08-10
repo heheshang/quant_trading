@@ -1,5 +1,6 @@
 use quant_common::config::DatabaseConfig;
 use sqlx::postgres::PgPoolOptions;
+use std::time::Duration;
 use tracing::{error, info};
 
 #[tokio::main]
@@ -34,6 +35,10 @@ async fn main() {
             .unwrap_or_else(|_| "quant_password".to_string()),
         database: std::env::var("DATABASE_NAME").unwrap_or_else(|_| "quant_trading".to_string()),
         max_connections: 5,
+        connect_timeout_seconds: std::env::var("DATABASE_CONNECT_TIMEOUT_SECONDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3),
     };
 
     let connection_string = format!(
@@ -48,6 +53,7 @@ async fn main() {
 
     let pool = match PgPoolOptions::new()
         .max_connections(db_config.max_connections)
+        .acquire_timeout(Duration::from_secs(db_config.connect_timeout_seconds))
         .connect(&connection_string)
         .await
     {

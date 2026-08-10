@@ -25,6 +25,8 @@ pub struct DatabaseConfig {
     pub password: String,
     pub database: String,
     pub max_connections: u32,
+    #[serde(default = "default_database_connect_timeout_seconds")]
+    pub connect_timeout_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,6 +248,10 @@ fn default_interval_secs() -> u64 {
     60
 }
 
+fn default_database_connect_timeout_seconds() -> u64 {
+    3
+}
+
 impl Default for DataPullerConfig {
     fn default() -> Self {
         Self {
@@ -291,6 +297,7 @@ impl Default for AppConfig {
                 password: "quant_password".to_string(),
                 database: "quant_trading".to_string(),
                 max_connections: 50,
+                connect_timeout_seconds: default_database_connect_timeout_seconds(),
             },
             redis: RedisConfig {
                 host: "localhost".to_string(),
@@ -367,6 +374,10 @@ impl AppConfig {
         config.database.database = env_string("DATABASE_NAME", &config.database.database);
         config.database.max_connections =
             env_parse("DATABASE_MAX_CONNECTIONS", config.database.max_connections);
+        config.database.connect_timeout_seconds = env_parse(
+            "DATABASE_CONNECT_TIMEOUT_SECONDS",
+            config.database.connect_timeout_seconds,
+        );
 
         config.redis.host = env_string("REDIS_HOST", &config.redis.host);
         config.redis.port = env_parse("REDIS_PORT", config.redis.port);

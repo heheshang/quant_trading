@@ -353,21 +353,21 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires PostgreSQL integration environment"]
     async fn test_login_change_password_invalidates_old_token_with_real_db() {
         let db_config = DatabaseConfig {
-            host: std::env::var("DATABASE_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             port: std::env::var("DATABASE_PORT")
                 .unwrap_or_else(|_| "15432".to_string())
                 .parse::<u16>()
                 .unwrap_or(15432),
-            username: std::env::var("DATABASE_USERNAME")
-                .unwrap_or_else(|_| "quant".to_string()),
+            username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
             password: std::env::var("DATABASE_PASSWORD")
                 .unwrap_or_else(|_| "quant_password".to_string()),
             database: std::env::var("DATABASE_NAME")
                 .unwrap_or_else(|_| "quant_trading".to_string()),
             max_connections: 5,
+            connect_timeout_seconds: 5,
         };
 
         let postgres = PostgresClient::new(&db_config)

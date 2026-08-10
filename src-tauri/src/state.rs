@@ -32,7 +32,7 @@ pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
     pub alert_manager: Arc<AlertManager>,
     pub log_buffer: Arc<LogBuffer>,
-    pub pg_client: Option<PostgresClient>,
+    pub pg_client: Option<Arc<PostgresClient>>,
     pub redis_cache: Option<RedisCache>,
     pub okx_client: Arc<RwLock<Option<SharedClient>>>,
     pub okx_executor: Arc<RwLock<Option<OkxExecutor>>>,

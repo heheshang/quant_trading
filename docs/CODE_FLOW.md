@@ -123,3 +123,7 @@ OKX REST / WebSocket
   并触发 panic；本次改为禁用系统代理并设置超时。
 - Rust 单元测试不应依赖外部 PostgreSQL；连接类测试改为 `#[ignore]`，真实环境可显式运行。
 - 前端缺少统一 `test` script，且 Vitest setup 未提供稳定的 `localStorage` polyfill。
+- npm `@tauri-apps/api` / `@tauri-apps/cli` 已与 Rust `tauri 2.11.x` 对齐，避免
+  `tauri dev` 启动时版本不匹配。
+- PostgreSQL 连接池默认 30 秒超时改为可配置 `connect_timeout_seconds`，默认 3 秒；
+  连接池改为懒加载，数据库不可用时应用先启动，再在后台重试连接和迁移。
