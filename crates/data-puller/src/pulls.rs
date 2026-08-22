@@ -1,5 +1,6 @@
 //! 各类数据拉取后台任务。
 
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,11 +11,29 @@ use data_layer::market_data_repo::{
 };
 use exchange_okx::ClientInterface;
 use quant_common::config::{CandlePullConfig, IntervalConfig, TickerPullConfig};
+use quant_common::error::Result;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
 use super::{api_call_with_retry, parse_decimal, parse_timestamp, DataPuller};
+
+/// 拉取一批数据；失败时记录错误并返回 `None`（调用方 `continue`）。
+///
+/// 模板方法：统一“重试拉取 + 错误处理”的公共骨架，避免 6 个拉取循环重复该逻辑。
+async fn fetch_or_continue<T, F, Fut>(name: &str, operation: &str, fetch: F) -> Option<T>
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    match api_call_with_retry(operation, 4, fetch).await {
+        Ok(data) => Some(data),
+        Err(e) => {
+            error!("Failed to fetch {} after retries: {}", name, e);
+            None
+        }
+    }
+}
 
 impl DataPuller {
     /// Periodic candle pull loop for one symbol + bar combination.
@@ -34,22 +53,18 @@ impl DataPuller {
         loop {
             sleep(interval).await;
 
-            let candles =
-                match api_call_with_retry(&format!("get_candles/{}/{}", symbol, bar), 4, || async {
+            let Some(candles) = fetch_or_continue(
+                &format!("candles {}/{}", symbol, bar),
+                &format!("get_candles/{}/{}", symbol, bar),
+                || async {
                     let client = client_lock.read().await;
                     client.get_candles(&symbol, &bar, Some(config.limit)).await
-                })
-                .await
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        error!(
-                            "Failed to fetch candles for {} / {} after retries: {}",
-                            symbol, bar, e
-                        );
-                        continue;
-                    }
-                };
+                },
+            )
+            .await
+            else {
+                continue;
+            };
 
             let records: Vec<NewMarketDataRecord> = candles
                 .into_iter()
@@ -97,17 +112,17 @@ impl DataPuller {
         loop {
             sleep(interval).await;
 
-            let ticker = match api_call_with_retry(&format!("get_ticker/{}", symbol), 4, || async {
-                let client = client_lock.read().await;
-                client.get_ticker(&symbol).await
-            })
+            let Some(ticker) = fetch_or_continue(
+                &format!("ticker {}", symbol),
+                &format!("get_ticker/{}", symbol),
+                || async {
+                    let client = client_lock.read().await;
+                    client.get_ticker(&symbol).await
+                },
+            )
             .await
-            {
-                Ok(t) => t,
-                Err(e) => {
-                    error!("Failed to fetch ticker for {} after retries: {}", symbol, e);
-                    continue;
-                }
+            else {
+                continue;
             };
 
             let ts = match parse_timestamp(&ticker.ts) {
@@ -157,22 +172,18 @@ impl DataPuller {
         loop {
             sleep(interval).await;
 
-            let rate =
-                match api_call_with_retry(&format!("get_funding_rate/{}", symbol), 4, || async {
+            let Some(rate) = fetch_or_continue(
+                &format!("funding rate {}", symbol),
+                &format!("get_funding_rate/{}", symbol),
+                || async {
                     let client = client_lock.read().await;
                     client.get_funding_rate(&symbol).await
-                })
-                .await
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!(
-                            "Failed to fetch funding rate for {} after retries: {}",
-                            symbol, e
-                        );
-                        continue;
-                    }
-                };
+                },
+            )
+            .await
+            else {
+                continue;
+            };
 
             let record = NewFundingRate {
                 inst_id: symbol.clone(),
@@ -206,20 +217,17 @@ impl DataPuller {
         loop {
             sleep(interval).await;
 
-            let mp = match api_call_with_retry(&format!("get_mark_price/{}", symbol), 4, || async {
-                let client = client_lock.read().await;
-                client.get_mark_price(&symbol).await
-            })
+            let Some(mp) = fetch_or_continue(
+                &format!("mark price {}", symbol),
+                &format!("get_mark_price/{}", symbol),
+                || async {
+                    let client = client_lock.read().await;
+                    client.get_mark_price(&symbol).await
+                },
+            )
             .await
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    error!(
-                        "Failed to fetch mark price for {} after retries: {}",
-                        symbol, e
-                    );
-                    continue;
-                }
+            else {
+                continue;
             };
 
             let record = NewMarkPrice {
@@ -252,17 +260,14 @@ impl DataPuller {
         loop {
             sleep(interval).await;
 
-            let balances = match api_call_with_retry("get_account_balance", 4, || async {
-                let client = client_lock.read().await;
-                client.get_account_balance(None).await
-            })
-            .await
-            {
-                Ok(b) => b,
-                Err(e) => {
-                    error!("Failed to fetch account balance after retries: {}", e);
-                    continue;
-                }
+            let Some(balances) =
+                fetch_or_continue("account balance", "get_account_balance", || async {
+                    let client = client_lock.read().await;
+                    client.get_account_balance(None).await
+                })
+                .await
+            else {
+                continue;
             };
 
             let ts = Utc::now();
@@ -300,17 +305,13 @@ impl DataPuller {
         loop {
             sleep(interval).await;
 
-            let positions = match api_call_with_retry("get_positions", 4, || async {
+            let Some(positions) = fetch_or_continue("positions", "get_positions", || async {
                 let client = client_lock.read().await;
                 client.get_positions(None).await
             })
             .await
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Failed to fetch positions after retries: {}", e);
-                    continue;
-                }
+            else {
+                continue;
             };
 
             let ts = Utc::now();
