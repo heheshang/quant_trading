@@ -27,28 +27,19 @@ impl MeanReversionStrategy {
     #[instrument]
     pub fn new() -> Self {
         Self {
-            params: StrategyParams {
-                strategy_id: "mean_reversion_001".to_string(),
-                strategy_name: "Mean Reversion Strategy".to_string(),
-                strategy_type: quant_common::types::StrategyType::MeanReversion,
-                params: serde_json::json!({
-                    "lookback_period": 20,
-                    "entry_threshold": 2.0,
-                    "exit_threshold": 0.5,
-                }),
-                enabled: true,
-                max_position: Decimal::new(100000, 0),
-                max_daily_loss: Decimal::new(5000, 0),
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-                status: Default::default(),
-                description: None,
-                tags: vec![],
-                symbols: vec![],
-                instance_label: None,
-                user_id: 0,
-                version: 0,
-            },
+            params: StrategyParams::builder(
+                "mean_reversion_001",
+                "Mean Reversion Strategy",
+                quant_common::types::StrategyType::MeanReversion,
+            )
+            .params(serde_json::json!({
+                "lookback_period": 20,
+                "entry_threshold": 2.0,
+                "exit_threshold": 0.5,
+            }))
+            .max_position(Decimal::new(100000, 0))
+            .max_daily_loss(Decimal::new(5000, 0))
+            .build(),
             lookback_period: 20,
             entry_threshold: DEFAULT_ENTRY_THRESHOLD,
             exit_threshold: 0.5,

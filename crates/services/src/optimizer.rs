@@ -69,24 +69,15 @@ impl SearchAlgorithm for GridSearch {
         let parsed_type = parse_strategy_type(strategy_type)?;
         let mut strategies = Vec::new();
         for (i, params) in param_grid.iter().enumerate() {
-            let sp = StrategyParams {
-                strategy_id: format!("opt-{}-{}", strategy_type, i),
-                strategy_name: format!("{}-opt-{}", strategy_type, i),
-                strategy_type: parsed_type.clone(),
-                params: params.clone(),
-                enabled: true,
-                max_position: initial_capital,
-                max_daily_loss: initial_capital * Decimal::from_f64(0.1).unwrap_or(Decimal::ZERO),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-                status: Default::default(),
-                description: None,
-                tags: vec![],
-                symbols: vec![],
-                instance_label: None,
-                user_id: 0,
-                version: 0,
-            };
+            let sp = StrategyParams::builder(
+                format!("opt-{}-{}", strategy_type, i),
+                format!("{}-opt-{}", strategy_type, i),
+                parsed_type.clone(),
+            )
+            .params(params.clone())
+            .max_position(initial_capital)
+            .max_daily_loss(initial_capital * Decimal::from_f64(0.1).unwrap_or(Decimal::ZERO))
+            .build();
 
             let strategy = match registry.create(strategy_type, sp.clone()).await {
                 Ok(s) => s,

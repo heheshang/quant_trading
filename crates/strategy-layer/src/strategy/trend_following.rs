@@ -27,28 +27,19 @@ pub struct TrendFollowingStrategy {
 impl TrendFollowingStrategy {
     pub fn new() -> Self {
         Self {
-            params: StrategyParams {
-                strategy_id: "trend_following_001".to_string(),
-                strategy_name: "Trend Following Strategy".to_string(),
-                strategy_type: quant_common::types::StrategyType::TrendFollowing,
-                params: serde_json::json!({
-                    "short_period": DEFAULT_SHORT_PERIOD,
-                    "long_period": DEFAULT_LONG_PERIOD,
-                    "signal_period": DEFAULT_SIGNAL_PERIOD,
-                }),
-                enabled: true,
-                max_position: Decimal::new(100000, 0),
-                max_daily_loss: Decimal::new(5000, 0),
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-                status: Default::default(),
-                description: None,
-                tags: vec![],
-                symbols: vec![],
-                instance_label: None,
-                user_id: 0,
-                version: 0,
-            },
+            params: StrategyParams::builder(
+                "trend_following_001",
+                "Trend Following Strategy",
+                quant_common::types::StrategyType::TrendFollowing,
+            )
+            .params(serde_json::json!({
+                "short_period": DEFAULT_SHORT_PERIOD,
+                "long_period": DEFAULT_LONG_PERIOD,
+                "signal_period": DEFAULT_SIGNAL_PERIOD,
+            }))
+            .max_position(Decimal::new(100000, 0))
+            .max_daily_loss(Decimal::new(5000, 0))
+            .build(),
             short_period: DEFAULT_SHORT_PERIOD,
             long_period: DEFAULT_LONG_PERIOD,
             signal_period: DEFAULT_SIGNAL_PERIOD,
