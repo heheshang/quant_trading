@@ -181,7 +181,7 @@ function handleRefresh() {
 .section-title {
   font-size: 14px;
   font-weight: 600;
-  color: #606266;
+  color: var(--color-text-regular);
   margin: 0 0 8px 0;
 }
 
@@ -189,7 +189,7 @@ function handleRefresh() {
   padding: 12px;
   background-color: #f5f7fa;
   border-radius: 4px;
-  color: #606266;
+  color: var(--color-text-regular);
   line-height: 1.6;
   white-space: pre-wrap;
   margin: 0;
@@ -209,7 +209,7 @@ function handleRefresh() {
 }
 
 .empty-hint {
-  color: #909399;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
@@ -229,12 +229,12 @@ function handleRefresh() {
 }
 
 .param-key {
-  color: #606266;
+  color: var(--color-text-regular);
   font-weight: 500;
 }
 
 .param-val {
-  color: #303133;
+  color: var(--color-text-primary);
   font-family: 'SF Mono', Consolas, monospace;
 }
 

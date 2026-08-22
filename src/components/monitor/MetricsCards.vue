@@ -59,7 +59,7 @@
       <el-col :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
-            <div class="metric-icon" :style="{ background: '#909399' }">
+            <div class="metric-icon" :style="{ background: 'var(--color-text-secondary)' }">
               <el-icon><Coin /></el-icon>
             </div>
             <div class="metric-info">
@@ -146,13 +146,13 @@ const pnlPrefix = computed(() => (pnlValue.value > 0 ? '+' : ''))
 }
 .metric-label {
   font-size: 14px;
-  color: #999;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 .metric-value {
   font-size: 24px;
   font-weight: bold;
-  color: #333;
+  color: var(--color-text-primary);
 }
 .metric-value.positive {
   color: #67C23A;

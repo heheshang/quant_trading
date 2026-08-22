@@ -146,12 +146,12 @@ onMounted(async () => {
 
 .login-header h2 {
   font-size: 24px;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 10px;
 }
 
 .login-header p {
-  color: #666;
+  color: var(--color-text-regular);
   font-size: 14px;
 }
 
@@ -165,7 +165,7 @@ onMounted(async () => {
 
 .login-footer {
   text-align: center;
-  color: #999;
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 </style>

@@ -104,14 +104,14 @@ function signClass(value: number): string {
 
 .stat-label {
   font-size: 14px;
-  color: #999;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 
 .stat-value {
   font-size: 20px;
   font-weight: bold;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .stat-value.positive {

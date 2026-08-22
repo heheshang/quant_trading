@@ -78,7 +78,7 @@ defineExpose({ showAll })
   align-items: center;
   justify-content: center;
   padding: 20px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 .announcement-list {
   list-style: none;
@@ -93,7 +93,7 @@ defineExpose({ showAll })
   white-space: nowrap;
 }
 .announcement-list a {
-  color: #606266;
+  color: var(--color-text-regular);
   text-decoration: none;
 }
 .announcement-list a:hover {

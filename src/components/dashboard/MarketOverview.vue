@@ -115,7 +115,7 @@ defineExpose({
 
 .market-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .market-value {
@@ -138,7 +138,7 @@ defineExpose({
   justify-content: center;
   padding: 40px 0;
   gap: 12px;
-  color: #999;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 </style>

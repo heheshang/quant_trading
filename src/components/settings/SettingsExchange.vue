@@ -97,13 +97,13 @@ defineExpose({
 }
 
 .okx-status-field .field-label {
-  color: #909399;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 
 .okx-status-placeholder {
   text-align: center;
   padding: 40px 20px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 </style>

@@ -170,5 +170,5 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
 .section { margin-top: 16px; }
 .mt { margin-top: 12px; }
 .ws-controls { display: flex; gap: 8px; margin-bottom: 12px; }
-.hint { color: #909399; padding: 8px 0; }
+.hint { color: var(--color-text-secondary); padding: 8px 0; }
 </style>

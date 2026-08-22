@@ -316,21 +316,21 @@ function handleClosed() {
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin-bottom: 16px;
 }
 .section-header .el-icon { font-size: 18px; color: #409eff; }
 .field-hint {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   line-height: 1.4;
 }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 10px; }
 :deep(.el-select .el-select-dropdown__item .option-desc) {
   display: block;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   white-space: normal;
   line-height: 1.3;
   margin-top: 2px;

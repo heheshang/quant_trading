@@ -68,7 +68,7 @@ function initChart() {
         elements: [{
           type: 'text',
           key: 'no-data',
-          style: { text: '暂无资产历史', fontSize: 16, textAlign: 'center', fill: '#999' },
+          style: { text: '暂无资产历史', fontSize: 16, textAlign: 'center', fill: 'var(--color-text-secondary)' },
           position: ['50%', '50%'],
         }],
       },

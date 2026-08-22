@@ -105,7 +105,7 @@ function pnlColor(value: number): string {
 
 .pnl-label {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .pnl-value {

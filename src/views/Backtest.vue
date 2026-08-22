@@ -261,6 +261,6 @@ defineExpose({
 
 .loading-text {
   margin-top: 20px;
-  color: #999;
+  color: var(--color-text-secondary);
 }
 </style>

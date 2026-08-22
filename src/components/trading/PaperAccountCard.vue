@@ -68,14 +68,14 @@ const { formatCurrency } = useFormatting()
 
 .stat-label {
   font-size: 14px;
-  color: #999;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 
 .stat-value {
   font-size: 18px;
   font-weight: bold;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .positive {

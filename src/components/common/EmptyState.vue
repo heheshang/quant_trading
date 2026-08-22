@@ -60,13 +60,13 @@ const resolvedIcon = computed(() => props.icon || typeIcons[props.type] || Folde
   margin: 0 0 8px;
   font-size: 18px;
   font-weight: 700;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .empty-state-desc {
   margin: 0 0 24px;
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 

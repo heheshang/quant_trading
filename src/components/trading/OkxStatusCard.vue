@@ -77,6 +77,6 @@ defineEmits<{
 }
 
 .okx-status-item .label {
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 </style>

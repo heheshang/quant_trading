@@ -79,7 +79,7 @@ const { status, retryIn, startListening } = useWebSocketStatus()
 }
 
 .status-text {
-  color: #606266;
+  color: var(--color-text-regular);
   white-space: nowrap;
 }
 </style>

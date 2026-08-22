@@ -86,6 +86,9 @@
               </el-breadcrumb>
             </div>
             <div class="user-info">
+              <el-button class="theme-toggle" text circle @click="toggleTheme" :title="theme === 'dark' ? '切换亮色' : '切换暗色'">
+                <el-icon><component :is="theme === 'dark' ? Sunny : Moon" /></el-icon>
+              </el-button>
               <span class="user-avatar">{{ auth.username?.charAt(0)?.toUpperCase() || 'U' }}</span>
               <span class="user-name">{{ auth.username }}</span>
               <el-button type="text" class="logout-btn" @click="logout">退出</el-button>
@@ -110,6 +113,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { Moon, Sunny } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
@@ -152,6 +156,20 @@ const prefetch = (path: string) => {
 // keep their data fresh via internal polling/WebSocket (no stale data).
 // Component names come from the SFC `<script setup>` filename.
 const keepAliveInclude = ['Dashboard', 'Strategy'];
+
+// ── Theme (light / dark), persisted — Element Plus dark css-vars handle ep components. ──
+const theme = ref<'light' | 'dark'>(
+  localStorage.getItem('theme') === 'dark' ? 'dark' : 'light',
+);
+function applyTheme(t: 'light' | 'dark') {
+  document.documentElement.classList.toggle('dark', t === 'dark');
+  localStorage.setItem('theme', t);
+}
+applyTheme(theme.value);
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark';
+  applyTheme(theme.value);
+}
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
@@ -277,6 +295,11 @@ const logout = () => {
   gap: var(--space-sm);
 }
 
+.theme-toggle {
+  color: var(--color-text-secondary);
+  margin-right: var(--space-xs);
+}
+
 .user-avatar {
   width: 32px;
   height: 32px;
@@ -398,12 +421,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c0c4cc;
+  background: var(--color-text-placeholder);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #909399;
+  background: var(--color-text-secondary);
 }
 
 /* ── Global component polish (theme-aware) ── */

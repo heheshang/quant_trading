@@ -92,7 +92,7 @@
         </el-card>
       </el-col>
     </el-row>
-    <p v-else style="text-align:center;color:#999;">请选择两条记录进行对比</p>
+    <p v-else style="text-align:center;color:var(--color-text-secondary);">请选择两条记录进行对比</p>
     <template #footer>
       <el-button @click="compareDialogVisible = false">关闭</el-button>
     </template>
@@ -236,7 +236,7 @@ function signClass(value: number | null | undefined): string {
 }
 
 .compare-row .cl {
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 :deep(.positive) {

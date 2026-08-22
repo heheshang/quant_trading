@@ -69,14 +69,14 @@ function buildBaseOption(): echarts.EChartsOption {
     },
     xAxis: {
       type: 'category',
-      axisLine: { lineStyle: { color: '#999' } },
-      axisLabel: { color: '#666' },
+      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
+      axisLabel: { color: 'var(--color-text-regular)' },
     },
     yAxis: {
       type: 'value',
       scale: true,
-      axisLine: { lineStyle: { color: '#999' } },
-      axisLabel: { color: '#666' },
+      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
+      axisLabel: { color: 'var(--color-text-regular)' },
       splitLine: { lineStyle: { color: '#eee' } },
     },
     dataZoom: [
@@ -255,7 +255,7 @@ onUnmounted(() => {
 .chart-title {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .chart-empty {
@@ -263,7 +263,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #999;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 

@@ -105,7 +105,7 @@ function onCancel() {
 .confirm-dialog-message {
   font-size: 14px;
   line-height: 1.5;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .dialog-footer {

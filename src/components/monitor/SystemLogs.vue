@@ -89,7 +89,7 @@ function formatDate(dateInput: string | { timestamp: string }): string {
   border-bottom: 1px solid #eee;
 }
 .log-time {
-  color: #999;
+  color: var(--color-text-secondary);
   margin-right: 10px;
 }
 .log-level {
@@ -98,7 +98,7 @@ function formatDate(dateInput: string | { timestamp: string }): string {
 }
 .log-module {
   margin-right: 10px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 .log-info {
   color: #409EFF;
@@ -110,11 +110,11 @@ function formatDate(dateInput: string | { timestamp: string }): string {
   color: #F56C6C;
 }
 .log-message {
-  color: #333;
+  color: var(--color-text-primary);
 }
 .no-logs {
   text-align: center;
   padding: 20px;
-  color: #999;
+  color: var(--color-text-secondary);
 }
 </style>

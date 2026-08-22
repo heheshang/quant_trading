@@ -68,14 +68,14 @@ function buildOption(data: WsCandle[]): echarts.EChartsOption {
     xAxis: {
       type: 'category',
       data: times,
-      axisLine: { lineStyle: { color: '#999' } },
-      axisLabel: { color: '#666' },
+      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
+      axisLabel: { color: 'var(--color-text-regular)' },
     },
     yAxis: {
       type: 'value',
       scale: true,
-      axisLine: { lineStyle: { color: '#999' } },
-      axisLabel: { color: '#666' },
+      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
+      axisLabel: { color: 'var(--color-text-regular)' },
       splitLine: { lineStyle: { color: '#eee' } },
     },
     dataZoom: [
@@ -162,7 +162,7 @@ onUnmounted(() => {
 <template>
   <div>
     <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
-      <span style="font-size: 14px; color: #666;">Period:</span>
+      <span style="font-size: 14px; color: var(--color-text-regular);">Period:</span>
       <el-button
         v-for="p in periods"
         :key="p.value"
@@ -173,7 +173,7 @@ onUnmounted(() => {
         {{ p.label }}
       </el-button>
     </div>
-    <div v-if="chartData.length === 0" style="height: 400px; display: flex; align-items: center; justify-content: center; color: #999;">
+    <div v-if="chartData.length === 0" style="height: 400px; display: flex; align-items: center; justify-content: center; color: var(--color-text-secondary);">
       Waiting for data...
     </div>
     <div v-show="chartData.length > 0" ref="chartRef" style="height: 400px;"></div>

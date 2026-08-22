@@ -53,7 +53,7 @@ function buildOption(
       axisPointer: {
         type: 'cross',
         crossStyle: {
-          color: '#999',
+          color: 'var(--color-text-secondary)',
         },
       },
       formatter: (params: unknown) => {
@@ -84,8 +84,8 @@ function buildOption(
       name: 'Price',
       nameLocation: 'middle',
       nameGap: 25,
-      axisLine: { lineStyle: { color: '#999' } },
-      axisLabel: { color: '#666' },
+      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
+      axisLabel: { color: 'var(--color-text-regular)' },
       splitLine: { lineStyle: { color: '#eee' } },
     },
     yAxis: {
@@ -93,8 +93,8 @@ function buildOption(
       name: 'Cumulative Quantity',
       nameLocation: 'middle',
       nameGap: 45,
-      axisLine: { lineStyle: { color: '#999' } },
-      axisLabel: { color: '#666' },
+      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
+      axisLabel: { color: 'var(--color-text-regular)' },
       splitLine: { lineStyle: { color: '#eee' } },
     },
     series: [
@@ -209,12 +209,12 @@ onUnmounted(() => {
 .title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .symbol {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .chart-container {

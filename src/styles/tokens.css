@@ -80,3 +80,30 @@
   --chart-teal: #1abc9c;
   --chart-gray: #95a5a6;
 }
+
+/* ── Dark Theme (html.dark, driven by Element Plus dark variables) ── */
+html.dark {
+  --color-bg-page: #141414;
+  --color-bg-card: #1d1e1f;
+  --color-bg-white: #1d1e1f;
+  --color-bg-sidebar: #17181a;
+
+  --color-text-primary: #e5eaf3;
+  --color-text-regular: #cfd3dc;
+  --color-text-secondary: #a3a6ad;
+  --color-text-placeholder: #6b6e76;
+  --color-text-sidebar: #bfcbd9;
+  --color-text-sidebar-active: #409eff;
+
+  --color-border: #4c4d4f;
+  --color-border-light: #363637;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+html.dark body {
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+}

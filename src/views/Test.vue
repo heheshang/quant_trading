@@ -1,7 +1,7 @@
 <template>
   <div class="test-page">
     <h2>测试页面</h2>
-    <p style="color:#666;margin-bottom:20px;">系统功能测试与状态验证</p>
+    <p style="color:var(--color-text-regular);margin-bottom:20px;">系统功能测试与状态验证</p>
 
     <el-row :gutter="20">
       <el-col :span="6">

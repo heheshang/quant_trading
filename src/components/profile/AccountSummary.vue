@@ -92,13 +92,13 @@ function formatDate(date: string): string {
 
 .summary-label {
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-regular);
 }
 
 .summary-value {
   font-size: 16px;
   font-weight: bold;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .summary-value.positive {

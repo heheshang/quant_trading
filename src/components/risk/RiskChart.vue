@@ -26,7 +26,7 @@ function initRiskChart() {
       text: '暂无历史数据',
       left: 'center',
       top: 'center',
-      textStyle: { color: '#909399', fontSize: 14, fontWeight: 'normal' },
+      textStyle: { color: 'var(--color-text-secondary)', fontSize: 14, fontWeight: 'normal' },
     },
     xAxis: { type: 'category', data: [] },
     yAxis: {

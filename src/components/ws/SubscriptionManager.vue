@@ -148,12 +148,12 @@ function handleUnsubscribe(key: string) {
 .sub-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .empty-state {
   text-align: center;
-  color: #c0c4cc;
+  color: var(--color-text-placeholder);
   font-size: 13px;
   padding: 32px 0;
 }
