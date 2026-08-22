@@ -3,11 +3,74 @@
     <!-- Route navigation progress bar -->
     <div v-if="navigationLoading" class="route-progress"></div>
     <el-container class="layout-container">
+      <!-- Fixed left sidebar, collapsible to an icon rail -->
+      <el-aside :width="sidebarWidth" class="sidebar" v-if="auth.isAuthenticated">
+        <div class="logo">
+          <span class="logo-mark">Q</span>
+          <div class="logo-text" v-show="!isCollapse">
+            <span class="logo-title">量化交易系统</span>
+            <span class="logo-sub">Quant Trading</span>
+          </div>
+        </div>
+        <el-menu
+          :default-active="$route.path"
+          :collapse="isCollapse"
+          :collapse-transition="false"
+          router
+          class="sidebar-menu"
+          background-color="var(--color-bg-sidebar)"
+          text-color="var(--color-text-sidebar)"
+          active-text-color="var(--color-text-sidebar-active)"
+        >
+          <el-menu-item index="/dashboard" @mouseenter="prefetch('/dashboard')">
+            <el-icon><DataLine /></el-icon>
+            <template #title><span>仪表盘</span></template>
+          </el-menu-item>
+          <el-menu-item index="/strategy" @mouseenter="prefetch('/strategy')">
+            <el-icon><Operation /></el-icon>
+            <template #title><span>策略管理</span></template>
+          </el-menu-item>
+          <el-menu-item index="/backtest" @mouseenter="prefetch('/backtest')">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title><span>回测系统</span></template>
+          </el-menu-item>
+          <el-menu-item index="/trading" @mouseenter="prefetch('/trading')">
+            <el-icon><Sell /></el-icon>
+            <template #title><span>交易执行</span></template>
+          </el-menu-item>
+          <el-menu-item index="/risk" @mouseenter="prefetch('/risk')">
+            <el-icon><Warning /></el-icon>
+            <template #title><span>风险管理</span></template>
+          </el-menu-item>
+          <el-menu-item index="/monitor" @mouseenter="prefetch('/monitor')">
+            <el-icon><Monitor /></el-icon>
+            <template #title><span>实时监控</span></template>
+          </el-menu-item>
+          <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
+            <el-icon><Setting /></el-icon>
+            <template #title><span>系统设置</span></template>
+          </el-menu-item>
+          <el-menu-item index="/profile" @mouseenter="prefetch('/profile')">
+            <el-icon><User /></el-icon>
+            <template #title><span>个人账户</span></template>
+          </el-menu-item>
+          <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
+            <el-icon><Sell /></el-icon>
+            <template #title><span>币安交易</span></template>
+          </el-menu-item>
+          <el-menu-item index="/test" @mouseenter="prefetch('/test')">
+            <el-icon><Setting /></el-icon>
+            <template #title><span>测试页面</span></template>
+          </el-menu-item>
+        </el-menu>
+      </el-aside>
+
+        <el-container>
         <!-- Show header only when authenticated -->
         <el-header class="header" v-if="auth.isAuthenticated">
           <div class="header-content">
             <div class="header-left">
-              <el-button text circle class="menu-toggle" @click="drawerVisible = true">
+              <el-button text circle class="menu-toggle" @click="isCollapse = !isCollapse">
                 <el-icon><MenuIcon /></el-icon>
               </el-button>
               <div class="header-titles">
@@ -39,75 +102,8 @@
             </transition>
           </router-view>
         </el-main>
+      </el-container>
     </el-container>
-
-    <!-- Slide-in navigation drawer (replaces the fixed sidebar) -->
-    <el-drawer
-      v-if="auth.isAuthenticated"
-      v-model="drawerVisible"
-      class="nav-drawer"
-      direction="ltr"
-      size="200px"
-      :with-header="false"
-    >
-      <div class="logo">
-        <span class="logo-mark">Q</span>
-        <div class="logo-text">
-          <span class="logo-title">量化交易系统</span>
-          <span class="logo-sub">Quant Trading</span>
-        </div>
-      </div>
-      <el-menu
-        :default-active="$route.path"
-        router
-        class="sidebar-menu"
-        background-color="var(--color-bg-sidebar)"
-        text-color="var(--color-text-sidebar)"
-        active-text-color="var(--color-text-sidebar-active)"
-        @select="drawerVisible = false"
-      >
-        <el-menu-item index="/dashboard" @mouseenter="prefetch('/dashboard')">
-          <el-icon><DataLine /></el-icon>
-          <span>仪表盘</span>
-        </el-menu-item>
-        <el-menu-item index="/strategy" @mouseenter="prefetch('/strategy')">
-          <el-icon><Operation /></el-icon>
-          <span>策略管理</span>
-        </el-menu-item>
-        <el-menu-item index="/backtest" @mouseenter="prefetch('/backtest')">
-          <el-icon><TrendCharts /></el-icon>
-          <span>回测系统</span>
-        </el-menu-item>
-        <el-menu-item index="/trading" @mouseenter="prefetch('/trading')">
-          <el-icon><Sell /></el-icon>
-          <span>交易执行</span>
-        </el-menu-item>
-        <el-menu-item index="/risk" @mouseenter="prefetch('/risk')">
-          <el-icon><Warning /></el-icon>
-          <span>风险管理</span>
-        </el-menu-item>
-        <el-menu-item index="/monitor" @mouseenter="prefetch('/monitor')">
-          <el-icon><Monitor /></el-icon>
-          <span>实时监控</span>
-        </el-menu-item>
-        <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
-        </el-menu-item>
-        <el-menu-item index="/profile" @mouseenter="prefetch('/profile')">
-          <el-icon><User /></el-icon>
-          <span>个人账户</span>
-        </el-menu-item>
-        <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
-          <el-icon><Sell /></el-icon>
-          <span>币安交易</span>
-        </el-menu-item>
-        <el-menu-item index="/test" @mouseenter="prefetch('/test')">
-          <el-icon><Setting /></el-icon>
-          <span>测试页面</span>
-        </el-menu-item>
-      </el-menu>
-    </el-drawer>
   </div>
 </template>
 
@@ -121,8 +117,9 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-// Nav drawer visibility (the left sidebar is now a slide-in drawer).
-const drawerVisible = ref(false);
+// Fixed left sidebar that can collapse to an icon rail (stays on the left).
+const isCollapse = ref(false);
+const sidebarWidth = computed(() => (isCollapse.value ? '64px' : '200px'));
 
 // Route-level loading indicator: show a top progress bar while the target
 // lazy chunk resolves, so slow first-loads feel responsive.
@@ -222,17 +219,21 @@ const logout = () => {
   height: 100vh;
 }
 
-.nav-drawer :deep(.el-drawer__body) {
+.sidebar {
   background: var(--color-bg-sidebar);
-  padding: 0;
-  display: flex;
-  flex-direction: column;
+  height: 100%;
+  transition: width var(--transition-normal);
+  overflow: hidden;
 }
 
 .sidebar-menu {
   border-right: none;
-  flex: 1;
+  height: calc(100% - var(--logo-height));
   overflow-y: auto;
+}
+
+.sidebar-menu:not(.el-menu--collapse) {
+  width: 200px;
 }
 
 .menu-toggle {
@@ -248,6 +249,7 @@ const logout = () => {
   padding: 0 var(--space-md);
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
 }
 
 .logo-mark {
