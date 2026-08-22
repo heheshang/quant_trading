@@ -7,26 +7,9 @@ use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
-/// WebSocket 消息类型
-#[derive(Debug, Clone)]
-pub enum WsMessage {
-    Ticker(serde_json::Value),
-    Trades(serde_json::Value),
-    OrderBook(serde_json::Value),
-    Candle(serde_json::Value),
-    Account(serde_json::Value),
-    Orders(serde_json::Value),
-    Positions(serde_json::Value),
-    ConnectionStatus(String), // "connecting", "connected", "disconnected"
-    Error(String),
-}
-
-/// 内部 WS 命令：从外部发送给连接循环
-#[derive(Debug, Clone)]
-enum WsCommand {
-    Subscribe { channel: String, inst_id: String },
-    Unsubscribe { channel: String, inst_id: String },
-}
+mod message;
+pub use message::WsMessage;
+use message::{handle_ws_message, WsCommand};
 
 /// OKX WebSocket 客户端
 pub struct OkxWebSocket {
@@ -147,73 +130,6 @@ impl OkxWebSocket {
         *rx.borrow() || rx.has_changed().is_err()
     }
 
-    /// 处理单条 WS 消息并返回是否应该断开
-    async fn handle_ws_message(
-        message: std::result::Result<Message, tokio_tungstenite::tungstenite::Error>,
-        message_tx: &mpsc::UnboundedSender<WsMessage>,
-    ) -> bool {
-        match message {
-            Ok(Message::Text(text)) => {
-                debug!("Received message: {}", text);
-
-                match serde_json::from_str::<OkxWsMessage>(&text) {
-                    Ok(msg) => {
-                        if let Some(ref event) = msg.event {
-                            match event.as_str() {
-                                "subscribe" => {
-                                    info!("Subscription confirmed");
-                                }
-                                "error" => {
-                                    let msg_clone = format!("{:?}", msg);
-                                    error!("Subscription error: {}", msg_clone);
-                                    let _ = message_tx
-                                        .send(WsMessage::Error(msg.msg.unwrap_or_default()));
-                                }
-                                _ => {}
-                            }
-                        } else if let Some(arg) = &msg.arg {
-                            if let Some(data) = msg.data {
-                                let ws_msg = if arg.channel.starts_with("tickers") {
-                                    WsMessage::Ticker(data)
-                                } else if arg.channel.starts_with("trades") {
-                                    WsMessage::Trades(data)
-                                } else if arg.channel.starts_with("books") {
-                                    WsMessage::OrderBook(data)
-                                } else if arg.channel.starts_with("candle") {
-                                    WsMessage::Candle(data)
-                                } else {
-                                    return false;
-                                };
-                                let _ = message_tx.send(ws_msg);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse message: {}, text: {}", e, text);
-                    }
-                }
-                false // no disconnect
-            }
-            Ok(Message::Close(_)) => {
-                warn!("WebSocket disconnected");
-                true // disconnect
-            }
-            Ok(Message::Ping(_)) => {
-                // OKX 发送 ping, 自动回复 pong 由 tungstenite 处理
-                false
-            }
-            Ok(Message::Pong(_)) => {
-                debug!("Received pong");
-                false
-            }
-            Err(e) => {
-                error!("WebSocket error: {}", e);
-                true // disconnect
-            }
-            _ => false,
-        }
-    }
-
     /// 启动 WebSocket 连接（含自动重连 + broadcast 订阅信道）
     pub async fn start(&self) -> Result<()> {
         let url = self.environment.ws_public_url().to_string();
@@ -265,7 +181,7 @@ impl OkxWebSocket {
                                 msg_result = read.next() => {
                                     match msg_result {
                                         Some(msg) => {
-                                            let should_disconnect = Self::handle_ws_message(
+                                            let should_disconnect = handle_ws_message(
                                                 msg, &message_tx,
                                             ).await;
                                             if should_disconnect {
