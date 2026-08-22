@@ -51,6 +51,19 @@ vi.mock('@/stores/strategy', () => ({
   }),
 }))
 
+vi.mock('@/stores/strategyLifecycle', () => ({
+  useStrategyLifecycleStore: () => ({
+    error: {},
+    startStrategy: vi.fn(),
+    stopStrategy: vi.fn(),
+    pauseStrategy: vi.fn(),
+    resumeStrategy: vi.fn(),
+    deployStrategy: vi.fn(),
+    archiveStrategy: vi.fn(),
+    toggleStrategy: vi.fn(),
+  }),
+}))
+
 const mockElMessage = vi.fn()
 vi.mock('element-plus', () => ({
   ElMessage: { success: mockElMessage, error: vi.fn() },

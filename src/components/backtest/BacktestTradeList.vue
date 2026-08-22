@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { useFormat } from '@/composables/useFormat'
+import { useFormatting } from '@/composables/useFormatting'
 import EmptyState from '@/components/common/EmptyState.vue'
 
 export interface TradeRecord {
@@ -43,7 +43,7 @@ defineProps<{
   records: TradeRecord[]
 }>()
 
-const { formatCurrency } = useFormat()
+const { formatCurrency } = useFormatting()
 </script>
 
 <style scoped>

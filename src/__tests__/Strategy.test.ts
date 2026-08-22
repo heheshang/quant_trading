@@ -161,7 +161,8 @@ describe('Strategy.vue - 按钮测试', () => {
     wrapper.vm.toggleStrategyStatus('s1', false)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.store.toggleStrategy).toHaveBeenCalledWith('s1', false)
+    // The real lifecycle store invokes the IPC command `toggle_strategy`.
+    expect(mockInvoke).toHaveBeenCalledWith('toggle_strategy', { strategyId: 's1', enabled: false })
   }, 30000)
 
   it('生命周期操作 - deploy/start/stop/pause/resume/archive', async () => {
@@ -169,22 +170,22 @@ describe('Strategy.vue - 按钮测试', () => {
     mockInvoke.mockClear()
 
     await wrapper.vm.handleLifecycle('deploy', mockStrategies[0])
-    expect(wrapper.vm.store.deployStrategy).toHaveBeenCalledWith('s1')
+    expect(mockInvoke).toHaveBeenCalledWith('deploy_strategy', { strategyId: 's1' })
 
     await wrapper.vm.handleLifecycle('start', mockStrategies[0])
-    expect(wrapper.vm.store.startStrategy).toHaveBeenCalledWith('s1')
+    expect(mockInvoke).toHaveBeenCalledWith('start_strategy', { strategyId: 's1' })
 
     await wrapper.vm.handleLifecycle('stop', mockStrategies[0])
-    expect(wrapper.vm.store.stopStrategy).toHaveBeenCalledWith('s1')
+    expect(mockInvoke).toHaveBeenCalledWith('stop_strategy', { strategyId: 's1' })
 
     await wrapper.vm.handleLifecycle('pause', mockStrategies[0])
-    expect(wrapper.vm.store.pauseStrategy).toHaveBeenCalledWith('s1')
+    expect(mockInvoke).toHaveBeenCalledWith('pause_strategy', { strategyId: 's1' })
 
     await wrapper.vm.handleLifecycle('resume', mockStrategies[0])
-    expect(wrapper.vm.store.resumeStrategy).toHaveBeenCalledWith('s1')
+    expect(mockInvoke).toHaveBeenCalledWith('resume_strategy', { strategyId: 's1' })
 
     await wrapper.vm.handleLifecycle('archive', mockStrategies[0])
-    expect(wrapper.vm.store.archiveStrategy).toHaveBeenCalledWith('s1')
+    expect(mockInvoke).toHaveBeenCalledWith('archive_strategy', { strategyId: 's1' })
   }, 30000)
 
   it('回测按钮 - 打开回测对话框', async () => {

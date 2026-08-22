@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import type { AppConfig } from './types'
 
 /**
@@ -8,9 +8,9 @@ import type { AppConfig } from './types'
  */
 
 export function getConfig(): Promise<AppConfig> {
-  return invoke<AppConfig>('get_config')
+  return call<AppConfig>('get_config')
 }
 
 export function updateConfig(config: AppConfig): Promise<boolean> {
-  return invoke<boolean>('update_config', { config })
+  return call<boolean>('update_config', { config })
 }

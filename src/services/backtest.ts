@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import type { BacktestResult, BacktestResultSummaryRow } from './types'
 
 /**
@@ -16,7 +16,7 @@ export function runBacktest(
   slippage: number,
   symbols: string[],
 ): Promise<BacktestResult> {
-  return invoke<BacktestResult>('run_backtest', {
+  return call<BacktestResult>('run_backtest', {
     strategyId: strategy_id,
     startDate: start_date,
     endDate: end_date,
@@ -31,13 +31,13 @@ export function getBacktestResults(
   limit: number,
   offset: number,
 ): Promise<BacktestResultSummaryRow[]> {
-  return invoke<BacktestResultSummaryRow[]>('get_backtest_results', { limit, offset })
+  return call<BacktestResultSummaryRow[]>('get_backtest_results', { limit, offset })
 }
 
 export function getBacktestResult(id: number): Promise<BacktestResult> {
-  return invoke<BacktestResult>('get_backtest_result', { id: id.toString() })
+  return call<BacktestResult>('get_backtest_result', { id: id.toString() })
 }
 
 export function deleteBacktestResult(id: number): Promise<boolean> {
-  return invoke<boolean>('delete_backtest_result', { id: id.toString() })
+  return call<boolean>('delete_backtest_result', { id: id.toString() })
 }

@@ -8,13 +8,13 @@
 import { ref, watch, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import type { BacktestResult } from '@/services/types'
-import { useFormat } from '@/composables/useFormat'
+import { useFormatting } from '@/composables/useFormatting'
 
 const props = defineProps<{
   result: BacktestResult | null
 }>()
 
-const { formatCurrency } = useFormat()
+const { formatCurrency } = useFormatting()
 
 const chartContainer = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null

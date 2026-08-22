@@ -1,27 +1,48 @@
+/**
+ * Canonical display-formatting composable.
+ *
+ * Single source of truth (DRY) for all UI formatting: currency, numbers,
+ * percentages, dates, and localized order / strategy labels.
+ *
+ * Numeric inputs are `number | string | null | undefined` so components can
+ * pass raw cell values directly. Blank / non-numeric values render as
+ * placeholders (`0.00`, `0`, `-`, `0.00%`) instead of throwing or printing
+ * `NaN`.
+ */
+
+type NumericLike = number | string | null | undefined
+
+const CURRENCY_LOCALE = 'zh-CN'
+const DECIMAL_2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const
+
+/** Coerce to a finite number, or `null` when the input is blank / not numeric. */
+function toFiniteNumber(value: NumericLike): number | null {
+  if (value === null || value === undefined) return null
+  const num = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
 export function useFormatting() {
-  function formatCurrency(value: number | string): string {
-    const num = Number(value)
-    if (!num && num !== 0) return '0.00'
-    return num.toLocaleString('zh-CN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
+  function formatCurrency(value: NumericLike): string {
+    const num = toFiniteNumber(value)
+    if (num === null) return '0.00'
+    return num.toLocaleString(CURRENCY_LOCALE, DECIMAL_2)
   }
 
-  function formatNumber(value: number | string): string {
-    const num = Number(value)
-    if (!num && num !== 0) return '0'
-    return num.toLocaleString('zh-CN')
+  function formatNumber(value: NumericLike): string {
+    const num = toFiniteNumber(value)
+    if (num === null) return '0'
+    return num.toLocaleString(CURRENCY_LOCALE)
   }
 
-  function formatDate(dateInput: string | Date): string {
-    if (!dateInput) return '-'
-    return new Date(dateInput).toLocaleString('zh-CN')
+  function formatDate(input: string | Date | null | undefined): string {
+    if (!input) return '-'
+    return new Date(input).toLocaleString(CURRENCY_LOCALE)
   }
 
-  function formatPercentage(value: number | string): string {
-    const num = Number(value)
-    if (!num && num !== 0) return '0.00%'
+  function formatPercentage(value: NumericLike): string {
+    const num = toFiniteNumber(value)
+    if (num === null) return '0.00%'
     return (num * 100).toFixed(2) + '%'
   }
 

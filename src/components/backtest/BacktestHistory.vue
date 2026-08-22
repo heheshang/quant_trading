@@ -111,7 +111,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { BacktestResultSummaryRow } from '@/services/types'
-import { useFormat } from '@/composables/useFormat'
+import { useFormatting } from '@/composables/useFormatting'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
@@ -131,7 +131,7 @@ const emit = defineEmits<{
   deleteRecord: [id: number]
 }>()
 
-const { formatPercentage, formatNumber, formatDate } = useFormat()
+const { formatPercentage, formatNumber, formatDate } = useFormatting()
 
 // Compare mode
 const compareMode = ref(false)

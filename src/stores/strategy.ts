@@ -4,13 +4,6 @@ import {
   getStrategies,
   saveStrategy as apiSaveStrategy,
   deleteStrategy as apiDeleteStrategy,
-  startStrategy as apiStartStrategy,
-  stopStrategy as apiStopStrategy,
-  pauseStrategy as apiPauseStrategy,
-  resumeStrategy as apiResumeStrategy,
-  deployStrategy as apiDeployStrategy,
-  archiveStrategy as apiArchiveStrategy,
-  toggleStrategy as apiToggleStrategy,
   listStrategyTypes as apiListStrategyTypes,
   getStrategyTypeInfo as apiGetStrategyTypeInfo,
   createStrategy as apiCreateStrategy,
@@ -20,26 +13,14 @@ import type { StrategyParams, StrategyStatus, StrategyTypeInfo } from '@/service
 const POLL_INTERVAL_MS = 5_000
 
 /**
- * Per-action loading keys. Each action sets its own flag so that the UI
- * can show a spinner on the specific button (e.g. "Start Strategy") while
- * other actions remain unaffected.
+ * Base strategy store (SRP): owns the strategy collection and its read /
+ * create / update / delete / type-metadata operations.
+ *
+ * Lifecycle control (start/stop/pause/resume/deploy/archive/toggle) lives in
+ * `useStrategyLifecycleStore`, which composes this store to refresh the
+ * collection after a transition.
  */
-type LoadingKey =
-  | 'list'
-  | 'select'
-  | 'create'
-  | 'update'
-  | 'delete'
-  | 'toggle'
-  | 'start'
-  | 'stop'
-  | 'pause'
-  | 'resume'
-  | 'deploy'
-  | 'archive'
-  | 'listTypes'
-  | 'fetchTypeInfo'
-  | 'createNew'
+type LoadingKey = 'list' | 'select' | 'create' | 'update' | 'delete' | 'listTypes' | 'fetchTypeInfo' | 'createNew'
 
 type ErrorKey = LoadingKey
 
@@ -49,13 +30,6 @@ const LOADING_KEYS: LoadingKey[] = [
   'create',
   'update',
   'delete',
-  'toggle',
-  'start',
-  'stop',
-  'pause',
-  'resume',
-  'deploy',
-  'archive',
   'listTypes',
   'fetchTypeInfo',
   'createNew',
@@ -97,10 +71,6 @@ export const useStrategyStore = defineStore('strategy', () => {
     return (id: string) => strategies.value.find((s) => s.strategy_id === id)
   })
 
-  /**
-   * Convenience aggregate: any action currently in flight.
-   * Use this for full-page spinners; use `loading[key]` for per-button spinners.
-   */
   const isAnyLoading = computed(() => Object.values(loading).some((v) => v))
 
   async function fetchStrategies(force = false) {
@@ -172,86 +142,6 @@ export const useStrategyStore = defineStore('strategy', () => {
       throw err
     } finally {
       loading.delete = false
-    }
-  }
-
-  async function toggleStrategy(strategyId: string, enabled: boolean) {
-    error.toggle = null
-    try {
-      await apiToggleStrategy(strategyId, enabled)
-      const found = strategies.value.find((s) => s.strategy_id === strategyId)
-      if (found) {
-        found.enabled = enabled
-      }
-    } catch (err) {
-      error.toggle = '更新策略状态失败'
-      throw err
-    }
-  }
-
-  async function startStrategy(strategyId: string) {
-    error.start = null
-    try {
-      await apiStartStrategy(strategyId)
-      await fetchStrategies(true)
-    } catch (err) {
-      error.start = '启动策略失败'
-      throw err
-    }
-  }
-
-  async function stopStrategy(strategyId: string) {
-    error.stop = null
-    try {
-      await apiStopStrategy(strategyId)
-      await fetchStrategies(true)
-    } catch (err) {
-      error.stop = '停止策略失败'
-      throw err
-    }
-  }
-
-  async function pauseStrategy(strategyId: string) {
-    error.pause = null
-    try {
-      await apiPauseStrategy(strategyId)
-      await fetchStrategies(true)
-    } catch (err) {
-      error.pause = '暂停策略失败'
-      throw err
-    }
-  }
-
-  async function resumeStrategy(strategyId: string) {
-    error.resume = null
-    try {
-      await apiResumeStrategy(strategyId)
-      await fetchStrategies(true)
-    } catch (err) {
-      error.resume = '恢复策略失败'
-      throw err
-    }
-  }
-
-  async function deployStrategy(strategyId: string) {
-    error.deploy = null
-    try {
-      await apiDeployStrategy(strategyId)
-      await fetchStrategies(true)
-    } catch (err) {
-      error.deploy = '部署策略失败'
-      throw err
-    }
-  }
-
-  async function archiveStrategy(strategyId: string) {
-    error.archive = null
-    try {
-      await apiArchiveStrategy(strategyId)
-      await fetchStrategies(true)
-    } catch (err) {
-      error.archive = '归档策略失败'
-      throw err
     }
   }
 
@@ -342,13 +232,6 @@ export const useStrategyStore = defineStore('strategy', () => {
     createStrategy,
     updateStrategy,
     deleteStrategy,
-    toggleStrategy,
-    startStrategy,
-    stopStrategy,
-    pauseStrategy,
-    resumeStrategy,
-    deployStrategy,
-    archiveStrategy,
     listStrategyTypes,
     fetchStrategyTypeInfo,
     createNewStrategy,

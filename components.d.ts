@@ -70,7 +70,6 @@ declare module 'vue' {
     FilterPanel: typeof import('./src/components/common/FilterPanel.vue')['default']
     InlineError: typeof import('./src/components/common/InlineError.vue')['default']
     MarketOverview: typeof import('./src/components/dashboard/MarketOverview.vue')['default']
-    MetricCard: typeof import('./src/components/MetricCard.vue')['default']
     MetricsCards: typeof import('./src/components/monitor/MetricsCards.vue')['default']
     MetricsChart: typeof import('./src/components/monitor/MetricsChart.vue')['default']
     MonitorHeader: typeof import('./src/components/monitor/MonitorHeader.vue')['default']

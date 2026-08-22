@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import type { AccountInfo, Order, Position, RiskConfig } from './types'
 
 /**
@@ -9,15 +9,15 @@ import type { AccountInfo, Order, Position, RiskConfig } from './types'
  */
 
 export function getRiskMetrics(): Promise<Record<string, number>> {
-  return invoke<Record<string, number>>('get_risk_metrics')
+  return call<Record<string, number>>('get_risk_metrics')
 }
 
 export function getRiskConfig(): Promise<RiskConfig> {
-  return invoke<RiskConfig>('get_risk_config')
+  return call<RiskConfig>('get_risk_config')
 }
 
 export function updateRiskConfig(config: RiskConfig): Promise<boolean> {
-  return invoke<boolean>('update_risk_config', { config })
+  return call<boolean>('update_risk_config', { config })
 }
 
 export function preTradeCheck(
@@ -25,5 +25,5 @@ export function preTradeCheck(
   account: AccountInfo,
   positions: Position[],
 ): Promise<boolean> {
-  return invoke<boolean>('pre_trade_check', { order, account, positions })
+  return call<boolean>('pre_trade_check', { order, account, positions })
 }

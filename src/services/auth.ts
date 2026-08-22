@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 
 /**
  * Authentication / user profile service.
@@ -7,15 +7,15 @@ import { invoke } from '@tauri-apps/api/core'
  */
 
 export function login(username: string, password: string): Promise<string> {
-  return invoke<string>('login', { username, password })
+  return call<string>('login', { username, password })
 }
 
 export function verifyToken(token: string): Promise<boolean> {
-  return invoke<boolean>('verify_token', { token })
+  return call<boolean>('verify_token', { token })
 }
 
 export function updateProfile(profileData: Record<string, unknown>): Promise<boolean> {
-  return invoke<boolean>('update_profile', { profileData })
+  return call<boolean>('update_profile', { profileData })
 }
 
 export function changePassword(
@@ -23,7 +23,7 @@ export function changePassword(
   newPassword: string,
   username?: string,
 ): Promise<boolean> {
-  return invoke<boolean>('change_password', {
+  return call<boolean>('change_password', {
     currentPassword,
     newPassword,
     username,
@@ -31,5 +31,5 @@ export function changePassword(
 }
 
 export function getUserProfile(username?: string): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>('get_user_profile', { username })
+  return call<Record<string, unknown>>('get_user_profile', { username })
 }

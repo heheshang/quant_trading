@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import type { Alert, LogEntry } from './types'
 
 /**
@@ -9,24 +9,24 @@ import type { Alert, LogEntry } from './types'
  */
 
 export function getMetrics(): Promise<Record<string, number>> {
-  return invoke<Record<string, number>>('get_metrics')
+  return call<Record<string, number>>('get_metrics')
 }
 
 export function getAlerts(): Promise<Alert[]> {
-  return invoke<Alert[]>('get_alerts')
+  return call<Alert[]>('get_alerts')
 }
 
 export function acknowledgeAlert(alertId: number): Promise<boolean> {
-  return invoke<boolean>('acknowledge_alert', { alertId: alertId.toString() })
+  return call<boolean>('acknowledge_alert', { alertId: alertId.toString() })
 }
 
 export function getLogs(
   level?: string,
   limit?: number,
 ): Promise<LogEntry[]> {
-  return invoke<LogEntry[]>('get_logs', { level, limit })
+  return call<LogEntry[]>('get_logs', { level, limit })
 }
 
 export function checkRedisStatus(): Promise<boolean> {
-  return invoke<boolean>('check_redis_status')
+  return call<boolean>('check_redis_status')
 }

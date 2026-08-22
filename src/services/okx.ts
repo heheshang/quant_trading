@@ -1,42 +1,26 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import type {
   OkxBalance,
   OkxCandle,
   OkxAnnouncementPage,
   OkxConnectionStatus,
   OkxInstrument,
-  OkxOrder,
-  OkxPlaceOrderRequest,
   OkxPosition,
-  Order,
 } from './types'
 
 /**
- * OKX exchange service.
+ * OKX exchange service (SoC).
  *
- * Read account balances/positions, place/cancel orders, fetch candles and instruments,
- * check exchange status and announcements, and execute orders against the OKX trading API.
+ * Account balance/position + market/status/announcement reads.
+ * Order placement/cancellation/execution lives in `services/okxOrder.ts`.
  */
 
 export function getOkxBalance(ccy?: string): Promise<OkxBalance[]> {
-  return invoke<OkxBalance[]>('get_okx_balance', { ccy })
+  return call<OkxBalance[]>('get_okx_balance', { ccy })
 }
 
 export function getOkxPositions(instId?: string): Promise<OkxPosition[]> {
-  return invoke<OkxPosition[]>('get_okx_positions', { instId })
-}
-
-export function placeOkxOrder(
-  request: OkxPlaceOrderRequest,
-): Promise<OkxOrder> {
-  return invoke<OkxOrder>('place_okx_order', { request })
-}
-
-export function cancelOkxOrder(
-  instId: string,
-  ordId: string,
-): Promise<boolean> {
-  return invoke<boolean>('cancel_okx_order', { instId, ordId })
+  return call<OkxPosition[]>('get_okx_positions', { instId })
 }
 
 export function getOkxCandles(
@@ -44,23 +28,17 @@ export function getOkxCandles(
   bar?: string,
   limit?: number,
 ): Promise<OkxCandle[]> {
-  return invoke<OkxCandle[]>('get_okx_candles', { instId, bar, limit })
+  return call<OkxCandle[]>('get_okx_candles', { instId, bar, limit })
 }
 
-export function getOkxInstruments(
-  instType?: string,
-): Promise<OkxInstrument[]> {
-  return invoke<OkxInstrument[]>('get_okx_instruments', { instType })
+export function getOkxInstruments(instType?: string): Promise<OkxInstrument[]> {
+  return call<OkxInstrument[]>('get_okx_instruments', { instType })
 }
 
 export function checkOkxStatus(): Promise<OkxConnectionStatus> {
-  return invoke<OkxConnectionStatus>('check_okx_status')
+  return call<OkxConnectionStatus>('check_okx_status')
 }
 
 export function getOkxAnnouncements(): Promise<OkxAnnouncementPage[]> {
-  return invoke<OkxAnnouncementPage[]>('get_okx_announcements')
-}
-
-export function executeOkxOrder(order: Order): Promise<string> {
-  return invoke<string>('execute_okx_order', { order })
+  return call<OkxAnnouncementPage[]>('get_okx_announcements')
 }

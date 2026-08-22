@@ -23,21 +23,25 @@ import type {
 import {
   getOkxBalance,
   getOkxPositions,
-  placeOkxOrder,
-  cancelOkxOrder,
   getOkxCandles,
   getOkxInstruments,
   checkOkxStatus,
   getOkxAnnouncements,
-  executeOkxOrder,
 } from '../services/okx'
+import {
+  placeOkxOrder,
+  cancelOkxOrder,
+  executeOkxOrder,
+} from '../services/okxOrder'
 import {
   getOkxRealtimeData,
   getOkxHistoricalData,
+} from '../services/market'
+import {
   subscribeMarketData,
   stopMarketData,
   unsubscribeChannel,
-} from '../services/market'
+} from '../services/ws'
 
 // ---------------------------------------------------------------------------
 // Helpers

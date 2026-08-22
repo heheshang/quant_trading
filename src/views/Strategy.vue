@@ -91,6 +91,7 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useStrategyStore } from '@/stores/strategy';
+import { useStrategyLifecycleStore } from '@/stores/strategyLifecycle';
 import { runBacktest as apiRunBacktest } from '@/services/backtest';
 import type { StrategyParams } from '@/services/types';
 import StrategyTable from '@/components/strategy/StrategyTable.vue';
@@ -100,6 +101,7 @@ import StrategyBacktestDialog from '@/components/strategy/StrategyBacktestDialog
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 
 const store = useStrategyStore();
+const lifecycleStore = useStrategyLifecycleStore();
 
 // --- Table state ---
 const searchQuery = ref('');
@@ -131,7 +133,7 @@ function onSearch() {
 }
 
 async function toggleStrategyStatus(strategyId: string, enabled: boolean) {
-  await store.toggleStrategy(strategyId, enabled);
+  await lifecycleStore.toggleStrategy(strategyId, enabled);
 }
 
 // --- Detail panel ---
@@ -166,7 +168,7 @@ async function runBacktest(strategyId: string) {
 // --- Batch operations ---
 async function batchStart(strategies: StrategyParams[]) {
   for (const s of strategies) {
-    try { await store.startStrategy(s.strategy_id); ElMessage.success(`已启动: ${s.strategy_name}`); }
+    try { await lifecycleStore.startStrategy(s.strategy_id); ElMessage.success(`已启动: ${s.strategy_name}`); }
     catch { ElMessage.error(`启动失败: ${s.strategy_name}`); }
   }
   selectedStrategies.value = [];
@@ -174,7 +176,7 @@ async function batchStart(strategies: StrategyParams[]) {
 
 async function batchStop(strategies: StrategyParams[]) {
   for (const s of strategies) {
-    try { await store.stopStrategy(s.strategy_id); ElMessage.success(`已停止: ${s.strategy_name}`); }
+    try { await lifecycleStore.stopStrategy(s.strategy_id); ElMessage.success(`已停止: ${s.strategy_name}`); }
     catch { ElMessage.error(`停止失败: ${s.strategy_name}`); }
   }
   selectedStrategies.value = [];
@@ -190,12 +192,12 @@ async function batchDelete(strategies: StrategyParams[]) {
 
 // --- Lifecycle ---
 const lifecycleApiMap: Record<string, (id: string) => Promise<string>> = {
-  deploy: (id) => store.deployStrategy(id).then(() => 'deployed'),
-  start: (id) => store.startStrategy(id).then(() => 'started'),
-  stop: (id) => store.stopStrategy(id).then(() => 'stopped'),
-  pause: (id) => store.pauseStrategy(id).then(() => 'paused'),
-  resume: (id) => store.resumeStrategy(id).then(() => 'resumed'),
-  archive: (id) => store.archiveStrategy(id).then(() => 'archived'),
+  deploy: (id) => lifecycleStore.deployStrategy(id).then(() => 'deployed'),
+  start: (id) => lifecycleStore.startStrategy(id).then(() => 'started'),
+  stop: (id) => lifecycleStore.stopStrategy(id).then(() => 'stopped'),
+  pause: (id) => lifecycleStore.pauseStrategy(id).then(() => 'paused'),
+  resume: (id) => lifecycleStore.resumeStrategy(id).then(() => 'resumed'),
+  archive: (id) => lifecycleStore.archiveStrategy(id).then(() => 'archived'),
 };
 
 const actionLabels: Record<string, string> = {
@@ -237,6 +239,7 @@ async function executeDelete() {
 
 defineExpose({
   store,
+  lifecycleStore,
   searchQuery,
   activeFilters,
   currentPage,

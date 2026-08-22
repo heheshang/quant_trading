@@ -139,13 +139,14 @@ describe('strategyStore', () => {
   })
 
   it('does not cross-contaminate loading flags between actions', async () => {
-    const store = useStrategyStore()
     mockInvoke.mockImplementation(() => new Promise(() => {})) // never resolves
-    store.startStrategy('s1')
-    // start does not use loading flag (fire-and-forget), only error
-    // but per-action loading for other actions should still be false
-    expect(store.loading.list).toBe(false)
+    const store = useStrategyStore()
+    store.fetchStrategies(true)
+    // While `list` is in-flight, other per-action loading keys stay false.
+    expect(store.loading.list).toBe(true)
     expect(store.loading.create).toBe(false)
+    expect(store.loading.update).toBe(false)
+    expect(store.loading.delete).toBe(false)
   })
 
   it('isAnyLoading reflects any in-flight action', async () => {
@@ -193,7 +194,8 @@ describe('strategyStore', () => {
     expect(store.error.list).toBe('获取策略列表失败')
     // Other error keys should remain null
     expect(store.error.create).toBeNull()
-    expect(store.error.start).toBeNull()
+    expect(store.error.update).toBeNull()
+    expect(store.error.delete).toBeNull()
   })
 
   // ── createStrategy ──
@@ -224,95 +226,6 @@ describe('strategyStore', () => {
     await store.deleteStrategy('s1')
     expect(mockInvoke).toHaveBeenCalledWith('delete_strategy', { strategyId: 's1' })
     expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  // ── Lifecycle actions ──
-
-  it('startStrategy calls API and refreshes', async () => {
-    const store = useStrategyStore()
-    await store.startStrategy('s1')
-    expect(mockInvoke).toHaveBeenCalledWith('start_strategy', { strategyId: 's1' })
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  it('stopStrategy calls API and refreshes', async () => {
-    const store = useStrategyStore()
-    await store.stopStrategy('s1')
-    expect(mockInvoke).toHaveBeenCalledWith('stop_strategy', { strategyId: 's1' })
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  it('pauseStrategy calls API and refreshes', async () => {
-    const store = useStrategyStore()
-    await store.pauseStrategy('s1')
-    expect(mockInvoke).toHaveBeenCalledWith('pause_strategy', { strategyId: 's1' })
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  it('resumeStrategy calls API and refreshes', async () => {
-    const store = useStrategyStore()
-    await store.resumeStrategy('s1')
-    expect(mockInvoke).toHaveBeenCalledWith('resume_strategy', { strategyId: 's1' })
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  it('deployStrategy calls API and refreshes', async () => {
-    const store = useStrategyStore()
-    await store.deployStrategy('s1')
-    expect(mockInvoke).toHaveBeenCalledWith('deploy_strategy', { strategyId: 's1' })
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  it('archiveStrategy calls API and refreshes', async () => {
-    const store = useStrategyStore()
-    await store.archiveStrategy('s1')
-    expect(mockInvoke).toHaveBeenCalledWith('archive_strategy', { strategyId: 's1' })
-    expect(mockInvoke).toHaveBeenCalledWith('get_strategies')
-  })
-
-  it('lifecycle actions set per-action error on failure', async () => {
-    const store = useStrategyStore()
-    mockInvoke.mockRejectedValue(new Error('Fail'))
-    await expect(store.startStrategy('s1')).rejects.toThrow()
-    expect(store.error.start).toBe('启动策略失败')
-    await expect(store.stopStrategy('s1')).rejects.toThrow()
-    expect(store.error.stop).toBe('停止策略失败')
-    await expect(store.pauseStrategy('s1')).rejects.toThrow()
-    expect(store.error.pause).toBe('暂停策略失败')
-    await expect(store.resumeStrategy('s1')).rejects.toThrow()
-    expect(store.error.resume).toBe('恢复策略失败')
-    await expect(store.deployStrategy('s1')).rejects.toThrow()
-    expect(store.error.deploy).toBe('部署策略失败')
-    await expect(store.archiveStrategy('s1')).rejects.toThrow()
-    expect(store.error.archive).toBe('归档策略失败')
-  })
-
-  // ── toggleStrategy ──
-
-  it('toggleStrategy toggles enabled locally', async () => {
-    const store = useStrategyStore()
-    await store.fetchStrategies(true)
-    const s1 = store.strategies.find((s) => s.strategy_id === 's1')!
-    expect(s1.enabled).toBe(true)
-    await store.toggleStrategy('s1', false)
-    expect(s1.enabled).toBe(false)
-    expect(mockInvoke).toHaveBeenCalledWith('toggle_strategy', { strategyId: 's1', enabled: false })
-  })
-
-  it('toggleStrategy toggles enabled to true', async () => {
-    const store = useStrategyStore()
-    await store.fetchStrategies(true)
-    const s2 = store.strategies.find((s) => s.strategy_id === 's2')!
-    expect(s2.enabled).toBe(false)
-    await store.toggleStrategy('s2', true)
-    expect(s2.enabled).toBe(true)
-  })
-
-  it('toggleStrategy sets error.toggle on failure', async () => {
-    const store = useStrategyStore()
-    mockInvoke.mockRejectedValue(new Error('Toggle failed'))
-    await expect(store.toggleStrategy('s1', false)).rejects.toThrow()
-    expect(store.error.toggle).toBe('更新策略状态失败')
   })
 
   // ── Computed properties ──
@@ -390,23 +303,11 @@ describe('strategyStore', () => {
     expect(store.loading.create).toBe(false)
     expect(store.loading.update).toBe(false)
     expect(store.loading.delete).toBe(false)
-    expect(store.loading.start).toBe(false)
-    expect(store.loading.stop).toBe(false)
-    expect(store.loading.pause).toBe(false)
-    expect(store.loading.resume).toBe(false)
-    expect(store.loading.deploy).toBe(false)
-    expect(store.loading.archive).toBe(false)
     // All per-action error flags should start null
     expect(store.error.list).toBeNull()
     expect(store.error.create).toBeNull()
     expect(store.error.update).toBeNull()
     expect(store.error.delete).toBeNull()
-    expect(store.error.start).toBeNull()
-    expect(store.error.stop).toBeNull()
-    expect(store.error.pause).toBeNull()
-    expect(store.error.resume).toBeNull()
-    expect(store.error.deploy).toBeNull()
-    expect(store.error.archive).toBeNull()
     expect(store.runningStrategies).toEqual([])
     expect(store.draftStrategies).toEqual([])
   })

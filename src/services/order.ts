@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import type { Order } from './types'
 
 /**
@@ -8,9 +8,9 @@ import type { Order } from './types'
  */
 
 export function submitOrder(order: Order): Promise<string> {
-  return invoke<string>('submit_order', { order })
+  return call<string>('submit_order', { order })
 }
 
 export function getActiveOrders(): Promise<Order[]> {
-  return invoke<Order[]>('get_active_orders')
+  return call<Order[]>('get_active_orders')
 }

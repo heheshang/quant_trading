@@ -78,13 +78,13 @@
 
 <script setup lang="ts">
 import type { BacktestResult } from '@/services/types'
-import { useFormat } from '@/composables/useFormat'
+import { useFormatting } from '@/composables/useFormatting'
 
 defineProps<{
   result: BacktestResult
 }>()
 
-const { formatCurrency, formatPercentage, formatNumber } = useFormat()
+const { formatCurrency, formatPercentage, formatNumber } = useFormatting()
 
 function signClass(value: number): string {
   if (value > 0) return 'positive'

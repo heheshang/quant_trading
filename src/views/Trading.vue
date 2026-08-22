@@ -60,9 +60,10 @@ import { getAccountInfo, getPositions } from '@/services/account'
 import { getActiveOrders } from '@/services/order'
 import { getStrategies } from '@/services/strategy'
 import {
-  getOkxBalance, getOkxPositions, placeOkxOrder, getOkxInstruments,
-  checkOkxStatus, getOkxAnnouncements, cancelOkxOrder,
+  getOkxBalance, getOkxPositions, getOkxInstruments,
+  checkOkxStatus, getOkxAnnouncements,
 } from '@/services/okx'
+import { placeOkxOrder, cancelOkxOrder } from '@/services/okxOrder'
 import { useOrderStore } from '@/stores/order'
 import type {
   AccountInfo,

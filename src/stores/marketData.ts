@@ -4,7 +4,7 @@ import {
   subscribeChannel,
   unsubscribeChannel,
   getSubscriptions,
-} from '@/services/market'
+} from '@/services/ws'
 
 const CHANNEL_OPTIONS = ['ticker', 'trades', 'orderbook', 'candle'] as const
 export type Channel = (typeof CHANNEL_OPTIONS)[number]

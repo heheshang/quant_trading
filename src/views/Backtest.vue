@@ -65,7 +65,7 @@ import {
 } from '@/services/backtest'
 import type { BacktestResult, BacktestResultSummaryRow, StrategyParams } from '@/services/types'
 import { ElMessage } from 'element-plus'
-import { useFormat } from '@/composables/useFormat'
+import { useFormatting } from '@/composables/useFormatting'
 import BacktestConfig from '@/components/backtest/BacktestConfig.vue'
 import type { BacktestConfigData, ConfigTemplate } from '@/components/backtest/BacktestConfig.vue'
 import BacktestResults from '@/components/backtest/BacktestResults.vue'
@@ -84,7 +84,7 @@ const historyRecords = ref<BacktestResultSummaryRow[]>([])
 const historyLoading = ref(false)
 const configRef = ref<InstanceType<typeof BacktestConfig>>()
 const chartRef = ref<InstanceType<typeof BacktestChart>>()
-const { formatCurrency, formatPercentage, formatNumber } = useFormat()
+const { formatCurrency, formatPercentage, formatNumber } = useFormatting()
 // ------ Template management ------
 function handleSaveTemplate(config: BacktestConfigData) {
   const name = prompt('输入模板名称：')
