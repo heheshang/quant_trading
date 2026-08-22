@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.2] - 2026-08-22
+
+### Added
+
+- **Binance 交易所接入（全链路）**：新增与 OKX 对称的币安支持。
+  - **后端客户端**：新增 `crates/exchange-binance`，基于 `reqwest` + HMAC-SHA256 直连 Binance REST（spot/futures），覆盖余额/K线/深度/下单/撤单；含 `BinanceEnvironment`、符号互转（`BTC-USDT`⇄`BTCUSDT`）与 `MockBinanceClient`（`test-utils`）。
+  - **WebSocket 客户端**：新增 `BinanceWebSocket`（订阅追踪、自动重连、`get_receiver`、kline/depth 解析），并接入 Tauri 命令层 + 前端实时流推送。
+  - **服务与命令**：新增 `BinanceService`（镜像 `OkxService`）与 `commands/binance.rs` + `commands/binance_ws.rs`；`BinanceConfig`（`BINANCE_*` 环境变量）并入 `AppConfig`。
+  - **前端**：新增 `services/binance.ts` + `binanceOrder.ts` 与 `views/Binance.vue`（余额/REST 下单/实时行情面板），路由与侧边栏「币安交易」入口。
+
+### Changed
+
+- **装配扩展**：`SharedInfra`/`AppServices`/`AppState` 注入 `binance_client`/`binance_ws_state`；`main.rs` 依据 `BINANCE_*` 构建 Binance 客户端。
+
+### Tests
+
+- `cargo test --workspace` 578 passed / 0 failed / 17 ignored；`cargo clippy --all-targets` 0 warning；`vue-tsc` 通过；`npm test` 35 文件 / 436 passed。
+
 ## [0.2.1] - 2026-08-22
 
 ### Changed
