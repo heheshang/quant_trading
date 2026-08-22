@@ -75,9 +75,10 @@ async fn test_get_market_data_without_okx_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_market_data(state_guard, "BTC-USDT".to_string()).await;
     assert!(result.is_err());
+    // Layered: with no services wired the market service reports not initialized.
     assert!(result
         .unwrap_err()
-        .contains("Market data unavailable for BTC-USDT"));
+        .contains("Market service not initialized"));
 }
 
 #[tokio::test]
@@ -693,7 +694,7 @@ async fn test_get_okx_realtime_data_not_initialized() {
 
     let result = get_okx_realtime_data(state_guard, "BTC-USDT".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "OKX data source not initialized");
+    assert_eq!(result.unwrap_err(), "Market service not initialized");
 }
 
 #[tokio::test]
@@ -710,7 +711,7 @@ async fn test_get_okx_historical_data_not_initialized() {
     )
     .await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "OKX data source not initialized");
+    assert_eq!(result.unwrap_err(), "Market service not initialized");
 }
 
 // ── Strategy Lifecycle Commands ──

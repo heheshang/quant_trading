@@ -59,65 +59,18 @@ pub async fn get_market_data(
     state: State<'_, AppState>,
     symbol: String,
 ) -> Result<MarketData, String> {
-    // Try OKX data source first (provides real OKX demo data)
-    let data_source = state.okx_data_source.read().await;
-    if let Some(source) = data_source.as_ref() {
-        use data_layer::market_data::DataSource;
-        match source.get_realtime_data(&symbol).await {
-            Ok(data) => return Ok(data),
-            Err(e) => {
-                state
-                    .log_buffer
-                    .add_entry(quant_common::types::LogEntry {
-                        timestamp: Utc::now(),
-                        level: "warn".to_string(),
-                        message: format!(
-                            "OKX data source unavailable for {}, falling back: {}",
-                            symbol, e
-                        ),
-                        module: Some("commands".to_string()),
-                    })
-                    .await;
-            }
-        }
-    }
-    drop(data_source);
+    // Route through the services layer so the command never touches the
+    // data-source / infrastructure layer directly (layering + DIP).
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| "Market service not initialized".to_string())?;
 
-    Err(format!(
-        "Market data unavailable for {}: no data source connected",
-        symbol
-    ))
-}
-
-/// Internal helper: fetch real market data from OKX data source or DB.
-async fn get_market_data_internal(
-    state: &State<'_, AppState>,
-    symbol: &str,
-) -> Result<MarketData, String> {
-    use data_layer::market_data::DataSource;
-    let data_source = state.okx_data_source.read().await;
-    if let Some(source) = data_source.as_ref() {
-        match source.get_realtime_data(symbol).await {
-            Ok(data) => return Ok(data),
-            Err(e) => {
-                state
-                    .log_buffer
-                    .add_entry(quant_common::types::LogEntry {
-                        timestamp: chrono::Utc::now(),
-                        level: "warn".to_string(),
-                        message: format!(
-                            "OKX data source unavailable for {}, falling back: {}",
-                            symbol, e
-                        ),
-                        module: Some("commands".to_string()),
-                    })
-                    .await
-            }
-        }
-    }
-    drop(data_source);
-
-    Err(format!("Market data unavailable for {}", symbol))
+    services
+        .market_service
+        .get_realtime_data(&symbol)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

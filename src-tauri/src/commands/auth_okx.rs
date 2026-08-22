@@ -418,29 +418,27 @@ pub async fn get_okx_realtime_data(
     state: State<'_, AppState>,
     symbol: String,
 ) -> Result<MarketData, String> {
-    let data_source = state.okx_data_source.read().await;
+    // Route through the services layer (market_service wraps the data source)
+    // so the command never touches the data-layer directly (layering + DIP).
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| "Market service not initialized".to_string())?;
 
-    match data_source.as_ref() {
-        Some(source) => {
-            use data_layer::market_data::DataSource;
+    let start = std::time::Instant::now();
+    monitor_layer::OKX_API_CALLS.inc();
 
-            let start = std::time::Instant::now();
-            monitor_layer::OKX_API_CALLS.inc();
+    let result = services.market_service.get_realtime_data(&symbol).await;
 
-            let result = source.get_realtime_data(&symbol).await;
+    let duration = start.elapsed().as_secs_f64();
+    monitor_layer::OKX_API_LATENCY.observe(duration);
 
-            let duration = start.elapsed().as_secs_f64();
-            monitor_layer::OKX_API_LATENCY.observe(duration);
-
-            match result {
-                Ok(data) => Ok(data),
-                Err(e) => {
-                    monitor_layer::OKX_API_ERRORS.inc();
-                    Err(format!("Failed to get realtime data: {}", e))
-                }
-            }
+    match result {
+        Ok(data) => Ok(data),
+        Err(e) => {
+            monitor_layer::OKX_API_ERRORS.inc();
+            Err(format!("Failed to get realtime data: {}", e))
         }
-        None => Err("OKX data source not initialized".to_string()),
     }
 }
 
@@ -452,37 +450,37 @@ pub async fn get_okx_historical_data(
     start: String,
     end: String,
 ) -> Result<Vec<MarketData>, String> {
-    let data_source = state.okx_data_source.read().await;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| "Market service not initialized".to_string())?;
 
-    match data_source.as_ref() {
-        Some(source) => {
-            use chrono::DateTime;
-            use data_layer::market_data::DataSource;
+    use chrono::DateTime;
 
-            let start_dt = DateTime::parse_from_rfc3339(&start)
-                .map_err(|e| format!("Invalid start date: {}", e))?
-                .with_timezone(&Utc);
+    let start_dt = DateTime::parse_from_rfc3339(&start)
+        .map_err(|e| format!("Invalid start date: {}", e))?
+        .with_timezone(&Utc);
 
-            let end_dt = DateTime::parse_from_rfc3339(&end)
-                .map_err(|e| format!("Invalid end date: {}", e))?
-                .with_timezone(&Utc);
+    let end_dt = DateTime::parse_from_rfc3339(&end)
+        .map_err(|e| format!("Invalid end date: {}", e))?
+        .with_timezone(&Utc);
 
-            monitor_layer::OKX_API_CALLS.inc();
-            let start_time = std::time::Instant::now();
+    monitor_layer::OKX_API_CALLS.inc();
+    let start_time = std::time::Instant::now();
 
-            let result = source.get_historical_data(&symbol, start_dt, end_dt).await;
+    let result = services
+        .market_service
+        .get_historical_data(&symbol, start_dt, end_dt)
+        .await;
 
-            let duration = start_time.elapsed().as_secs_f64();
-            monitor_layer::OKX_API_LATENCY.observe(duration);
+    let duration = start_time.elapsed().as_secs_f64();
+    monitor_layer::OKX_API_LATENCY.observe(duration);
 
-            match result {
-                Ok(data) => Ok(data),
-                Err(e) => {
-                    monitor_layer::OKX_API_ERRORS.inc();
-                    Err(format!("Failed to get historical data: {}", e))
-                }
-            }
+    match result {
+        Ok(data) => Ok(data),
+        Err(e) => {
+            monitor_layer::OKX_API_ERRORS.inc();
+            Err(format!("Failed to get historical data: {}", e))
         }
-        None => Err("OKX data source not initialized".to_string()),
     }
 }
