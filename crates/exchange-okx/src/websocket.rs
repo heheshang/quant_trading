@@ -22,7 +22,11 @@ pub enum WsMessage {
 }
 
 /// 内部 WS 命令：从外部发送给连接循环
-type WsCommand = (String, String); // (channel, inst_id)
+#[derive(Debug, Clone)]
+enum WsCommand {
+    Subscribe { channel: String, inst_id: String },
+    Unsubscribe { channel: String, inst_id: String },
+}
 
 /// OKX WebSocket 客户端
 pub struct OkxWebSocket {
@@ -31,7 +35,6 @@ pub struct OkxWebSocket {
     message_tx: mpsc::UnboundedSender<WsMessage>,
     message_rx: Arc<RwLock<mpsc::UnboundedReceiver<WsMessage>>>,
     command_tx: broadcast::Sender<WsCommand>,
-    unsubscribe_tx: broadcast::Sender<WsCommand>,
     shutdown_tx: watch::Sender<bool>,
 }
 
@@ -40,7 +43,6 @@ impl OkxWebSocket {
     pub fn new(environment: OkxEnvironment) -> Self {
         let (message_tx, message_rx) = mpsc::unbounded_channel();
         let (command_tx, _) = broadcast::channel(256);
-        let (unsubscribe_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
 
         Self {
@@ -49,7 +51,6 @@ impl OkxWebSocket {
             message_tx,
             message_rx: Arc::new(RwLock::new(message_rx)),
             command_tx,
-            unsubscribe_tx,
             shutdown_tx,
         }
     }
@@ -61,19 +62,25 @@ impl OkxWebSocket {
             inst_id: inst_id.to_string(),
         };
 
-        {
+        let is_new = {
             let mut subs = self.subscriptions.write().await;
-            if !subs
+            if subs
                 .iter()
                 .any(|s| s.channel == subscription.channel && s.inst_id == subscription.inst_id)
             {
+                false
+            } else {
                 subs.push(subscription);
+                true
             }
+        };
+        // 仅在新增订阅时推送，保证重复订阅幂等；尚未启动时仅记录本地订阅，首次连接统一订阅。
+        if is_new {
+            let _ = self.command_tx.send(WsCommand::Subscribe {
+                channel: channel.to_string(),
+                inst_id: inst_id.to_string(),
+            });
         }
-        // 连接已启动时立即推送；尚未启动时仅记录本地订阅，首次连接会统一订阅。
-        let _ = self
-            .command_tx
-            .send((channel.to_string(), inst_id.to_string()));
 
         Ok(())
     }
@@ -108,7 +115,10 @@ impl OkxWebSocket {
     /// 发送订阅到已连接的 WS 服务器 (通过 broadcast 信道)
     pub async fn send_subscription(&self, channel: &str, inst_id: &str) -> Result<()> {
         self.command_tx
-            .send((channel.to_string(), inst_id.to_string()))
+            .send(WsCommand::Subscribe {
+                channel: channel.to_string(),
+                inst_id: inst_id.to_string(),
+            })
             .map_err(|e| Error::Internal(format!("Failed to queue subscription: {}", e)))?;
         Ok(())
     }
@@ -120,9 +130,10 @@ impl OkxWebSocket {
             subs.retain(|s| s.channel != channel || s.inst_id != inst_id);
         }
         // 连接尚未启动时没有接收者，本地订阅列表仍需保持正确。
-        let _ = self
-            .unsubscribe_tx
-            .send((channel.to_string(), inst_id.to_string()));
+        let _ = self.command_tx.send(WsCommand::Unsubscribe {
+            channel: channel.to_string(),
+            inst_id: inst_id.to_string(),
+        });
         Ok(())
     }
 
@@ -209,7 +220,6 @@ impl OkxWebSocket {
         let message_tx = self.message_tx.clone();
         let subscriptions = self.subscriptions.clone();
         let mut command_rx = self.command_tx.subscribe();
-        let mut unsubscribe_rx = self.unsubscribe_tx.subscribe();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         // 指数退避重连循环 (后台任务)
@@ -289,37 +299,31 @@ impl OkxWebSocket {
                                     }
                                 }
 
-                                // 处理 broadcast 命令 (新订阅)
+                                // 处理 broadcast 命令（订阅/退订，单信道保证顺序）
                                 Ok(cmd) = command_rx.recv() => {
-                                    let (channel, inst_id) = cmd;
-                                    let sub = OkxWsSubscription {
-                                        channel: channel.clone(),
-                                        inst_id: inst_id.clone(),
-                                    };
-                                    let subscribe_msg = serde_json::json!({
-                                        "op": "subscribe",
-                                        "args": [sub]
-                                    });
-                                    if let Ok(msg_str) = serde_json::to_string(&subscribe_msg) {
-                                        debug!("Sending new subscription: {}", msg_str);
-                                        let _ = write.send(Message::Text(msg_str)).await;
-                                    }
-                                }
-
-                                // 处理退订命令
-                                Ok(cmd) = unsubscribe_rx.recv() => {
-                                    let (channel, inst_id) = cmd;
-                                    let sub = OkxWsSubscription {
-                                        channel: channel.clone(),
-                                        inst_id: inst_id.clone(),
-                                    };
-                                    let unsubscribe_msg = serde_json::json!({
-                                        "op": "unsubscribe",
-                                        "args": [sub]
-                                    });
-                                    if let Ok(msg_str) = serde_json::to_string(&unsubscribe_msg) {
-                                        debug!("Sending unsubscription: {}", msg_str);
-                                        let _ = write.send(Message::Text(msg_str)).await;
+                                    match cmd {
+                                        WsCommand::Subscribe { channel, inst_id } => {
+                                            let sub = OkxWsSubscription { channel, inst_id };
+                                            let msg = serde_json::json!({
+                                                "op": "subscribe",
+                                                "args": [sub]
+                                            });
+                                            if let Ok(msg_str) = serde_json::to_string(&msg) {
+                                                debug!("Sending subscription: {}", msg_str);
+                                                let _ = write.send(Message::Text(msg_str)).await;
+                                            }
+                                        }
+                                        WsCommand::Unsubscribe { channel, inst_id } => {
+                                            let sub = OkxWsSubscription { channel, inst_id };
+                                            let msg = serde_json::json!({
+                                                "op": "unsubscribe",
+                                                "args": [sub]
+                                            });
+                                            if let Ok(msg_str) = serde_json::to_string(&msg) {
+                                                debug!("Sending unsubscription: {}", msg_str);
+                                                let _ = write.send(Message::Text(msg_str)).await;
+                                            }
+                                        }
                                     }
                                 }
 
@@ -512,5 +516,41 @@ mod tests {
         drop(ws);
         // shutdown 发送端销毁也应视为停止请求，避免任务泄漏
         assert!(OkxWebSocket::shutdown_requested(&rx));
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_subscribe_sends_single_command() {
+        let ws = OkxWebSocket::new(OkxEnvironment::Demo);
+        let mut rx = ws.command_tx.subscribe();
+
+        ws.subscribe_ticker("BTC-USDT").await.unwrap();
+        ws.subscribe_ticker("BTC-USDT").await.unwrap(); // 重复订阅
+
+        // 首个订阅产生一条命令
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            WsCommand::Subscribe { .. }
+        ));
+        // 重复订阅不应再产生命令
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_then_unsubscribe_ordered_on_single_channel() {
+        let ws = OkxWebSocket::new(OkxEnvironment::Demo);
+        let mut rx = ws.command_tx.subscribe();
+
+        ws.subscribe_ticker("BTC-USDT").await.unwrap();
+        ws.unsubscribe_public("tickers", "BTC-USDT").await.unwrap();
+
+        // 单信道保证先订阅后退订的顺序
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            WsCommand::Subscribe { .. }
+        ));
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            WsCommand::Unsubscribe { .. }
+        ));
     }
 }
