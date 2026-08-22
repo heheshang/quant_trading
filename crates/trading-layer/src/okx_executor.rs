@@ -1,5 +1,5 @@
 use exchange_okx::types::{OkxOrder, OkxPlaceOrderRequest};
-use exchange_okx::{Client as OkxClient, ClientInterface};
+use exchange_okx::ClientInterface;
 use quant_common::types::{Order, OrderSide, OrderStatus, OrderType};
 use quant_common::{Error, Result};
 use rust_decimal::prelude::ToPrimitive;
@@ -10,12 +10,12 @@ use tracing::{info, instrument};
 /// OKX 订单执行器
 #[derive(Clone)]
 pub struct OkxExecutor {
-    client: Arc<RwLock<OkxClient>>,
+    client: Arc<RwLock<dyn ClientInterface>>,
 }
 
 impl OkxExecutor {
     /// 创建新的 OKX 执行器
-    pub fn new(client: Arc<RwLock<OkxClient>>) -> Self {
+    pub fn new(client: Arc<RwLock<dyn ClientInterface>>) -> Self {
         Self { client }
     }
 

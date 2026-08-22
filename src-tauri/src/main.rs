@@ -80,14 +80,15 @@ async fn main() {
                 // Wrap client in Arc for sharing across executor and data source
                 let client_arc = Arc::new(RwLock::new(client));
 
-                // Create executor and data source from the Arc'd client
-                let executor = OkxExecutor::new(client_arc.clone());
+                // Data source keeps a concrete-client reference.
                 let data_source = OkxDataSource::new(client_arc.clone());
-                // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
-                let executor_arc = Arc::new(OkxExecutor::new(client_arc.clone()));
 
-                // Coerce to trait object for the shared state (enables mocking in tests)
+                // Coerce to trait object for the shared state (enables mocking in tests).
+                // `OkxExecutor` accepts the `ClientInterface` trait object.
                 let client_trait: Arc<RwLock<dyn ClientInterface + Send + Sync>> = client_arc;
+                let executor = OkxExecutor::new(client_trait.clone());
+                // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
+                let executor_arc = Arc::new(OkxExecutor::new(client_trait.clone()));
 
                 (
                     Some(client_trait),

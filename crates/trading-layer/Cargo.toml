@@ -24,6 +24,8 @@ async-trait = "0.1"
 [dev-dependencies]
 rust_decimal_macros = "1.36"
 rust_decimal = { workspace = true, features = ["maths"] }
+# Exchange-okx with test-utils so the ClientInterface mock is available in tests.
+exchange-okx = { path = "../exchange-okx", features = ["test-utils"] }
 
 [lints]
 workspace = true
