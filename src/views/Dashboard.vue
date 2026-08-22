@@ -21,25 +21,25 @@
 
     <div v-else>
       <el-row :gutter="20" class="realtime-overview-row">
-        <el-col :span="18">
+        <el-col :xs="24" :lg="18">
           <RealtimeTickerPanel :symbols="positionSymbols" />
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="24" :lg="6">
           <PnlOverview :total-pnl="totalPnl" :unrealized-pnl="unrealizedPnl" />
         </el-col>
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="6">
+        <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="总资产" :value="accountStore.totalAssets" format="currency" :icon="TrendCharts" icon-bg="#409eff" :loading="loading" @click="router.push('/trading')" />
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="今日收益" :value="Math.abs(accountStore.dailyPnl)" format="currency" :icon="Promotion" icon-bg="#67c23a" :trend="accountStore.dailyPnl" :loading="loading" @click="router.push('/monitor')" />
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="活跃订单" :value="orderStore.orderCount" format="number" :icon="Tickets" icon-bg="#e6a23c" :loading="loading" @click="router.push('/trading')" />
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="风险等级" value="中" :icon="Warning" icon-bg="#f56c6c" :loading="loading" @click="router.push('/risk')" />
         </el-col>
       </el-row>
@@ -47,10 +47,10 @@
       <MarketOverview />
 
       <el-row :gutter="20" style="margin-top: 20px">
-        <el-col :span="16">
+        <el-col :xs="24" :lg="16">
           <EquityChart :equity-history="accountStore.accountInfo?.equity_history" />
         </el-col>
-        <el-col :span="8">
+        <el-col :xs="24" :lg="8">
           <PositionChart :positions="accountStore.positions" />
         </el-col>
       </el-row>

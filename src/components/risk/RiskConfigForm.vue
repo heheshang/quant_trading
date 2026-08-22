@@ -9,44 +9,44 @@
 
     <el-form ref="formRef" :model="config" :rules="rules" label-width="150px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大持仓比例" prop="max_position_size">
             <el-slider v-model="config.max_position_size" :min="0" :max="1" :step="0.01" show-input style="width: 100%" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="单日最大亏损比例" prop="max_daily_loss">
             <el-slider v-model="config.max_daily_loss" :min="0" :max="0.2" :step="0.001" show-input style="width: 100%" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大回撤限制" prop="max_drawdown">
             <el-slider v-model="config.max_drawdown" :min="0" :max="0.3" :step="0.01" show-input style="width: 100%" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大集中度" prop="max_concentration">
             <el-slider v-model="config.max_concentration" :min="0" :max="1" :step="0.01" show-input style="width: 100%" />
           </el-form-item>
         </el-col>
       </el-row>
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="VaR置信水平" prop="var_confidence_level">
             <el-slider v-model="config.var_confidence_level" :min="0.9" :max="0.999" :step="0.001" show-input style="width: 100%" />
           </el-form-item>
         </el-col>
-        <el-col :span="12"></el-col>
+        <el-col :xs="24" :span="12"></el-col>
       </el-row>
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用事前检查" prop="enable_pre_trade_check">
             <el-switch v-model="config.enable_pre_trade_check" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用实时监控" prop="enable_real_time_monitor">
             <el-switch v-model="config.enable_real_time_monitor" />
           </el-form-item>

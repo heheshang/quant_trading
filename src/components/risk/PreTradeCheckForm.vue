@@ -8,12 +8,12 @@
 
     <el-form ref="formRef" :model="testOrder" :rules="rules" label-width="100px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="标的代码" prop="symbol">
             <el-input v-model="testOrder.symbol" placeholder="输入标的代码" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="买卖方向" prop="side">
             <el-select v-model="testOrder.side" placeholder="选择方向" style="width: 100%">
               <el-option label="买入" value="Buy" />
@@ -23,12 +23,12 @@
         </el-col>
       </el-row>
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="价格" prop="price">
             <el-input-number v-model="testOrder.price" :min="0" :precision="2" :step="0.01" style="width: 100%" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="数量" prop="quantity">
             <el-input-number v-model="testOrder.quantity" :min="0" :precision="2" :step="100" style="width: 100%" />
           </el-form-item>

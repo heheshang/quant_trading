@@ -7,7 +7,7 @@
     </el-row>
 
     <el-row :gutter="20">
-      <el-col :span="16">
+      <el-col :xs="24" :lg="16">
         <ProfileInfo
           :initial-form="profileForm"
           :is-editing="isEditing"
@@ -19,7 +19,7 @@
         />
       </el-col>
 
-      <el-col :span="8">
+      <el-col :xs="24" :lg="8">
         <AccountSummary :account-info="accountInfo" />
         <SecuritySettings
           @change-password="showPasswordDialog = true"

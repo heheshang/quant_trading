@@ -8,13 +8,13 @@
 
     <el-form ref="formRef" :model="model" :rules="rules" label-width="150px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="系统名称" prop="name">
             <el-input v-model="model.name" placeholder="输入系统名称" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="系统版本" prop="version">
             <el-input v-model="model.version" placeholder="输入系统版本" readonly />
           </el-form-item>
@@ -22,7 +22,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="语言" prop="language">
             <el-select v-model="model.language" placeholder="选择语言" style="width: 100%">
               <el-option label="中文" value="zh-CN" />
@@ -31,7 +31,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="时区" prop="timezone">
             <el-select v-model="model.timezone" placeholder="选择时区" style="width: 100%">
               <el-option label="UTC" value="UTC" />

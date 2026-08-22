@@ -8,7 +8,7 @@
     </template>
 
     <el-row :gutter="20">
-      <el-col :span="6">
+      <el-col :xs="12" :span="6">
         <el-card class="risk-stat-card">
           <div class="stat-item">
             <div class="stat-label">VaR (95%)</div>
@@ -16,7 +16,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :span="6">
         <el-card class="risk-stat-card">
           <div class="stat-item">
             <div class="stat-label">VaR (99%)</div>
@@ -24,7 +24,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :span="6">
         <el-card class="risk-stat-card">
           <div class="stat-item">
             <div class="stat-label">最大持仓比例</div>
@@ -32,7 +32,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :span="6">
         <el-card class="risk-stat-card">
           <div class="stat-item">
             <div class="stat-label">单日最大亏损</div>

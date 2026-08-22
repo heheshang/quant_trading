@@ -8,13 +8,13 @@
 
     <el-form ref="formRef" :model="model" :rules="rules" label-width="150px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用加密" prop="enable_encryption">
             <el-switch v-model="model.enable_encryption" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用双因素认证" prop="enable_2fa">
             <el-switch v-model="model.enable_2fa" />
           </el-form-item>
@@ -22,7 +22,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="JWT密钥" prop="jwt_secret">
             <el-input
               v-model="model.jwt_secret"
@@ -33,7 +33,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="Token过期时间(小时)" prop="token_expiry_hours">
             <el-input-number
               v-model="model.token_expiry_hours"

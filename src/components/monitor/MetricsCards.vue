@@ -1,7 +1,7 @@
 <template>
   <div class="metrics-cards">
     <el-row :gutter="20">
-      <el-col :span="8">
+      <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
             <div class="metric-icon" :style="{ background: '#409EFF' }">
@@ -14,7 +14,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
             <div class="metric-icon" :style="{ background: '#67C23A' }">
@@ -27,7 +27,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
             <div class="metric-icon" :style="{ background: '#E6A23C' }">
@@ -43,7 +43,7 @@
     </el-row>
 
     <el-row :gutter="20" style="margin-top: 20px;">
-      <el-col :span="8">
+      <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
             <div class="metric-icon" :style="{ background: '#F56C6C' }">
@@ -56,7 +56,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
             <div class="metric-icon" :style="{ background: 'var(--color-text-secondary)' }">
@@ -69,7 +69,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
             <div class="metric-icon" :style="{ background: '#79BBFF' }">

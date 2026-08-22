@@ -23,10 +23,10 @@
         />
         <OkxOrderForm ref="okxOrderFormRef" :instruments="okxInstruments" :connected="okxConnected" :submitting="okxSubmitting" @submit="submitOkxOrder" />
         <el-row :gutter="20">
-          <el-col :span="12">
+          <el-col :xs="24" :md="12">
             <OkxCandleChart ref="okxCandleChartRef" :instruments="okxInstruments" />
           </el-col>
-          <el-col :span="12">
+          <el-col :xs="24" :md="12">
             <OkxInstrumentsPanel
               ref="okxInstrumentsPanelRef"
               :instruments="okxInstruments"

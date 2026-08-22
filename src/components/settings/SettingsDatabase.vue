@@ -8,13 +8,13 @@
 
     <el-form ref="formRef" :model="model" :rules="rules" label-width="120px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="主机地址" prop="host">
             <el-input v-model="model.host" placeholder="输入数据库主机地址" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="端口" prop="port">
             <el-input-number
               v-model="model.port"
@@ -27,13 +27,13 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="用户名" prop="username">
             <el-input v-model="model.username" placeholder="输入数据库用户名" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="密码" prop="password">
             <el-input
               v-model="model.password"
@@ -46,13 +46,13 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="数据库名" prop="database">
             <el-input v-model="model.database" placeholder="输入数据库名" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大连接数" prop="max_connections">
             <el-input-number
               v-model="model.max_connections"

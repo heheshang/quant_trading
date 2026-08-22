@@ -10,7 +10,7 @@
         </template>
         <el-form label-width="160px">
           <el-row :gutter="20">
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="最大回撤阈值">
                 <el-input-number v-model="local.maxDrawdown" :min="0" :max="100" :precision="1" :step="0.5">
                   <template #suffix>%</template>
@@ -27,7 +27,7 @@
                 </el-input-number>
               </el-form-item>
             </el-col>
-            <el-col :span="12">
+            <el-col :xs="24" :span="12">
               <el-form-item label="杠杆率上限">
                 <el-input-number v-model="local.leverage" :min="1" :max="10" :precision="1" :step="0.5">
                   <template #suffix>x</template>

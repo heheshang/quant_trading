@@ -8,13 +8,13 @@
 
     <el-form ref="formRef" :model="model" :rules="rules" label-width="150px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用Prometheus" prop="enable_prometheus">
             <el-switch v-model="model.enable_prometheus" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="Prometheus端口" prop="prometheus_port">
             <el-input-number
               v-model="model.prometheus_port"
@@ -27,7 +27,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="日志级别" prop="log_level">
             <el-select v-model="model.log_level" placeholder="选择日志级别" style="width: 100%">
               <el-option label="Debug" value="debug" />
@@ -40,7 +40,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="告警邮箱" prop="alert_email">
             <el-input
               v-model="model.alert_email"
@@ -49,7 +49,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="告警Webhook" prop="alert_webhook">
             <el-input
               v-model="model.alert_webhook"

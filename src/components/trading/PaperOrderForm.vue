@@ -13,7 +13,7 @@
       :rules="formRules"
     >
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="策略" prop="strategy_id">
             <el-select
               v-model="formData.strategy_id"
@@ -30,7 +30,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="标的代码" prop="symbol">
             <el-input
               v-model="formData.symbol"
@@ -41,7 +41,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="买卖方向" prop="side">
             <el-select
               v-model="formData.side"
@@ -54,7 +54,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="订单类型" prop="order_type">
             <el-select
               v-model="formData.order_type"
@@ -69,7 +69,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="价格" prop="price">
             <el-input-number
               v-model="formData.price"
@@ -82,7 +82,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="数量" prop="quantity">
             <el-input-number
               v-model="formData.quantity"

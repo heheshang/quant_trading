@@ -1,10 +1,10 @@
 <template>
   <div class="strategy-management">
     <el-row :gutter="20" class="header">
-      <el-col :span="18">
+      <el-col :xs="24" :lg="18">
         <h2>策略管理</h2>
       </el-col>
-      <el-col :span="6" class="controls">
+      <el-col :xs="24" :lg="6" class="controls">
         <el-button type="primary" @click="openNewStrategyDialog">新建策略</el-button>
         <el-button @click="store.fetchStrategies(true)" :loading="store.loading.list">刷新</el-button>
       </el-col>

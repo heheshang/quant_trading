@@ -494,12 +494,10 @@ body {
   .el-message-box {
     width: 90%;
   }
-  .el-col {
-    max-width: 100% !important;
-    flex: 0 0 100% !important;
-  }
+  /* Per-page responsive breakpoints handle el-col layout; spacing is
+     applied here so rows/cards breathe without forcing full-width cols. */
   .el-row + .el-row {
-    margin-top: 12px;
+    margin-top: var(--space-md);
   }
   .el-table {
     font-size: 12px;

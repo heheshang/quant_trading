@@ -8,7 +8,7 @@
 
     <el-form ref="formRef" :model="model" :rules="rules" label-width="150px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="模拟交易" prop="enable_paper_trading">
             <el-switch v-model="model.enable_paper_trading" />
           </el-form-item>
@@ -16,7 +16,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="每秒最大订单数" prop="max_orders_per_second">
             <el-input-number
               v-model="model.max_orders_per_second"
@@ -27,7 +27,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="默认手续费率" prop="default_commission_rate">
             <el-input-number
               v-model="model.default_commission_rate"
@@ -41,7 +41,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="默认滑点" prop="default_slippage">
             <el-input-number
               v-model="model.default_slippage"
@@ -53,7 +53,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="订单超时时间(秒)" prop="order_timeout_seconds">
             <el-input-number
               v-model="model.order_timeout_seconds"

@@ -8,7 +8,7 @@
 
     <el-form ref="formRef" :model="model" :rules="rules" label-width="150px">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大持仓比例" prop="max_position_size">
             <el-slider
               v-model="model.max_position_size"
@@ -21,7 +21,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="单日最大亏损比例" prop="max_daily_loss">
             <el-slider
               v-model="model.max_daily_loss"
@@ -36,7 +36,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大回撤限制" prop="max_drawdown">
             <el-slider
               v-model="model.max_drawdown"
@@ -49,7 +49,7 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="最大集中度" prop="max_concentration">
             <el-slider
               v-model="model.max_concentration"
@@ -64,7 +64,7 @@
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="VaR置信水平" prop="var_confidence_level">
             <el-slider
               v-model="model.var_confidence_level"
@@ -77,18 +77,18 @@
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
         </el-col>
       </el-row>
 
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用事前检查" prop="enable_pre_trade_check">
             <el-switch v-model="model.enable_pre_trade_check" />
           </el-form-item>
         </el-col>
 
-        <el-col :span="12">
+        <el-col :xs="24" :span="12">
           <el-form-item label="启用实时监控" prop="enable_real_time_monitor">
             <el-switch v-model="model.enable_real_time_monitor" />
           </el-form-item>
