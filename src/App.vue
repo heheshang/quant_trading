@@ -3,66 +3,9 @@
     <!-- Route navigation progress bar -->
     <div v-if="navigationLoading" class="route-progress"></div>
     <el-container class="layout-container">
-      <!-- Fixed left sidebar, collapsible to an icon rail -->
-      <el-aside :width="sidebarWidth" class="sidebar" v-if="auth.isAuthenticated">
-        <div class="logo">
-          <span class="logo-mark">Q</span>
-          <div class="logo-text" v-show="!isCollapse">
-            <span class="logo-title">量化交易系统</span>
-            <span class="logo-sub">Quant Trading</span>
-          </div>
-        </div>
-        <el-menu
-          :default-active="$route.path"
-          :collapse="isCollapse"
-          :collapse-transition="false"
-          router
-          class="sidebar-menu"
-          background-color="var(--color-bg-sidebar)"
-          text-color="var(--color-text-sidebar)"
-          active-text-color="var(--color-text-sidebar-active)"
-        >
-          <el-menu-item index="/dashboard" @mouseenter="prefetch('/dashboard')">
-            <el-icon><DataLine /></el-icon>
-            <template #title><span>仪表盘</span></template>
-          </el-menu-item>
-          <el-menu-item index="/strategy" @mouseenter="prefetch('/strategy')">
-            <el-icon><Operation /></el-icon>
-            <template #title><span>策略管理</span></template>
-          </el-menu-item>
-          <el-menu-item index="/backtest" @mouseenter="prefetch('/backtest')">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title><span>回测系统</span></template>
-          </el-menu-item>
-          <el-menu-item index="/trading" @mouseenter="prefetch('/trading')">
-            <el-icon><Sell /></el-icon>
-            <template #title><span>交易执行</span></template>
-          </el-menu-item>
-          <el-menu-item index="/risk" @mouseenter="prefetch('/risk')">
-            <el-icon><Warning /></el-icon>
-            <template #title><span>风险管理</span></template>
-          </el-menu-item>
-          <el-menu-item index="/monitor" @mouseenter="prefetch('/monitor')">
-            <el-icon><Monitor /></el-icon>
-            <template #title><span>实时监控</span></template>
-          </el-menu-item>
-          <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
-            <el-icon><Setting /></el-icon>
-            <template #title><span>系统设置</span></template>
-          </el-menu-item>
-          <el-menu-item index="/profile" @mouseenter="prefetch('/profile')">
-            <el-icon><User /></el-icon>
-            <template #title><span>个人账户</span></template>
-          </el-menu-item>
-          <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
-            <el-icon><Sell /></el-icon>
-            <template #title><span>币安交易</span></template>
-          </el-menu-item>
-          <el-menu-item index="/test" @mouseenter="prefetch('/test')">
-            <el-icon><Setting /></el-icon>
-            <template #title><span>测试页面</span></template>
-          </el-menu-item>
-        </el-menu>
+      <!-- Desktop: fixed left sidebar, collapsible to an icon rail -->
+      <el-aside :width="sidebarWidth" class="sidebar" v-if="auth.isAuthenticated && !isMobile">
+        <SidebarNav :collapse="isCollapse" />
       </el-aside>
 
         <el-container>
@@ -70,7 +13,7 @@
         <el-header class="header" v-if="auth.isAuthenticated">
           <div class="header-content">
             <div class="header-left">
-              <el-button text circle class="menu-toggle" @click="toggleCollapse">
+              <el-button text circle class="menu-toggle" @click="onMenuClick">
                 <el-icon><MenuIcon /></el-icon>
               </el-button>
               <div class="header-titles">
@@ -104,6 +47,18 @@
         </el-main>
       </el-container>
     </el-container>
+
+    <!-- Mobile: slide-in navigation drawer -->
+    <el-drawer
+      v-if="auth.isAuthenticated && isMobile"
+      v-model="drawerVisible"
+      class="nav-drawer"
+      direction="ltr"
+      size="220px"
+      :with-header="false"
+    >
+      <SidebarNav :collapse="false" @select="drawerVisible = false" />
+    </el-drawer>
   </div>
 </template>
 
@@ -112,25 +67,34 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Menu as MenuIcon, Moon, Sunny } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
+import SidebarNav from '@/components/layout/SidebarNav.vue';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-// Fixed left sidebar that can collapse to an icon rail (stays on the left),
-// remembers the preference, and auto-collapses on narrow screens.
+// Navigation structure: desktop = fixed collapsible sidebar; mobile = drawer.
 const COLLAPSE_KEY = 'sidebarCollapse';
 const isCollapse = ref(localStorage.getItem(COLLAPSE_KEY) === 'true');
 const sidebarWidth = computed(() => (isCollapse.value ? '64px' : '200px'));
+const isMobile = ref(window.innerWidth < 768);
+const drawerVisible = ref(false);
 
 function toggleCollapse() {
   isCollapse.value = !isCollapse.value;
   localStorage.setItem(COLLAPSE_KEY, String(isCollapse.value));
 }
 
+function onMenuClick() {
+  if (isMobile.value) drawerVisible.value = true;
+  else toggleCollapse();
+}
+
 function handleSidebarResize() {
-  // Auto-collapse on small screens; restore saved preference when there's room.
-  if (window.innerWidth < 768) {
+  isMobile.value = window.innerWidth < 768;
+  // Auto-collapse the fixed sidebar on narrow screens when there's room;
+  // restore the saved preference on desktop.
+  if (isMobile.value) {
     isCollapse.value = true;
   } else if (localStorage.getItem(COLLAPSE_KEY) !== null) {
     isCollapse.value = localStorage.getItem(COLLAPSE_KEY) === 'true';
@@ -157,23 +121,6 @@ router.onError(() => {
   navigationLoading.value = false;
 });
 
-// Prefetch lazy route components on hover so page switches feel instant.
-const routePreloaders: Record<string, () => Promise<unknown>> = {
-  '/dashboard': () => import('@/views/Dashboard.vue'),
-  '/strategy': () => import('@/views/Strategy.vue'),
-  '/backtest': () => import('@/views/Backtest.vue'),
-  '/trading': () => import('@/views/Trading.vue'),
-  '/risk': () => import('@/views/Risk.vue'),
-  '/monitor': () => import('@/views/Monitor.vue'),
-  '/settings': () => import('@/views/Settings.vue'),
-  '/profile': () => import('@/views/Profile.vue'),
-  '/binance': () => import('@/views/Binance.vue'),
-  '/test': () => import('@/views/Test.vue'),
-};
-
-const prefetch = (path: string) => {
-  routePreloaders[path]?.();
-};
 
 // Cache frequently-visited pages so switching back is instant; these views
 // keep their data fresh via internal polling/WebSocket and refresh on
@@ -246,6 +193,11 @@ const logout = () => {
   height: 100%;
   transition: width var(--transition-normal);
   overflow: hidden;
+}
+
+.nav-drawer :deep(.el-drawer__body) {
+  background: var(--color-bg-sidebar);
+  padding: 0;
 }
 
 .sidebar-menu {
