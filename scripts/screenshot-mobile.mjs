@@ -1,8 +1,9 @@
 import { chromium } from 'playwright'
 import fs from 'node:fs'
 
+const THEME = process.env.THEME || 'light'
 const BASE = 'http://localhost:5176'
-const OUT = '/tmp/mobile-shots'
+const OUT = `/tmp/mobile-shots-${THEME}`
 fs.mkdirSync(OUT, { recursive: true })
 
 const routes = [
@@ -48,7 +49,7 @@ await context.addInitScript((cmds) => {
   localStorage.setItem('authToken', 'mock-token')
   localStorage.setItem('username', '管理员')
   localStorage.setItem('isAuthenticated', 'true')
-  localStorage.setItem('theme', 'light')
+  localStorage.setItem('theme', cmds.theme)
 
   window.__TAURI_INTERNALS__ = {
     invoke: async (cmd, args) => (cmds[cmd] || (() => ({})))(args),
@@ -58,7 +59,7 @@ await context.addInitScript((cmds) => {
     listen: async () => () => {},
     emit: async () => {},
   }
-}, mockCommands)
+}, { ...mockCommands, theme: THEME })
 
 console.log('route\tviewportWidth\tscrollWidth\toverflow')
 for (const route of routes) {
@@ -73,7 +74,7 @@ for (const route of routes) {
     }))
     const overflow = Math.max(sw, sw2) > vw
     console.log(`${route}\t${vw}\t${Math.max(sw, sw2)}\t${overflow ? 'YES' : 'no'}`)
-    await page.screenshot({ path: `${OUT}${route.replace(/\//g, '_') || '_root'}.png` })
+    await page.screenshot({ path: `${OUT}/${route.replace(/\//g, '_') || '_root'}.png` })
   } catch (e) {
     console.log(`${route}\tERROR\t${e.message.slice(0, 60)}`)
   }
