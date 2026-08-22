@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.3] - 2026-08-22
+
+### Changed
+
+- **统一 dotenv 环境变量配置加载**：环境变量集中由 dotenv 从 `.env` 注入，覆盖数据库连接、Redis 连接、OKX/币安秘钥及安全/交易/风控/监控等全部配置。
+  - `AppConfig::default()` 中性化为确定性开发默认值（不再读取环境变量）；`AppConfig::from_env()` 成为唯一环境变量构建入口。
+  - `main.rs` 启动仅 `dotenv().ok()` 一次 + `AppConfig::from_env()`，**移除 `config.toml` 文件持久化**（运行时配置以 `.env` 为准）。
+  - 清理 repository / data-layer 测试中的散落 `dotenv::var` 与 `.unwrap()` 崩溃；补全 `.env.example`。
+
+### Tests
+
+- `cargo test --workspace` 580 passed / 0 failed / 17 ignored；`cargo clippy --all-targets` 0 warning。
+
 ## [0.2.2] - 2026-08-22
 
 ### Added
