@@ -40,13 +40,16 @@ impl PreTradeRiskChecker {
         // 1. 资金检查
         self.check_available_cash(order, account, order_price)?;
 
-        // 2. 持仓限制检查
-        self.check_position_limit(order, positions)?;
+        // 2. 卖出持仓检查（避免裸卖空）
+        self.check_sell_position_available(order, positions)?;
 
-        // 3. 单日亏损限制
+        // 3. 持仓限制检查
+        self.check_position_limit(order, positions, account, order_price)?;
+
+        // 4. 单日亏损限制
         self.check_daily_loss_limit(account)?;
 
-        // 4. 集中度检查
+        // 5. 集中度检查
         self.check_concentration_risk(order, positions, account, order_price)?;
 
         info!("Order passed pre-trade risk check: {}", order.order_id);
@@ -76,6 +79,28 @@ impl PreTradeRiskChecker {
         ))
     }
 
+    /// 检查卖出订单是否有足够的可用持仓（避免裸卖空）
+    fn check_sell_position_available(&self, order: &Order, positions: &[Position]) -> Result<()> {
+        if order.side != quant_common::types::OrderSide::Sell {
+            return Ok(());
+        }
+
+        let available = positions
+            .iter()
+            .find(|p| p.symbol == order.symbol)
+            .map(|p| p.available_quantity)
+            .unwrap_or(Decimal::ZERO);
+
+        if available < order.quantity {
+            return Err(Error::RiskControl(format!(
+                "Insufficient position to sell. Symbol: {}, Available: {}, Required: {}",
+                order.symbol, available, order.quantity
+            )));
+        }
+
+        Ok(())
+    }
+
     /// 检查可用资金
     fn check_available_cash(
         &self,
@@ -102,26 +127,41 @@ impl PreTradeRiskChecker {
         Ok(())
     }
 
-    /// 检查持仓限制
-    fn check_position_limit(&self, order: &Order, positions: &[Position]) -> Result<()> {
-        let current_position = positions
+    /// 检查持仓限制（max_position_size 为持仓市值占总资产的比例）
+    fn check_position_limit(
+        &self,
+        order: &Order,
+        positions: &[Position],
+        account: &Account,
+        order_price: Decimal,
+    ) -> Result<()> {
+        if account.total_assets <= Decimal::ZERO {
+            return Err(Error::RiskControl(
+                "Account total assets must be positive".to_string(),
+            ));
+        }
+
+        let current_qty = positions
             .iter()
             .find(|p| p.symbol == order.symbol)
             .map(|p| p.quantity)
             .unwrap_or(Decimal::ZERO);
 
-        let new_position = match order.side {
-            quant_common::types::OrderSide::Buy => current_position + order.quantity,
-            quant_common::types::OrderSide::Sell => current_position - order.quantity,
+        let new_qty = match order.side {
+            quant_common::types::OrderSide::Buy => current_qty + order.quantity,
+            quant_common::types::OrderSide::Sell => current_qty - order.quantity,
         };
 
-        let max_position =
+        // 持仓限制按市值占比计算，而非直接比较持仓数量（前者是比例，后者是绝对量）
+        let new_position_value = order_price * new_qty.abs();
+        let position_ratio = new_position_value / account.total_assets;
+        let max_ratio =
             Decimal::from_f64_retain(self.config.max_position_size).unwrap_or(Decimal::ZERO);
 
-        if new_position.abs() > max_position {
+        if position_ratio > max_ratio {
             warn!(
-                "Position limit exceeded. Symbol: {}, New position: {}, Max: {}",
-                order.symbol, new_position, max_position
+                "Position limit exceeded. Symbol: {}, Ratio: {}, Max: {}",
+                order.symbol, position_ratio, max_ratio
             );
             return Err(Error::RiskControl(format!(
                 "Position limit exceeded for symbol: {}",
@@ -132,15 +172,22 @@ impl PreTradeRiskChecker {
         Ok(())
     }
 
-    /// 检查当日亏损限制
+    /// 检查当日亏损限制（max_daily_loss 为占总资产的比例）
     fn check_daily_loss_limit(&self, account: &Account) -> Result<()> {
-        let max_daily_loss =
-            Decimal::from_f64_retain(self.config.max_daily_loss).unwrap_or(Decimal::ZERO);
+        if account.total_assets <= Decimal::ZERO {
+            return Err(Error::RiskControl(
+                "Account total assets must be positive".to_string(),
+            ));
+        }
 
-        if account.daily_pnl < -max_daily_loss {
+        let max_daily_loss_ratio =
+            Decimal::from_f64_retain(self.config.max_daily_loss).unwrap_or(Decimal::ZERO);
+        let max_daily_loss_amount = max_daily_loss_ratio * account.total_assets;
+
+        if account.daily_pnl < -max_daily_loss_amount {
             warn!(
                 "Daily loss limit exceeded. Current loss: {}, Max: {}",
-                account.daily_pnl, max_daily_loss
+                account.daily_pnl, max_daily_loss_amount
             );
             return Err(Error::RiskControl("Daily loss limit exceeded".to_string()));
         }
@@ -291,5 +338,40 @@ mod tests {
         let result = checker.check_order_with_reference_price(&order, &account, &[], None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("reference price"));
+    }
+
+    #[test]
+    fn test_daily_loss_limit_uses_ratio_of_total_assets() {
+        let config = RiskConfig {
+            max_position_size: 0.2,
+            max_daily_loss: 0.05,
+            max_drawdown: 0.15,
+            max_concentration: 0.2,
+            enable_pre_trade_check: true,
+            enable_real_time_monitor: true,
+            var_confidence_level: 0.95,
+        };
+        let checker = PreTradeRiskChecker::new(config);
+
+        let account = Account {
+            account_id: 0,
+            total_assets: dec!(10000),
+            available_cash: dec!(10000),
+            frozen_cash: dec!(0),
+            market_value: dec!(0),
+            total_pnl: dec!(0),
+            daily_pnl: dec!(-100), // 亏损 100（占总资产 1%），未达 5% 阈值
+            margin: dec!(0),
+            margin_ratio: dec!(0),
+            updated_at: Utc::now(),
+        };
+
+        // -100 > -(0.05 * 10000) = -500 → 不触发
+        assert!(checker.check_daily_loss_limit(&account).is_ok());
+
+        // -600 < -500 → 触发
+        let mut account = account;
+        account.daily_pnl = dec!(-600);
+        assert!(checker.check_daily_loss_limit(&account).is_err());
     }
 }

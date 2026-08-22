@@ -2,27 +2,36 @@ use chrono::{DateTime, Utc};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 
-/// 计算年化收益率
+/// 计算年化收益率（CAGR，复利年化）
 pub fn calculate_annual_return(
     initial_capital: Decimal,
     final_capital: Decimal,
     days: i64,
 ) -> Decimal {
-    if days <= 0 {
+    if days <= 0 || initial_capital <= Decimal::ZERO {
         return Decimal::ZERO;
     }
 
-    let total_return = (final_capital - initial_capital) / initial_capital;
-    let years = Decimal::from(days) / Decimal::from(365);
-
-    if years > Decimal::ZERO {
-        total_return / years
-    } else {
-        Decimal::ZERO
+    let years = days as f64 / 365.0;
+    if years <= 0.0 {
+        return Decimal::ZERO;
     }
+
+    let initial = initial_capital.to_f64().unwrap_or(0.0);
+    if initial <= 0.0 {
+        return Decimal::ZERO;
+    }
+    let ratio = final_capital.to_f64().unwrap_or(0.0) / initial;
+
+    // CAGR = (final/initial)^(1/years) - 1，而非算术年化 (total_return / years)
+    let cagr = ratio.powf(1.0 / years) - 1.0;
+    Decimal::from_f64_retain(cagr)
+        .unwrap_or(Decimal::ZERO)
+        .round_dp(8)
 }
 
-/// 计算夏普比率
+/// 计算每周期夏普比率（未年化）：(mean - rf) / std。
+/// 如需年化夏普，请用 `calculate_annualized_sharpe_ratio`。
 pub fn calculate_sharpe_ratio(returns: &[Decimal], risk_free_rate: Decimal) -> Decimal {
     if returns.is_empty() {
         return Decimal::ZERO;
@@ -47,6 +56,20 @@ pub fn calculate_sharpe_ratio(returns: &[Decimal], risk_free_rate: Decimal) -> D
     } else {
         Decimal::ZERO
     }
+}
+
+/// 计算年化夏普比率：每周期夏普 × √(periods_per_year)。
+pub fn calculate_annualized_sharpe_ratio(
+    returns: &[Decimal],
+    risk_free_rate: Decimal,
+    periods_per_year: f64,
+) -> Decimal {
+    let per_period = calculate_sharpe_ratio(returns, risk_free_rate);
+    if periods_per_year <= 0.0 {
+        return per_period;
+    }
+    let scale = Decimal::from_f64_retain(periods_per_year.sqrt()).unwrap_or(Decimal::ONE);
+    per_period * scale
 }
 
 /// 计算最大回撤
@@ -88,11 +111,16 @@ mod tests {
 
     #[test]
     fn test_annual_return() {
-        let initial = dec!(100000);
-        let final_value = dec!(120000);
-        let days = 365;
+        // 1 年：20% 收益 → CAGR 20%
+        let annual_return = calculate_annual_return(dec!(100000), dec!(120000), 365);
+        assert_eq!(annual_return, dec!(0.2));
+    }
 
-        let annual_return = calculate_annual_return(initial, final_value, days);
+    #[test]
+    fn test_annual_return_compounds() {
+        // 2 年：100000 → 144000（年化 20% 复利）
+        let annual_return = calculate_annual_return(dec!(100000), dec!(144000), 730);
+        // CAGR = (1.44)^(1/2) - 1 = 0.2
         assert_eq!(annual_return, dec!(0.2));
     }
 

@@ -99,10 +99,16 @@ impl RealTimeRiskMonitor {
     }
 
     fn check_daily_pnl(&self, account: &Account) -> Option<Alert> {
-        let max_daily_loss =
-            Decimal::from_f64_retain(self.config.max_daily_loss).unwrap_or(Decimal::ZERO);
+        if account.total_assets <= Decimal::ZERO {
+            return None;
+        }
 
-        if account.daily_pnl < -max_daily_loss {
+        // max_daily_loss 为占总资产的比例，daily_pnl 为货币金额，需先转换为金额阈值
+        let max_daily_loss_ratio =
+            Decimal::from_f64_retain(self.config.max_daily_loss).unwrap_or(Decimal::ZERO);
+        let max_daily_loss_amount = max_daily_loss_ratio * account.total_assets;
+
+        if account.daily_pnl < -max_daily_loss_amount {
             Some(Alert {
                 alert_id: 0,
                 level: AlertLevel::Critical,

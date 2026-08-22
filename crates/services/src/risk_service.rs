@@ -359,7 +359,8 @@ mod tests {
         let svc = RiskService::new(None);
         let order = sample_order_sell_small();
         let account = sample_account_healthy();
-        let positions: Vec<Position> = vec![];
+        // 持有 0.5 BTC，卖出 0.1 BTC 有足够可用持仓
+        let positions = vec![sample_position("BTC-USDT", dec!(0.5))];
         let (passed, config) = svc
             .pre_trade_check(&order, &account, &positions)
             .await
@@ -384,10 +385,11 @@ mod tests {
     #[tokio::test]
     async fn pre_trade_check_fails_for_position_limit_exceeded() {
         let svc = RiskService::new(None);
-        let order = sample_order_buy();
-        let account = sample_account_healthy();
-        // Existing position at 0.15 + new 0.1 = 0.25 > max_position_size 0.2
-        let positions = vec![sample_position("BTC-USDT", dec!(0.15))];
+        let order = sample_order_buy(); // 买入 0.1 BTC @ 50000 = 5000 USDT
+        let account = sample_account_healthy(); // 总资产 1,000,000
+                                                // 现有 4.0 BTC（市值 200,000）+ 新买 0.1 BTC = 4.1 BTC（205,000），
+                                                // 占总资产 20.5% > max_position_size 20%
+        let positions = vec![sample_position("BTC-USDT", dec!(4.0))];
         let (passed, _) = svc
             .pre_trade_check(&order, &account, &positions)
             .await

@@ -2,7 +2,7 @@ use crate::strategy::Strategy;
 use chrono::{DateTime, Utc};
 use quant_common::types::{Account, BacktestResult, MarketData, Order, Position};
 use quant_common::utils::{
-    calculate_annual_return, calculate_max_drawdown, calculate_sharpe_ratio,
+    calculate_annual_return, calculate_annualized_sharpe_ratio, calculate_max_drawdown,
 };
 use quant_common::{Error, Result};
 use rust_decimal::prelude::FromPrimitive;
@@ -125,6 +125,19 @@ impl BacktestEngine {
         let mut timestamps: Vec<DateTime<Utc>> = data_by_time.keys().cloned().collect();
         timestamps.sort();
 
+        // 估算周期频率（用于年化夏普）：由前两根K线间隔推算每年周期数。
+        // 默认按日频 365 处理（加密 7×24 市场）。
+        let periods_per_year = if timestamps.len() >= 2 {
+            let interval_secs = (timestamps[1] - timestamps[0]).num_seconds();
+            if interval_secs > 0 {
+                (365.0 * 86400.0) / interval_secs as f64
+            } else {
+                365.0
+            }
+        } else {
+            365.0
+        };
+
         let mut total_trades = 0;
         self.winning_trades = 0;
         self.losing_trades = 0;
@@ -132,6 +145,9 @@ impl BacktestEngine {
         self.total_loss = Decimal::ZERO;
 
         let deadline = options.timeout.map(|d| std::time::Instant::now() + d);
+
+        // 待执行的挂单（上一根 K 线生成的信号，留待下一根 K 线成交）
+        let mut pending_orders: Vec<Order> = Vec::new();
 
         let total_timestamps = timestamps.len();
         for (i, timestamp) in timestamps.into_iter().enumerate() {
@@ -154,20 +170,29 @@ impl BacktestEngine {
                 Error::Internal("Timestamp not found in market data".to_string())
             })?;
 
-            // 生成交易信号
+            // 执行上一根 K 线产生的挂单：以本根 K 线开盘价成交，避免前视偏差。
+            // 实践：信号用 t 收盘价生成，成交发生在 t+1 开盘价（而非 t 收盘价）。
+            let carried = std::mem::take(&mut pending_orders);
+            for order in carried {
+                let fill_price = current_data
+                    .iter()
+                    .find(|d| d.symbol == order.symbol)
+                    .map(|d| d.open)
+                    .unwrap_or(Decimal::ZERO);
+                if fill_price > Decimal::ZERO {
+                    self.execute_order_at_price(order, fill_price)?;
+                    total_trades += 1;
+                }
+            }
+
+            // 生成交易信号（用本根 K 线收盘价），挂单留待下一根 K 线执行
             let context = crate::strategy::StrategyContext {
                 current_time: timestamp,
                 positions: self.positions.values().cloned().collect(),
                 market_data: current_data.clone(),
             };
 
-            let orders = strategy.generate_signals(&context).await?;
-
-            // 执行订单
-            for order in orders {
-                self.execute_order(order, current_data)?;
-                total_trades += 1;
-            }
+            pending_orders = strategy.generate_signals(&context).await?;
 
             // 更新账户
             self.update_account(current_data, timestamp)?;
@@ -195,18 +220,19 @@ impl BacktestEngine {
         let annual_return =
             calculate_annual_return(self.initial_capital, self.account.total_assets, days);
 
-        // 计算每日收益率
-        let mut daily_returns = Vec::new();
+        // 计算每周期收益率（权益曲线相邻两点的相对变化；周期频率由数据决定）
+        let mut period_returns = Vec::new();
         for i in 1..self.equity_curve.len() {
             let prev_value = self.equity_curve[i - 1].1;
             let curr_value = self.equity_curve[i].1;
             if prev_value > Decimal::ZERO {
-                let daily_return = (curr_value - prev_value) / prev_value;
-                daily_returns.push(daily_return);
+                let period_return = (curr_value - prev_value) / prev_value;
+                period_returns.push(period_return);
             }
         }
 
-        let sharpe_ratio = calculate_sharpe_ratio(&daily_returns, Decimal::ZERO);
+        let sharpe_ratio =
+            calculate_annualized_sharpe_ratio(&period_returns, Decimal::ZERO, periods_per_year);
         let max_drawdown = calculate_max_drawdown(&self.equity_curve);
 
         // 计算胜率
@@ -253,9 +279,12 @@ impl BacktestEngine {
         })
     }
 
+    /// 以市场价（或订单限价）执行订单。当前回测主循环已改用 `execute_order_at_price`
+    /// （下一根K线开盘价成交，避免前视偏差），本方法保留给单元测试直接构造成交场景。
+    #[allow(dead_code)]
     #[instrument(skip(self, market_data), fields(order_id = %order.order_id, symbol = %order.symbol))]
     fn execute_order(&mut self, order: Order, market_data: &[MarketData]) -> Result<()> {
-        // 查找订单对应的市场数据
+        // 查找订单对应的市场数据（仅用于取参考价格）
         let data = market_data
             .iter()
             .find(|d| d.symbol == order.symbol)
@@ -265,6 +294,11 @@ impl BacktestEngine {
             })?;
 
         let price = order.price.unwrap_or(data.close);
+        self.execute_order_at_price(order, price)
+    }
+
+    /// 以指定成交价执行订单（回测中用下一根 K 线开盘价成交，避免前视偏差）
+    fn execute_order_at_price(&mut self, order: Order, price: Decimal) -> Result<()> {
         let total_cost = price * order.quantity;
         let commission = total_cost * self.commission_rate;
         let slippage_cost = total_cost * self.slippage;

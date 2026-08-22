@@ -55,11 +55,39 @@ impl VaRCalculator {
             _ => Decimal::from_f64_retain(1.28).unwrap(),
         };
 
-        let var = mean + z_score * std_dev;
+        // VaR（损失，正数）= z·σ − μ。原实现 mean + z·σ 计算的是上尾（收益）分位数，
+        // 方向相反。此处返回潜在损失的正值。
+        let var = z_score * std_dev - mean;
         info!(
             "Parametric VaR computed: confidence={}, result={}",
             confidence_level, var
         );
         var
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    #[test]
+    fn test_parametric_var_is_positive_loss() {
+        // 均值为 0、标准差 0.1 的收益序列
+        let returns = vec![dec!(0.1), dec!(-0.1), dec!(0.1), dec!(-0.1)];
+        let var = VaRCalculator::parametric(&returns, 0.95);
+        // VaR（损失）= z*σ - μ = 1.65 * 0.1 - 0 = 0.165（正数）
+        assert!(var > Decimal::ZERO);
+        assert!((var - dec!(0.165)).abs() < dec!(0.001));
+    }
+
+    #[test]
+    fn test_parametric_var_increases_with_negative_mean() {
+        // 负均值会增加 VaR（更差的收益分布 → 更大的潜在损失）
+        let negative = vec![dec!(0.08), dec!(-0.12), dec!(0.08), dec!(-0.12)];
+        let neutral = vec![dec!(0.1), dec!(-0.1), dec!(0.1), dec!(-0.1)];
+        let var_negative = VaRCalculator::parametric(&negative, 0.95);
+        let var_neutral = VaRCalculator::parametric(&neutral, 0.95);
+        assert!(var_negative > var_neutral);
     }
 }
