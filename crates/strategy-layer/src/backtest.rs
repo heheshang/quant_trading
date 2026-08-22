@@ -469,6 +469,24 @@ mod tests {
         }
     }
 
+    fn make_bar(timestamp: DateTime<Utc>, open: Decimal, close: Decimal) -> MarketData {
+        MarketData {
+            timestamp,
+            symbol: "BTC-USDT".to_string(),
+            open,
+            high: open.max(close),
+            low: open.min(close),
+            close,
+            volume: Decimal::from(1000),
+            turnover: Decimal::ZERO,
+            open_interest: None,
+            bid_prices: vec![],
+            bid_volumes: vec![],
+            ask_prices: vec![],
+            ask_volumes: vec![],
+        }
+    }
+
     fn make_order(
         symbol: &str,
         side: quant_common::types::OrderSide,
@@ -654,5 +672,115 @@ mod tests {
         // profit_loss_ratio = 250 / 250 = 1.0
         assert_eq!(engine.total_profit, Decimal::from(250));
         assert_eq!(engine.total_loss, Decimal::from(250));
+    }
+
+    /// 验证前视偏差修复：bar t 收盘生成的信号应在 bar t+1 开盘价成交。
+    #[tokio::test]
+    async fn test_backtest_executes_at_next_bar_open() {
+        use crate::strategy::{Strategy, StrategyContext};
+        use async_trait::async_trait;
+        use quant_common::types::{
+            OrderSide, OrderStatus, OrderType, StrategyParams, StrategyStatus, StrategyType,
+        };
+        use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+        struct BuyOnceStrategy {
+            params: StrategyParams,
+            signaled: AtomicBool,
+        }
+
+        #[async_trait]
+        impl Strategy for BuyOnceStrategy {
+            async fn initialize(&mut self, params: StrategyParams) -> Result<()> {
+                self.params = params;
+                Ok(())
+            }
+
+            async fn generate_signals(&self, context: &StrategyContext) -> Result<Vec<Order>> {
+                if self.signaled.swap(true, AtomicOrdering::SeqCst) {
+                    return Ok(vec![]);
+                }
+                let price = context.market_data[0].close;
+                Ok(vec![Order {
+                    order_id: 0,
+                    strategy_id: "buy_once".to_string(),
+                    symbol: "BTC-USDT".to_string(),
+                    order_type: OrderType::Limit,
+                    side: OrderSide::Buy,
+                    price: Some(price),
+                    quantity: Decimal::ONE,
+                    filled_quantity: Decimal::ZERO,
+                    status: OrderStatus::Pending,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    commission: Decimal::ZERO,
+                    slippage: Decimal::ZERO,
+                }])
+            }
+
+            fn name(&self) -> &str {
+                &self.params.strategy_name
+            }
+            fn params(&self) -> &StrategyParams {
+                &self.params
+            }
+            fn params_mut(&mut self) -> &mut StrategyParams {
+                &mut self.params
+            }
+        }
+
+        let now = Utc::now();
+        let params = StrategyParams {
+            strategy_id: "buy_once".to_string(),
+            strategy_name: "BuyOnce".to_string(),
+            strategy_type: StrategyType::MeanReversion,
+            params: serde_json::json!({}),
+            enabled: true,
+            max_position: Decimal::from(10000),
+            max_daily_loss: Decimal::from(1000),
+            created_at: now,
+            updated_at: now,
+            status: StrategyStatus::Draft,
+            description: None,
+            tags: vec![],
+            symbols: vec!["BTC-USDT".to_string()],
+            instance_label: None,
+            user_id: 0,
+            version: 0,
+        };
+        let strategy = BuyOnceStrategy {
+            params,
+            signaled: AtomicBool::new(false),
+        };
+
+        // 三根 K 线，open 与 close 不同：bar0 收盘 110，bar1 开盘 111
+        let data = vec![
+            make_bar(now, Decimal::from(100), Decimal::from(110)),
+            make_bar(
+                now + chrono::Duration::hours(1),
+                Decimal::from(111),
+                Decimal::from(120),
+            ),
+            make_bar(
+                now + chrono::Duration::hours(2),
+                Decimal::from(121),
+                Decimal::from(130),
+            ),
+        ];
+
+        let mut engine = BacktestEngine::new(Decimal::from(10000), Decimal::ZERO, Decimal::ZERO);
+        let result = engine
+            .run_with_options(&strategy, data, BacktestOptions::default())
+            .await
+            .unwrap();
+
+        // 买入应在 bar1 开盘价 111 成交，而非 bar0 收盘价 110（前视偏差修复验证）
+        let pos = engine
+            .positions
+            .get("BTC-USDT")
+            .expect("position should exist");
+        assert_eq!(pos.avg_price, Decimal::from(111));
+        assert_eq!(pos.quantity, Decimal::ONE);
+        assert_eq!(result.total_trades, 1);
     }
 }

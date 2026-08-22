@@ -594,6 +594,7 @@ mod tests {
                         state: "live".into(),
                         avg_px: "0".into(),
                         acc_fill_sz: "0".into(),
+                        fee: "0".into(),
                         u_time: "1597026383085".into(),
                     })
                 })

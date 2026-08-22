@@ -213,6 +213,7 @@ impl ClientInterface for Client {
                 state: order.s_code.clone(),
                 avg_px: "".to_string(),
                 acc_fill_sz: "".to_string(),
+                fee: "0".to_string(),
                 u_time: order.ts.clone(),
             })
         } else {
@@ -244,6 +245,7 @@ impl ClientInterface for Client {
                 state: o.state,
                 avg_px: o.avg_px,
                 acc_fill_sz: o.acc_fill_sz,
+                fee: o.fee,
                 u_time: o.u_time,
             })
             .ok_or_else(|| Error::NotFound(format!("Order {} not found", ord_id)))

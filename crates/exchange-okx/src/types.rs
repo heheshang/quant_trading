@@ -75,6 +75,7 @@ pub struct OkxOrder {
     pub state: String,
     pub avg_px: String,
     pub acc_fill_sz: String,
+    pub fee: String,
     pub u_time: String,
 }
 

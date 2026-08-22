@@ -148,7 +148,7 @@ impl ExecutionEngine {
                     .get_order_details(&order.symbol, &okx_order_id)
                     .await;
 
-                let (avg_price, filled_quantity, status) = match detail {
+                let (avg_price, filled_quantity, status, okx_fee) = match detail {
                     Ok(d) => {
                         let avg = d
                             .avg_px
@@ -157,7 +157,8 @@ impl ExecutionEngine {
                         let filled = d.acc_fill_sz.parse::<Decimal>().unwrap_or(order.quantity);
                         let status =
                             OkxExecutor::map_okx_state(&d.state).unwrap_or(OrderStatus::Filled);
-                        (avg, filled, status)
+                        let fee = d.fee.parse::<Decimal>().ok();
+                        (avg, filled, status, fee)
                     }
                     Err(_) => {
                         // 查询失败：保守回退（假定全额成交、以订单价成交）
@@ -165,15 +166,18 @@ impl ExecutionEngine {
                             order.price.unwrap_or(Decimal::ZERO),
                             order.quantity,
                             OrderStatus::Filled,
+                            None,
                         )
                     }
                 };
 
-                // 手续费：当前未捕获 OKX 实际 fee，用配置费率按成交额估算
-                let commission = avg_price
-                    * filled_quantity
-                    * Decimal::from_f64_retain(self.config.default_commission_rate)
-                        .unwrap_or(Decimal::ZERO);
+                // 手续费：优先用 OKX 真实 fee；未捕获时按配置费率估算
+                let commission = okx_fee.unwrap_or_else(|| {
+                    avg_price
+                        * filled_quantity
+                        * Decimal::from_f64_retain(self.config.default_commission_rate)
+                            .unwrap_or(Decimal::ZERO)
+                });
 
                 self.order_manager
                     .update_order_status(order.order_id, status.clone())

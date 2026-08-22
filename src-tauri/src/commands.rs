@@ -1907,6 +1907,7 @@ mod tests {
                     state: "live".to_string(),
                     avg_px: "0".to_string(),
                     acc_fill_sz: "0".to_string(),
+                    fee: "0".to_string(),
                     u_time: "1597026383000".to_string(),
                 })
             })

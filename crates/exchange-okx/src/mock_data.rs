@@ -100,6 +100,7 @@ pub fn mock_okx_order(inst_id: &str, side: &str) -> OkxOrder {
         state: "live".to_string(),
         avg_px: "0".to_string(),
         acc_fill_sz: "0".to_string(),
+        fee: "0".to_string(),
         u_time: default_ts().to_string(),
     }
 }
@@ -117,6 +118,7 @@ pub fn mock_filled_order(inst_id: &str, side: &str) -> OkxOrder {
         state: "filled".to_string(),
         avg_px: "45000.5".to_string(),
         acc_fill_sz: "1".to_string(),
+        fee: "0".to_string(),
         u_time: default_ts().to_string(),
     }
 }
@@ -134,6 +136,7 @@ pub fn mock_canceled_order(inst_id: &str, side: &str) -> OkxOrder {
         state: "canceled".to_string(),
         avg_px: "0".to_string(),
         acc_fill_sz: "0".to_string(),
+        fee: "0".to_string(),
         u_time: default_ts().to_string(),
     }
 }

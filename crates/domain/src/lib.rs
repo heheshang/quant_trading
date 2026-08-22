@@ -4,5 +4,4 @@
 //! Zero IO dependencies — pure types + logic.
 
 pub mod types;
-pub mod utils;
 pub use types::*;
