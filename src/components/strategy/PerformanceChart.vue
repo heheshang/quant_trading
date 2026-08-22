@@ -21,7 +21,7 @@
       @change="onControlsChange"
     />
 
-    <div class="chart-legend">
+    <div class="chart-legend" :style="{ background: isDark ? 'rgba(29,30,31,0.92)' : 'rgba(255,255,255,0.92)' }">
       <div class="legend-item">
         <span class="legend-color equity-curve"></span>
         <span>权益曲线</span>
@@ -56,6 +56,7 @@ import { ElSkeleton, ElResult } from 'element-plus'
 
 import { useEcharts } from '@/composables/useEcharts'
 import { buildChartOptions } from '@/composables/usePerformanceChartOptions'
+import { useChartTheme } from '@/composables/useChartTheme'
 import ChartControls from './ChartControls.vue'
 
 use([
@@ -101,6 +102,8 @@ const errorTitle = ref('加载失败')
 const errorSubTitle = ref('请稍后重试')
 const timeRange = ref('1M')
 const selectedDataSource = ref(props.dataSource)
+
+const { isDark } = useChartTheme()
 
 const chartData = computed(() => {
   if (selectedDataSource.value === 'backtest' && props.equityCurve.length > 0) {

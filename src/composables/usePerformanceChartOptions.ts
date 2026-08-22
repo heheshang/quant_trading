@@ -1,5 +1,6 @@
 import * as echarts from 'echarts/core'
 import type { LineSeriesOption } from 'echarts/charts'
+import { useChartTheme } from './useChartTheme'
 
 /**
  * Data point shape consumed by the performance chart.
@@ -36,6 +37,8 @@ export function buildChartOptions(
   dataSource: 'backtest' | 'realtime',
 ): echarts.EChartsCoreOption {
   if (!data.length) return {}
+  // React to the app theme so axis/text/tooltip adapt to dark mode.
+  const theme = useChartTheme().palette.value
 
   const dates = data.map((item) =>
     typeof item.date === 'string' ? item.date : `Day ${item.date}`,
@@ -88,14 +91,14 @@ export function buildChartOptions(
       text: '策略绩效图表',
       left: 'center',
       top: 0,
-      textStyle: { fontSize: 14, color: '#606266' },
+      textStyle: { fontSize: 14, color: theme.axisLabel },
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      borderColor: '#EBEEF5',
+      backgroundColor: theme.tooltipBg,
+      borderColor: theme.tooltipBorder,
       borderWidth: 1,
-      textStyle: { fontSize: 12 },
+      textStyle: { fontSize: 12, color: theme.tooltipText },
       formatter: (params: any) => {
         const date = params[0].name
         const value = params[0].value
@@ -111,13 +114,15 @@ export function buildChartOptions(
     xAxis: {
       type: 'category',
       data: dates,
-      axisLabel: { rotate: 45, fontSize: 10 },
+      axisLabel: { rotate: 45, fontSize: 10, color: theme.axisLabel },
+      axisLine: { lineStyle: { color: theme.splitLine } },
     },
     yAxis: {
       type: 'value',
       min: minValue - range * 0.1,
       max: maxValue + range * 0.1,
-      axisLabel: { formatter: (value: number) => value.toFixed(2) },
+      axisLabel: { formatter: (value: number) => value.toFixed(2), color: theme.axisLabel },
+      splitLine: { lineStyle: { color: theme.splitLine } },
     },
     dataZoom: [
       { type: 'inside', start: 0, end: 100 },
