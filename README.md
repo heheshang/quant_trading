@@ -105,26 +105,43 @@ cd quant_trading
 2. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，配置数据库连接、OKX API 密钥等
+# 编辑 .env 文件，配置数据库连接、OKX/币安密钥等
 ```
 
-3. **安装前端依赖**
+3. **用 Docker 启动数据库组件（推荐，无本地 PG/Redis 时）**
+
+   系统配置由 `dotenv` 从 `.env` 注入；`compose.yaml` 提供 PostgreSQL + Redis：
+```bash
+docker compose up -d postgres redis
+# postgres → 127.0.0.1:15432，redis → 127.0.0.1:16379
+```
+
+   在 `.env` 中指向 Docker 端口：
+```dotenv
+DATABASE_HOST=127.0.0.1
+DATABASE_PORT=15432
+DATABASE_USERNAME=quant
+DATABASE_PASSWORD=quant_password
+DATABASE_NAME=quant_trading
+REDIS_HOST=127.0.0.1
+REDIS_PORT=16379
+```
+
+4. **安装前端依赖**
 ```bash
 npm install
 ```
 
-4. **初始化数据库**
+5. **运行迁移（幂等）**
 ```bash
-# 创建数据库
-createdb quant_trading
-
-# 运行迁移
-cargo run --bin migrate
+cd src-tauri && DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 \
+  DATABASE_USERNAME=quant DATABASE_PASSWORD=quant_password \
+  DATABASE_NAME=quant_trading cargo run --bin migrate-db up
 ```
 
-5. **运行开发环境**
+6. **运行开发环境**
 ```bash
-# 方式1：同时启动前后端
+# 方式1：同时启动前后端（自动后台迁移）
 npm run tauri dev
 
 # 方式2：分别启动
@@ -132,7 +149,7 @@ npm run dev          # 启动前端
 cargo tauri dev      # 启动 Tauri 后端
 ```
 
-6. **生产构建**
+7. **生产构建**
 ```bash
 npm run build
 npm run tauri build

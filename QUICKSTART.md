@@ -15,14 +15,36 @@ npm install
 
 ### 2. 配置数据库（可选）
 
-如果不配置数据库，系统将以内存模式运行（适合测试）。
+系统配置由 `dotenv` 从 `.env` 注入。**推荐用 Docker 提供数据库组件**（无需本地安装 PG/Redis）：
 
-#### PostgreSQL
 ```bash
-# 安装 PostgreSQL 14+
-# Windows: https://www.postgresql.org/download/windows/
+# 启动 compose.yaml 中的 postgres + redis
+docker compose up -d postgres redis
+# postgres → 127.0.0.1:15432，redis → 127.0.0.1:16379
+```
 
-# 创建数据库和用户
+然后在 `.env` 指向 Docker 端口：
+```dotenv
+DATABASE_HOST=127.0.0.1
+DATABASE_PORT=15432
+DATABASE_USERNAME=quant
+DATABASE_PASSWORD=quant_password
+DATABASE_NAME=quant_trading
+REDIS_HOST=127.0.0.1
+REDIS_PORT=16379
+```
+
+运行迁移（幂等）：
+```bash
+cd src-tauri && DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 \
+  DATABASE_USERNAME=quant DATABASE_PASSWORD=quant_password \
+  DATABASE_NAME=quant_trading cargo run --bin migrate-db up
+```
+
+若不配置数据库，系统将以内存模式运行（适合纯前端/测试）。
+
+#### PostgreSQL（本地安装可选）
+```bash
 psql -U postgres
 CREATE DATABASE quant_trading;
 CREATE USER quant WITH PASSWORD 'quant_password';
@@ -30,9 +52,8 @@ GRANT ALL PRIVILEGES ON DATABASE quant_trading TO quant;
 \q
 ```
 
-#### Redis
+#### Redis（Docker 可选）
 ```bash
-# Windows: 使用 WSL 或 Docker
 docker run -d -p 6379:6379 redis:latest
 ```
 

@@ -60,10 +60,51 @@ cd ea_test
 2. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，配置数据库连接等信息
+# 编辑 .env 文件，配置数据库连接、OKX/币安密钥等
 ```
 
-3. **安装前端依赖**
+3. **用 Docker 启动数据库组件（推荐）**
+
+   系统配置由 `dotenv` 从 `.env` 注入；本地开发可用 Docker 提供 PostgreSQL + Redis：
+```bash
+# 启动 compose.yaml 中的 postgres + redis（映射到 127.0.0.1:15432 / 16379）
+docker compose up -d postgres redis
+```
+
+   在 `.env` 中指向 Docker 端口（默认值已写入 `.env.example` 下方，需自行确认）：
+```dotenv
+DATABASE_HOST=127.0.0.1
+DATABASE_PORT=15432
+DATABASE_USERNAME=quant
+DATABASE_PASSWORD=quant_password
+DATABASE_NAME=quant_trading
+REDIS_HOST=127.0.0.1
+REDIS_PORT=16379
+```
+
+   运行迁移（幂等，可重复执行）：
+```bash
+cd src-tauri && DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 \
+  DATABASE_USERNAME=quant DATABASE_PASSWORD=quant_password \
+  DATABASE_NAME=quant_trading cargo run --bin migrate-db up
+```
+
+4. **安装前端依赖**
+```bash
+npm install
+```
+
+5. **运行开发环境**
+```bash
+# 方式1：同时启动前后端（自动后台迁移）
+npm run tauri dev
+
+# 方式2：分别启动
+npm run dev          # 启动前端
+cargo tauri dev      # 启动 Tauri
+```
+
+6. **生产构建**
 ```bash
 npm install
 ```
