@@ -65,13 +65,13 @@ const valueClass = computed(() => {
 .stat-item {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: var(--space-md);
 }
 
 .stat-icon {
   width: 60px;
   height: 60px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -86,31 +86,32 @@ const valueClass = computed(() => {
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #999;
-  margin-bottom: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
 }
 
 .stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #333;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1.2;
 }
 
 .stats-card.clickable {
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 .stats-card.clickable:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 .stat-value.positive {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .stat-value.negative {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 </style>

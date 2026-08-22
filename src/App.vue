@@ -12,7 +12,11 @@
           active-text-color="#409EFF"
         >
           <div class="logo">
-            <h2>量化交易系统</h2>
+            <span class="logo-mark">Q</span>
+            <div class="logo-text">
+              <span class="logo-title">量化交易系统</span>
+              <span class="logo-sub">Quant Trading</span>
+            </div>
           </div>
           
           <el-menu-item index="/dashboard">
@@ -80,9 +84,9 @@
               </el-breadcrumb>
             </div>
             <div class="user-info">
-              <el-icon><User /></el-icon>
-              <span>{{ auth.username }}</span>
-              <el-button type="text" @click="logout">退出</el-button>
+              <span class="user-avatar">{{ auth.username?.charAt(0)?.toUpperCase() || 'U' }}</span>
+              <span class="user-name">{{ auth.username }}</span>
+              <el-button type="text" class="logout-btn" @click="logout">退出</el-button>
             </div>
           </div>
         </el-header>
@@ -156,7 +160,7 @@ const logout = () => {
 }
 
 .sidebar {
-  background-color: #304156;
+  background-color: var(--color-bg-sidebar);
 }
 
 .sidebar-menu {
@@ -165,25 +169,51 @@ const logout = () => {
 }
 
 .logo {
-  height: 60px;
+  height: var(--logo-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md);
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.logo-mark {
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-primary), var(--chart-teal));
   color: #fff;
   font-size: 18px;
-  font-weight: bold;
-  border-bottom: 1px solid #1f2d3d;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
 }
 
-.logo h2 {
-  font-size: 16px;
-  margin: 0;
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.logo-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-sidebar);
+}
+
+.logo-sub {
+  font-size: var(--font-size-xs);
+  color: rgba(191, 203, 217, 0.6);
 }
 
 .header {
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0,21,41,.08);
-  padding: 0 20px;
+  background: var(--color-bg-white);
+  box-shadow: var(--shadow-md);
+  padding: 0 var(--space-xl);
+  z-index: 1;
 }
 
 .header-content {
@@ -195,19 +225,43 @@ const logout = () => {
 
 .header-content h3 {
   margin: 0;
-  font-size: 18px;
-  color: #333;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  font-weight: 600;
 }
 
 .user-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.user-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-regular);
+}
+
+.logout-btn {
+  color: var(--color-text-secondary);
 }
 
 .main-content {
-  background: #f0f2f5;
-  padding: 20px;
+  background: var(--color-bg-page);
+  padding: var(--space-xl);
+  overflow-y: auto;
 }
 
 .header-left {
@@ -217,11 +271,11 @@ const logout = () => {
 }
 
 .breadcrumb {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .breadcrumb .el-breadcrumb__inner {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 /* Route transition animations */
@@ -248,8 +302,67 @@ const logout = () => {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  background: var(--color-bg-page);
+}
+
 #app {
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', Arial, sans-serif;
+  font-family: var(--font-family);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth, theme-aware scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #909399;
+}
+
+/* ── Global component polish (theme-aware) ── */
+.el-card {
+  border-radius: var(--radius-lg);
+  border-color: var(--color-border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.el-card__header {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.el-table {
+  --el-table-border-color: var(--color-border-light);
+  --el-table-header-bg-color: #f5f7fa;
+  font-size: var(--font-size-sm);
+}
+
+.el-table th.el-table__cell {
+  color: var(--color-text-regular);
+  font-weight: 600;
+}
+
+.el-button {
+  border-radius: var(--radius-sm);
+}
+
+.el-dialog {
+  border-radius: var(--radius-lg);
 }
 </style>
