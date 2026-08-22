@@ -81,9 +81,11 @@ export const useAuthStore = defineStore('auth', () => {
       setItem(STORAGE_KEYS.USERNAME, persistedUsername)
       setItem(STORAGE_KEYS.IS_AUTHENTICATED, 'true')
       return true
-    } catch (err) {
-      clearSession()
-      return false
+    } catch {
+      // verify_token 拒绝（而非返回 false）表示后端无法确定 token 是否有效，
+      // 属瞬时错误而非"确定失效"。保留已持久化会话（fail-open），
+      // 避免后端短暂不可用时误登出；后续受保护操作收到 401 时再触发登出。
+      return true
     }
   }
 

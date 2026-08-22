@@ -228,6 +228,8 @@ impl ClientInterface for Client {
             .await
             .map_err(Error::OKX)?;
 
+        // OKX 按 ord_id 查询（instrument 内唯一），返回列表最多一个元素，
+        // 取首个即可；为空时视为订单不存在。
         orders
             .into_iter()
             .next()

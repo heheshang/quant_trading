@@ -32,4 +32,22 @@ describe('auth store session restore', () => {
     expect(authStore.token).toBeNull()
     expect(localStorage.getItem('authToken')).toBeNull()
   })
+
+  it('keeps the persisted session when token verification fails transiently', async () => {
+    localStorage.setItem('authToken', 'persisted-token')
+    localStorage.setItem('isAuthenticated', 'true')
+    localStorage.setItem('username', 'admin')
+    mockVerifyToken.mockRejectedValue(new Error('backend unavailable'))
+
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+
+    const isValid = await authStore.restoreSession()
+
+    // fail-open：瞬时错误不应清除已持久化会话
+    expect(isValid).toBe(true)
+    expect(authStore.isAuthenticated).toBe(true)
+    expect(authStore.token).toBe('persisted-token')
+    expect(localStorage.getItem('authToken')).toBe('persisted-token')
+  })
 })

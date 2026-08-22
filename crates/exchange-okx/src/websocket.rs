@@ -257,7 +257,9 @@ impl OkxWebSocket {
                             }
                         }
 
-                        // 读循环: WS 消息 + new subscriptions + 心跳
+                        // 读循环: WS 消息 + 新订阅/退订 + 心跳
+                        // 注意：不使用 biased! 优先序——命令（订阅/退订）与心跳频率极低，
+                        // 公平轮询即可；若 biased 优先 WS 消息，高频推送下命令可能被饿死。
                         loop {
                             tokio::select! {
                                 msg_result = read.next() => {
