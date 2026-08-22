@@ -1,0 +1,15 @@
+{
+  "project": "price-center",
+  "generated_by": "Initializer Agent",
+  "generated_at": "YYYY-MM-DD HH:mm:ss",
+  "features": [
+    {
+      "id": "F-001",
+      "description": "Feature description in plain language",
+      "priority": "P0/P1/P2",
+      "dependencies": [],
+      "status": "todo | in_progress | done | cancelled",
+      "notes": ""
+    }
+  ]
+}
