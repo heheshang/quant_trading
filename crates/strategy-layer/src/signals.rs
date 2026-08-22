@@ -124,12 +124,20 @@ impl SignalGenerator {
     }
 
     #[instrument(fields(symbol = %symbol, macd = %macd, signal_line = %signal, price = %price))]
-    pub fn from_macd(macd: Decimal, signal: Decimal, symbol: String, price: Decimal) -> Signal {
+    pub fn from_macd(
+        macd: Decimal,
+        signal: Decimal,
+        prev_histogram: Decimal,
+        symbol: String,
+        price: Decimal,
+    ) -> Signal {
         let histogram = macd - signal;
 
-        let signal_type = if histogram > Decimal::ZERO {
+        // 交叉事件判定：柱状图由负转正（金叉）或由正转负（死叉），
+        // 而非“柱状图持续为正/负”的状态，避免在趋势中重复发信号。
+        let signal_type = if prev_histogram <= Decimal::ZERO && histogram > Decimal::ZERO {
             SignalType::Buy // 金叉
-        } else if histogram < Decimal::ZERO {
+        } else if prev_histogram >= Decimal::ZERO && histogram < Decimal::ZERO {
             SignalType::Sell // 死叉
         } else {
             SignalType::Hold
@@ -203,8 +211,9 @@ mod tests {
     #[test]
     fn test_from_macd_golden_cross_returns_buy() {
         let signal = SignalGenerator::from_macd(
-            Decimal::from(10), // MACD > Signal → golden cross → Buy
+            Decimal::from(10), // MACD > Signal → 柱状图 5
             Decimal::from(5),
+            Decimal::from(-1), // 上一柱状图为负 → 金叉
             "BTC/USDT".to_string(),
             Decimal::from(100),
         );
@@ -214,8 +223,9 @@ mod tests {
     #[test]
     fn test_from_macd_death_cross_returns_sell() {
         let signal = SignalGenerator::from_macd(
-            Decimal::from(5), // MACD < Signal → death cross → Sell
+            Decimal::from(5), // MACD < Signal → 柱状图 -5
             Decimal::from(10),
+            Decimal::from(1), // 上一柱状图为正 → 死叉
             "BTC/USDT".to_string(),
             Decimal::from(100),
         );
@@ -225,8 +235,21 @@ mod tests {
     #[test]
     fn test_from_macd_neutral_returns_hold() {
         let signal = SignalGenerator::from_macd(
-            Decimal::from(10), // MACD == Signal → Hold
+            Decimal::from(10), // MACD == Signal → 柱状图 0
             Decimal::from(10),
+            Decimal::from(1),
+            "BTC/USDT".to_string(),
+            Decimal::from(100),
+        );
+        assert_eq!(signal.signal_type, SignalType::Hold);
+    }
+
+    #[test]
+    fn test_from_macd_positive_but_no_cross_returns_hold() {
+        let signal = SignalGenerator::from_macd(
+            Decimal::from(10), // 柱状图 5
+            Decimal::from(5),
+            Decimal::from(3), // 上一柱状图已为正 → 未发生交叉
             "BTC/USDT".to_string(),
             Decimal::from(100),
         );

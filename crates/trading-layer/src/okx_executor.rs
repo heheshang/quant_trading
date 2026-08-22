@@ -1,4 +1,4 @@
-use exchange_okx::types::OkxPlaceOrderRequest;
+use exchange_okx::types::{OkxOrder, OkxPlaceOrderRequest};
 use exchange_okx::{Client as OkxClient, ClientInterface};
 use quant_common::types::{Order, OrderSide, OrderStatus, OrderType};
 use quant_common::{Error, Result};
@@ -115,7 +115,14 @@ impl OkxExecutor {
         Self::map_okx_state(&order.state)
     }
 
-    fn map_okx_state(state: &str) -> Result<OrderStatus> {
+    /// 查询订单成交明细（成交价、成交量、状态等）
+    #[instrument(skip(self), fields(inst_id = %inst_id, ord_id = %ord_id))]
+    pub async fn get_order_details(&self, inst_id: &str, ord_id: &str) -> Result<OkxOrder> {
+        let client = self.client.read().await;
+        client.get_order(inst_id, ord_id).await
+    }
+
+    pub(crate) fn map_okx_state(state: &str) -> Result<OrderStatus> {
         match state {
             "live" => Ok(OrderStatus::Submitted),
             "partially_filled" => Ok(OrderStatus::PartiallyFilled),

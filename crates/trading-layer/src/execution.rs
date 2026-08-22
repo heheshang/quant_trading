@@ -140,21 +140,53 @@ impl ExecutionEngine {
                 info!(
                     order_id = %order.order_id,
                     okx_order_id = %okx_order_id,
-                    "Order executed on OKX"
+                    "Order placed on OKX"
                 );
 
+                // 拉取真实成交明细（成交价/成交量/状态）；查询失败时回退到订单参数
+                let detail = executor
+                    .get_order_details(&order.symbol, &okx_order_id)
+                    .await;
+
+                let (avg_price, filled_quantity, status) = match detail {
+                    Ok(d) => {
+                        let avg = d
+                            .avg_px
+                            .parse::<Decimal>()
+                            .unwrap_or_else(|_| order.price.unwrap_or(Decimal::ZERO));
+                        let filled = d.acc_fill_sz.parse::<Decimal>().unwrap_or(order.quantity);
+                        let status =
+                            OkxExecutor::map_okx_state(&d.state).unwrap_or(OrderStatus::Filled);
+                        (avg, filled, status)
+                    }
+                    Err(_) => {
+                        // 查询失败：保守回退（假定全额成交、以订单价成交）
+                        (
+                            order.price.unwrap_or(Decimal::ZERO),
+                            order.quantity,
+                            OrderStatus::Filled,
+                        )
+                    }
+                };
+
+                // 手续费：当前未捕获 OKX 实际 fee，用配置费率按成交额估算
+                let commission = avg_price
+                    * filled_quantity
+                    * Decimal::from_f64_retain(self.config.default_commission_rate)
+                        .unwrap_or(Decimal::ZERO);
+
                 self.order_manager
-                    .update_order_status(order.order_id, OrderStatus::Filled)
+                    .update_order_status(order.order_id, status.clone())
                     .await?;
 
                 Ok(ExecutionResult {
                     order_id: order.order_id,
                     strategy_id: order.strategy_id,
                     symbol: order.symbol,
-                    filled_quantity: order.quantity,
-                    avg_price: order.price.unwrap_or(Decimal::ZERO),
-                    commission: Decimal::ZERO,
-                    status: OrderStatus::Filled,
+                    filled_quantity,
+                    avg_price,
+                    commission,
+                    status,
                     executed_at: Utc::now(),
                 })
             }
