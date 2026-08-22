@@ -435,6 +435,28 @@ const logout = () => {
   opacity: 0;
   transform: translateY(-4px);
 }
+
+/* ── Mobile / narrow-screen layout tuning ── */
+@media (max-width: 768px) {
+  .main-content {
+    padding: var(--space-md);
+  }
+  .header {
+    padding: 0 var(--space-sm);
+  }
+  .breadcrumb {
+    display: none;
+  }
+  .user-name {
+    display: none;
+  }
+  .header-content h3 {
+    font-size: var(--font-size-md);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 </style>
 
 <style>
@@ -506,5 +528,35 @@ body {
 
 .el-dialog {
   border-radius: var(--radius-lg);
+}
+
+/* ── Mobile / narrow-screen component adaptation ── */
+@media (max-width: 768px) {
+  .el-dialog {
+    --el-dialog-width: 92%;
+    width: 92%;
+  }
+  .el-message-box {
+    width: 90%;
+  }
+  .el-col {
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+  }
+  .el-row + .el-row {
+    margin-top: 12px;
+  }
+  .el-table {
+    font-size: 12px;
+  }
+  .el-form-item__label {
+    width: 84px !important;
+  }
+  .el-card__body {
+    padding: 12px;
+  }
+  .el-card__header {
+    padding: 12px 14px;
+  }
 }
 </style>
