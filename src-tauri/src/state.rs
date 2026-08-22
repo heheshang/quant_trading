@@ -1,4 +1,5 @@
 use data_layer::{OkxDataSource, PostgresClient};
+use exchange_binance::ClientInterface as BinanceClientInterface;
 use exchange_okx::websocket::OkxWebSocket;
 use exchange_okx::ClientInterface;
 use monitor_layer::{AlertManager, LogBuffer};
@@ -37,6 +38,7 @@ pub struct AppState {
     pub okx_client: Arc<RwLock<Option<SharedClient>>>,
     pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+    pub binance_client: Arc<RwLock<Option<Arc<dyn BinanceClientInterface + Send + Sync>>>>,
     pub order_manager: OrderManager,
     pub app_services: Option<AppServices>,
     pub ws_state: WsState,

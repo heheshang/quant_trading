@@ -13,6 +13,7 @@ quant-common = { path = "../common" }
 quant-repository = { path = "../repository" }
 quant-clients = { path = "../clients" }
 exchange-okx = { path = "../exchange-okx", features = ["test-utils"] }
+exchange-binance = { path = "../exchange-binance", features = ["test-utils"] }
 strategy-engine = { package = "strategy-layer", path = "../strategy-layer" }
 trading-engine = { package = "trading-layer", path = "../trading-layer" }
 risk-engine = { package = "risk-layer", path = "../risk-layer" }

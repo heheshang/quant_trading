@@ -30,6 +30,7 @@ quant-services = { path = "../crates/services" }
 quant-repository = { path = "../crates/repository" }
 quant-clients = { path = "../crates/clients" }
 exchange-okx = { path = "../crates/exchange-okx" }
+exchange-binance = { path = "../crates/exchange-binance" }
 data-puller = { path = "../crates/data-puller" }
 
 # Tauri

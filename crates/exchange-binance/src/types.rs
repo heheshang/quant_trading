@@ -70,7 +70,7 @@ pub struct BinanceOrderBook {
 }
 
 /// Request to place a Binance order.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinancePlaceOrderRequest {
     pub symbol: String,
     pub side: BinanceSide,
@@ -80,7 +80,7 @@ pub struct BinancePlaceOrderRequest {
 }
 
 /// Trade side.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum BinanceSide {
     Buy,
@@ -88,7 +88,7 @@ pub enum BinanceSide {
 }
 
 /// Order type.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum BinanceOrderType {
     Market,

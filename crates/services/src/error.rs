@@ -50,6 +50,12 @@ pub enum ServiceError {
     #[error("OKX API error: {0}")]
     OkxApi(String),
 
+    #[error("Binance API error: {0}")]
+    BinanceApi(String),
+
+    #[error("Binance client not initialized")]
+    BinanceNotInitialized,
+
     #[error("Strategy error: {0}")]
     Strategy(String),
 

@@ -11,6 +11,7 @@
 
 use data_layer::market_data_repo::MarketDataRepository;
 use data_layer::OkxDataSource;
+use exchange_binance::ClientInterface as BinanceClientInterface;
 use exchange_okx::ClientInterface;
 use monitor_engine::LogBuffer;
 use quant_clients::RedisCache;
@@ -25,9 +26,11 @@ use tracing::{info, instrument};
 use trading_engine::{OkxExecutor, OrderManager};
 
 type SharedClient = Arc<RwLock<dyn ClientInterface + Send + Sync>>;
+type SharedBinance = Arc<RwLock<Option<Arc<dyn BinanceClientInterface + Send + Sync>>>>;
 
 use crate::account_service::AccountService;
 use crate::auth_service::AuthService;
+use crate::binance_service::BinanceService;
 use crate::config_service::ConfigService;
 use crate::market_data_provider::LockingProvider;
 use crate::market_service::MarketService;
@@ -49,6 +52,7 @@ pub struct SharedInfra {
     pub okx_client: Arc<RwLock<Option<SharedClient>>>,
     pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+    pub binance_client: SharedBinance,
     pub order_manager: Arc<OrderManager>,
     pub log_buffer: Arc<LogBuffer>,
 }
@@ -76,6 +80,7 @@ pub struct AppServices {
     pub market_service: Arc<MarketService>,
     pub strategy_service: StrategyService,
     pub okx_service: OkxService,
+    pub binance_service: BinanceService,
     pub risk_service: Arc<RiskService>,
 
     // Cross-service use-cases
@@ -151,6 +156,7 @@ impl AppServices {
             okx_client,
             okx_executor,
             okx_data_source,
+            binance_client,
             order_manager,
             log_buffer,
         } = infra;
@@ -180,6 +186,7 @@ impl AppServices {
                 okx_executor.clone(),
                 okx_data_source.clone(),
             ),
+            binance_service: BinanceService::new(binance_client.clone()),
             risk_service,
             order_processor,
             config,

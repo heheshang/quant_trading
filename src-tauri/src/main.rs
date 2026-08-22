@@ -13,6 +13,8 @@ mod ws_commands;
 
 use data_layer::{market_data_repo::MarketDataRepository, OkxDataSource};
 use data_puller::DataPuller;
+use exchange_binance::{Client as BinanceClient, ClientInterface as BinanceClientInterface};
+use exchange_binance::types::BinanceEnvironment;
 use exchange_okx::{types::OkxEnvironment, Client, ClientInterface};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
 use quant_clients::RedisCache;
@@ -192,6 +194,25 @@ async fn main() {
     // Create shared OrderManager
     let order_manager = OrderManager::new();
 
+    // Binance client (optional; mirror OKX wiring). Built before `config` is
+    // moved into `config_arc` so we can read `config.binance`.
+    let binance_client_shared: Arc<RwLock<Option<Arc<dyn BinanceClientInterface + Send + Sync>>>> =
+        if config.binance.enable && !config.binance.api_key.is_empty() {
+            let client = BinanceClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                BinanceEnvironment::parse(&config.binance.environment),
+            );
+            info!(
+                "Binance client initialized in {} mode",
+                config.binance.environment
+            );
+            Arc::new(RwLock::new(Some(Arc::new(client))))
+        } else {
+            info!("Binance integration disabled");
+            Arc::new(RwLock::new(None))
+        };
+
     // Create shared Arc wrappers for OKX infrastructure
     let config_arc = Arc::new(RwLock::new(config));
     let okx_client_shared = Arc::new(RwLock::new(okx_client));
@@ -210,6 +231,7 @@ async fn main() {
         okx_client: okx_client_shared.clone(),
         okx_executor: okx_executor_shared.clone(),
         okx_data_source: okx_data_source_shared.clone(),
+        binance_client: binance_client_shared.clone(),
         order_manager: Arc::new(order_manager.clone()),
         log_buffer: log_buffer.clone(),
     };
@@ -224,6 +246,7 @@ async fn main() {
         okx_client: okx_client_shared,
         okx_executor: okx_executor_shared,
         okx_data_source: okx_data_source_shared,
+        binance_client: binance_client_shared,
         order_manager,
         app_services: Some(app_services),
         ws_state: state::WsState::new(),
@@ -292,6 +315,13 @@ async fn main() {
             commands::execute_okx_order,
             commands::get_okx_realtime_data,
             commands::get_okx_historical_data,
+            // Binance commands
+            commands::get_binance_balance,
+            commands::get_binance_candles,
+            commands::get_binance_order_book,
+            commands::place_binance_order,
+            commands::cancel_binance_order,
+            commands::check_binance_status,
             // WebSocket commands
             ws_commands::start_market_data,
             ws_commands::subscribe_market_data,

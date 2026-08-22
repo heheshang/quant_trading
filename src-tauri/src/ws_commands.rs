@@ -217,6 +217,7 @@ mod tests {
             okx_client: Arc::new(RwLock::new(None)),
             okx_executor: Arc::new(RwLock::new(None)),
             okx_data_source: Arc::new(RwLock::new(None)),
+            binance_client: Arc::new(RwLock::new(None)),
             order_manager: OrderManager::new(),
             app_services: None,
             ws_state: WsState::new(),
