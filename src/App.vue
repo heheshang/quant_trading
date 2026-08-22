@@ -19,52 +19,52 @@
             </div>
           </div>
           
-          <el-menu-item index="/dashboard">
+          <el-menu-item index="/dashboard" @mouseenter="prefetch('/dashboard')">
             <el-icon><DataLine /></el-icon>
             <span>仪表盘</span>
           </el-menu-item>
           
-          <el-menu-item index="/strategy">
+          <el-menu-item index="/strategy" @mouseenter="prefetch('/strategy')">
             <el-icon><Operation /></el-icon>
             <span>策略管理</span>
           </el-menu-item>
           
-          <el-menu-item index="/backtest">
+          <el-menu-item index="/backtest" @mouseenter="prefetch('/backtest')">
             <el-icon><TrendCharts /></el-icon>
             <span>回测系统</span>
           </el-menu-item>
           
-          <el-menu-item index="/trading">
+          <el-menu-item index="/trading" @mouseenter="prefetch('/trading')">
             <el-icon><Sell /></el-icon>
             <span>交易执行</span>
           </el-menu-item>
           
-          <el-menu-item index="/risk">
+          <el-menu-item index="/risk" @mouseenter="prefetch('/risk')">
             <el-icon><Warning /></el-icon>
             <span>风险管理</span>
           </el-menu-item>
           
-          <el-menu-item index="/monitor">
+          <el-menu-item index="/monitor" @mouseenter="prefetch('/monitor')">
             <el-icon><Monitor /></el-icon>
             <span>实时监控</span>
           </el-menu-item>
           
-          <el-menu-item index="/settings">
+          <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
             <el-icon><Setting /></el-icon>
             <span>系统设置</span>
           </el-menu-item>
           
-          <el-menu-item index="/profile">
+          <el-menu-item index="/profile" @mouseenter="prefetch('/profile')">
             <el-icon><User /></el-icon>
             <span>个人账户</span>
           </el-menu-item>
           
-          <el-menu-item index="/binance">
+          <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
             <el-icon><Sell /></el-icon>
             <span>币安交易</span>
           </el-menu-item>
 
-          <el-menu-item index="/test">
+          <el-menu-item index="/test" @mouseenter="prefetch('/test')">
             <el-icon><Setting /></el-icon>
             <span>测试页面</span>
           </el-menu-item>
@@ -111,6 +111,24 @@ import { useAuthStore } from '@/stores/auth';
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+
+// Prefetch lazy route components on hover so page switches feel instant.
+const routePreloaders: Record<string, () => Promise<unknown>> = {
+  '/dashboard': () => import('@/views/Dashboard.vue'),
+  '/strategy': () => import('@/views/Strategy.vue'),
+  '/backtest': () => import('@/views/Backtest.vue'),
+  '/trading': () => import('@/views/Trading.vue'),
+  '/risk': () => import('@/views/Risk.vue'),
+  '/monitor': () => import('@/views/Monitor.vue'),
+  '/settings': () => import('@/views/Settings.vue'),
+  '/profile': () => import('@/views/Profile.vue'),
+  '/binance': () => import('@/views/Binance.vue'),
+  '/test': () => import('@/views/Test.vue'),
+};
+
+const prefetch = (path: string) => {
+  routePreloaders[path]?.();
+};
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
@@ -278,20 +296,22 @@ const logout = () => {
   font-size: var(--font-size-xs);
 }
 
-/* Route transition animations */
+/* Route transition — snappy, GPU-accelerated fade + slight lift */
 .fade-slide-enter-active,
 .fade-slide-leave-active {
-  transition: all 0.25s ease;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  will-change: opacity, transform;
+  backface-visibility: hidden;
 }
 
 .fade-slide-enter-from {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateY(8px);
 }
 
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateY(-4px);
 }
 </style>
 
