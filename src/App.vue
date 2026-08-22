@@ -3,87 +3,21 @@
     <!-- Route navigation progress bar -->
     <div v-if="navigationLoading" class="route-progress"></div>
     <el-container class="layout-container">
-      <!-- Show sidebar only when authenticated -->
-      <el-aside width="200px" class="sidebar" v-if="auth.isAuthenticated">
-        <el-menu
-          :default-active="$route.path"
-          router
-          class="sidebar-menu"
-          background-color="#304156"
-          text-color="#bfcbd9"
-          active-text-color="#409EFF"
-        >
-          <div class="logo">
-            <span class="logo-mark">Q</span>
-            <div class="logo-text">
-              <span class="logo-title">量化交易系统</span>
-              <span class="logo-sub">Quant Trading</span>
-            </div>
-          </div>
-          
-          <el-menu-item index="/dashboard" @mouseenter="prefetch('/dashboard')">
-            <el-icon><DataLine /></el-icon>
-            <span>仪表盘</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/strategy" @mouseenter="prefetch('/strategy')">
-            <el-icon><Operation /></el-icon>
-            <span>策略管理</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/backtest" @mouseenter="prefetch('/backtest')">
-            <el-icon><TrendCharts /></el-icon>
-            <span>回测系统</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/trading" @mouseenter="prefetch('/trading')">
-            <el-icon><Sell /></el-icon>
-            <span>交易执行</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/risk" @mouseenter="prefetch('/risk')">
-            <el-icon><Warning /></el-icon>
-            <span>风险管理</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/monitor" @mouseenter="prefetch('/monitor')">
-            <el-icon><Monitor /></el-icon>
-            <span>实时监控</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
-            <el-icon><Setting /></el-icon>
-            <span>系统设置</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/profile" @mouseenter="prefetch('/profile')">
-            <el-icon><User /></el-icon>
-            <span>个人账户</span>
-          </el-menu-item>
-          
-          <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
-            <el-icon><Sell /></el-icon>
-            <span>币安交易</span>
-          </el-menu-item>
-
-          <el-menu-item index="/test" @mouseenter="prefetch('/test')">
-            <el-icon><Setting /></el-icon>
-            <span>测试页面</span>
-          </el-menu-item>
-        </el-menu>
-      </el-aside>
-      
-      <el-container>
         <!-- Show header only when authenticated -->
         <el-header class="header" v-if="auth.isAuthenticated">
           <div class="header-content">
             <div class="header-left">
-              <h3>{{ pageTitle }}</h3>
-              <el-breadcrumb separator="/" class="breadcrumb">
-                <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-                <el-breadcrumb-item v-if="route.path !== '/dashboard'" :to="{ path: '/dashboard' }">仪表盘</el-breadcrumb-item>
-                <el-breadcrumb-item v-if="route.path !== '/dashboard'">{{ pageTitle }}</el-breadcrumb-item>
-              </el-breadcrumb>
+              <el-button text circle class="menu-toggle" @click="drawerVisible = true">
+                <el-icon><MenuIcon /></el-icon>
+              </el-button>
+              <div class="header-titles">
+                <h3>{{ pageTitle }}</h3>
+                <el-breadcrumb separator="/" class="breadcrumb">
+                  <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+                  <el-breadcrumb-item v-if="route.path !== '/dashboard'" :to="{ path: '/dashboard' }">仪表盘</el-breadcrumb-item>
+                  <el-breadcrumb-item v-if="route.path !== '/dashboard'">{{ pageTitle }}</el-breadcrumb-item>
+                </el-breadcrumb>
+              </div>
             </div>
             <div class="user-info">
               <el-button class="theme-toggle" text circle @click="toggleTheme" :title="theme === 'dark' ? '切换亮色' : '切换暗色'">
@@ -105,20 +39,90 @@
             </transition>
           </router-view>
         </el-main>
-      </el-container>
     </el-container>
+
+    <!-- Slide-in navigation drawer (replaces the fixed sidebar) -->
+    <el-drawer
+      v-if="auth.isAuthenticated"
+      v-model="drawerVisible"
+      class="nav-drawer"
+      direction="ltr"
+      size="200px"
+      :with-header="false"
+    >
+      <div class="logo">
+        <span class="logo-mark">Q</span>
+        <div class="logo-text">
+          <span class="logo-title">量化交易系统</span>
+          <span class="logo-sub">Quant Trading</span>
+        </div>
+      </div>
+      <el-menu
+        :default-active="$route.path"
+        router
+        class="sidebar-menu"
+        background-color="var(--color-bg-sidebar)"
+        text-color="var(--color-text-sidebar)"
+        active-text-color="var(--color-text-sidebar-active)"
+        @select="drawerVisible = false"
+      >
+        <el-menu-item index="/dashboard" @mouseenter="prefetch('/dashboard')">
+          <el-icon><DataLine /></el-icon>
+          <span>仪表盘</span>
+        </el-menu-item>
+        <el-menu-item index="/strategy" @mouseenter="prefetch('/strategy')">
+          <el-icon><Operation /></el-icon>
+          <span>策略管理</span>
+        </el-menu-item>
+        <el-menu-item index="/backtest" @mouseenter="prefetch('/backtest')">
+          <el-icon><TrendCharts /></el-icon>
+          <span>回测系统</span>
+        </el-menu-item>
+        <el-menu-item index="/trading" @mouseenter="prefetch('/trading')">
+          <el-icon><Sell /></el-icon>
+          <span>交易执行</span>
+        </el-menu-item>
+        <el-menu-item index="/risk" @mouseenter="prefetch('/risk')">
+          <el-icon><Warning /></el-icon>
+          <span>风险管理</span>
+        </el-menu-item>
+        <el-menu-item index="/monitor" @mouseenter="prefetch('/monitor')">
+          <el-icon><Monitor /></el-icon>
+          <span>实时监控</span>
+        </el-menu-item>
+        <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
+          <el-icon><Setting /></el-icon>
+          <span>系统设置</span>
+        </el-menu-item>
+        <el-menu-item index="/profile" @mouseenter="prefetch('/profile')">
+          <el-icon><User /></el-icon>
+          <span>个人账户</span>
+        </el-menu-item>
+        <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
+          <el-icon><Sell /></el-icon>
+          <span>币安交易</span>
+        </el-menu-item>
+        <el-menu-item index="/test" @mouseenter="prefetch('/test')">
+          <el-icon><Setting /></el-icon>
+          <span>测试页面</span>
+        </el-menu-item>
+      </el-menu>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Moon, Sunny } from '@element-plus/icons-vue';
+import { Menu as MenuIcon, Moon, Sunny } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+
+// Nav drawer visibility (the left sidebar is now a slide-in drawer).
+const drawerVisible = ref(false);
 
 // Route-level loading indicator: show a top progress bar while the target
 // lazy chunk resolves, so slow first-loads feel responsive.
@@ -218,13 +222,22 @@ const logout = () => {
   height: 100vh;
 }
 
-.sidebar {
-  background-color: var(--color-bg-sidebar);
+.nav-drawer :deep(.el-drawer__body) {
+  background: var(--color-bg-sidebar);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-menu {
-  border: none;
-  height: 100%;
+  border-right: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.menu-toggle {
+  color: var(--color-text-regular);
+  margin-right: var(--space-xs);
 }
 
 .logo {
@@ -330,8 +343,18 @@ const logout = () => {
 
 .header-left {
   display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.header-titles {
+  display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.header-titles h3 {
+  margin: 0;
 }
 
 .breadcrumb {
