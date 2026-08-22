@@ -69,6 +69,18 @@ node scripts/screenshot-mobile.mjs
 node scripts/drawer-check.mjs
 ```
 
+## 4b. 人体工学量化核对（375px）
+
+| 指标 | 目标 | 结果 |
+|------|------|------|
+| 按钮触控高度 | ≥40px | ✅ 40px |
+| 输入/下拉触控高度 | ≥40px | ✅ 40px（含小号） |
+| 正文字号 | ≥14px | ✅ 14px |
+| 卡片/区块间距 | 有留白 | ✅ 16–20px |
+| 横向溢出 | 无 | ✅ 无 |
+
+执行：`node scripts/ergonomics-check.mjs`。
+
 ## 5. 局限说明
 - 无 Tauri 后端，数据为打桩空值，**核对的是布局/结构**（无重叠、无溢出、导航可用），不含真实数据渲染。
 - 真机上建议仍按 `docs/MOBILE_VERIFICATION.md` 清单人工核对一次。

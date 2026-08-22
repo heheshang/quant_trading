@@ -522,5 +522,45 @@ body {
   .el-table__header-wrapper {
     overflow-x: auto;
   }
+
+  /* ── Human-friendly mobile ergonomics ── */
+  body {
+    line-height: 1.55;
+    font-size: 14px;
+  }
+  .main-content {
+    padding: var(--space-sm) var(--space-md) var(--space-xl);
+  }
+  /* Breathing room between stacked cards */
+  .el-card {
+    margin-bottom: var(--space-md);
+  }
+  .el-row + .el-row {
+    margin-top: var(--space-md);
+  }
+  /* Comfortable touch targets (>= ~40px) */
+  .el-button {
+    min-height: 40px;
+    padding: 10px 14px;
+  }
+  .el-input__inner,
+  .el-textarea__inner,
+  .el-select__wrapper {
+    min-height: 40px !important;
+    font-size: 14px;
+  }
+  .el-input--small .el-input__inner {
+    height: 40px;
+  }
+  .el-form-item {
+    margin-bottom: var(--space-md);
+  }
+  .el-table {
+    line-height: 1.5;
+  }
+  /* Readable labels/values */
+  .stat-value {
+    font-size: 22px;
+  }
 }
 </style>
