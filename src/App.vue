@@ -1,5 +1,7 @@
 <template>
   <div id="app">
+    <!-- Route navigation progress bar -->
+    <div v-if="navigationLoading" class="route-progress"></div>
     <el-container class="layout-container">
       <!-- Show sidebar only when authenticated -->
       <el-aside width="200px" class="sidebar" v-if="auth.isAuthenticated">
@@ -106,13 +108,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+
+// Route-level loading indicator: show a top progress bar while the target
+// lazy chunk resolves, so slow first-loads feel responsive.
+const navigationLoading = ref(false);
+router.beforeEach((_to, _from, next) => {
+  navigationLoading.value = true;
+  next();
+});
+router.afterEach(() => {
+  navigationLoading.value = false;
+});
+router.onError(() => {
+  navigationLoading.value = false;
+});
 
 // Prefetch lazy route components on hover so page switches feel instant.
 const routePreloaders: Record<string, () => Promise<unknown>> = {
@@ -301,6 +317,35 @@ const logout = () => {
 
 .breadcrumb .el-breadcrumb__inner {
   font-size: var(--font-size-xs);
+}
+
+/* Route navigation progress bar — indeterminate top loader */
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  z-index: 3000;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--color-primary), var(--chart-teal));
+  transform-origin: left;
+  animation: route-progress-slide 1s ease-in-out infinite;
+}
+
+@keyframes route-progress-slide {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  50% {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+  100% {
+    transform: scaleX(0);
+    transform-origin: right;
+  }
 }
 
 /* Route transition — snappy, GPU-accelerated fade + slight lift */
