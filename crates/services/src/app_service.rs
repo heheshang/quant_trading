@@ -114,9 +114,14 @@ impl AppServices {
     #[instrument(skip_all)]
     pub fn new(infra: SharedInfra) -> Self {
         info!("Initializing AppServices");
-        let scheduler = Arc::new(StrategyScheduler::new(
-            infra.config.blocking_read().scheduler.clone(),
-        ));
+        // Non-blocking read: `new` may be called from an async runtime (e.g.
+        // Tauri's `main`), where `blocking_read()` would panic.
+        let scheduler_config = infra
+            .config
+            .try_read()
+            .map(|c| c.scheduler.clone())
+            .unwrap_or_default();
+        let scheduler = Arc::new(StrategyScheduler::new(scheduler_config));
         let strategy_service =
             Self::build_strategy_service(&infra.postgres, &infra.okx_data_source, scheduler);
         let config_service = ConfigService::new(infra.config.clone());
