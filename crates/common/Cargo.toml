@@ -26,3 +26,6 @@ rust_decimal_macros = "1.36"
 [features]
 default = []
 db = ["sqlx", "redis", "reqwest"]
+
+[lints]
+workspace = true

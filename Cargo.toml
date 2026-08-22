@@ -17,6 +17,19 @@ members = [
 ]
 resolver = "2"
 
+[workspace.lints.clippy]
+correctness = "deny"
+suspicious = "deny"
+style = "warn"
+complexity = "warn"
+perf = "warn"
+# 严格 lint 暂缓启用（需先清理测试代码中的 unwrap/expect/切片）：
+# unwrap_used = "deny"
+# expect_used = "deny"
+# panic_in_result_fn = "deny"
+# indexing_slicing = "deny"
+# string_slice = "deny"
+
 [workspace.package]
 version = "0.2.0"
 edition = "2021"

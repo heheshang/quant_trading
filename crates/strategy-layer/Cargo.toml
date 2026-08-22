@@ -25,3 +25,5 @@ statrs = { workspace = true }
 async-trait = "0.1"
 [dev-dependencies]
 rust_decimal_macros = "1.36"
+[lints]
+workspace = true

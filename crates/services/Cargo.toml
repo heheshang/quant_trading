@@ -42,3 +42,6 @@ okx = { workspace = true }
 mockall = "0.13"
 futures = { workspace = true }
 insta = { version = "1", features = ["yaml", "redactions"] }
+
+[lints]
+workspace = true

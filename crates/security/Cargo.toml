@@ -25,3 +25,6 @@ jsonwebtoken = { workspace = true }
 base64 = "0.21"
 sha2 = "0.10"
 hmac = "0.12"
+
+[lints]
+workspace = true

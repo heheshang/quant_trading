@@ -24,3 +24,5 @@ ndarray = { workspace = true }
 statrs = { workspace = true }
 [dev-dependencies]
 rust_decimal_macros = "1.36"
+[lints]
+workspace = true

@@ -36,3 +36,5 @@ test-utils = ["mockall"]
 [dev-dependencies]
 mockall = "0.13"
 async-trait = "0.1"
+[lints]
+workspace = true
