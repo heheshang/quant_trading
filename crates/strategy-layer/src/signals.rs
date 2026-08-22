@@ -1,8 +1,14 @@
 use chrono::{DateTime, Utc};
 use quant_common::types::{Order, OrderSide, OrderType};
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
 use uuid::Uuid;
+
+/// RSI 超卖阈值（低于此值视为超卖，触发买入信号）
+const RSI_OVERSOLD_THRESHOLD: u32 = 30;
+/// RSI 超买阈值（高于此值视为超买，触发卖出信号）
+const RSI_OVERBOUGHT_THRESHOLD: u32 = 70;
 
 /// 交易信号类型
 #[derive(Debug, Clone, PartialEq)]
@@ -77,24 +83,23 @@ pub struct SignalGenerator;
 impl SignalGenerator {
     #[instrument(fields(symbol = %symbol, rsi = %rsi_value, price = %price))]
     pub fn from_rsi(rsi_value: Decimal, symbol: String, price: Decimal) -> Signal {
-        let signal_type = if rsi_value < Decimal::from(30) {
+        let oversold = Decimal::from(RSI_OVERSOLD_THRESHOLD);
+        let overbought = Decimal::from(RSI_OVERBOUGHT_THRESHOLD);
+
+        let signal_type = if rsi_value < oversold {
             SignalType::Buy // 超卖
-        } else if rsi_value > Decimal::from(70) {
+        } else if rsi_value > overbought {
             SignalType::Sell // 超买
         } else {
             SignalType::Hold
         };
 
         let strength = if signal_type != SignalType::Hold {
-            if rsi_value < Decimal::from(30) {
-                ((Decimal::from(30) - rsi_value) / Decimal::from(30))
-                    .to_string()
-                    .parse()
-                    .unwrap_or(0.5)
+            if rsi_value < oversold {
+                ((oversold - rsi_value) / oversold).to_f64().unwrap_or(0.5)
             } else {
-                ((rsi_value - Decimal::from(70)) / Decimal::from(30))
-                    .to_string()
-                    .parse()
+                ((rsi_value - overbought) / (Decimal::ONE_HUNDRED - overbought))
+                    .to_f64()
                     .unwrap_or(0.5)
             }
         } else {
@@ -143,7 +148,7 @@ impl SignalGenerator {
             SignalType::Hold
         };
 
-        let strength: f64 = (histogram.abs() / price).to_string().parse().unwrap_or(0.5);
+        let strength: f64 = (histogram.abs() / price).to_f64().unwrap_or(0.5);
         let strength = strength.min(1.0);
 
         info!(

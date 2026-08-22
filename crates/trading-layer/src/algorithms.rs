@@ -1,6 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use quant_common::types::{Order, OrderSide, OrderType};
 use quant_common::{Error, Result};
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use tracing::{info, instrument};
 
@@ -138,7 +139,7 @@ impl AlgorithmicOrderSlicer {
         let mut orders = Vec::new();
         let mut remaining = total_quantity;
 
-        for i in 0..num_slices.to_string().parse::<usize>().unwrap_or(1) {
+        for i in 0..num_slices.to_usize().unwrap_or(1) {
             let quantity = if remaining >= display_quantity {
                 display_quantity
             } else {
