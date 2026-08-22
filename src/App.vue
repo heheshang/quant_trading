@@ -92,9 +92,11 @@
         </el-header>
         
         <el-main class="main-content">
-          <router-view v-slot="{ Component, route: r }">
+          <router-view v-slot="{ Component }">
             <transition name="fade-slide" mode="out-in">
-              <component :is="Component" :key="r.path" />
+              <keep-alive :include="keepAliveInclude" :max="10">
+                <component :is="Component" />
+              </keep-alive>
             </transition>
           </router-view>
         </el-main>
@@ -129,6 +131,11 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
 const prefetch = (path: string) => {
   routePreloaders[path]?.();
 };
+
+// Cache frequently-visited pages so switching back is instant; these views
+// keep their data fresh via internal polling/WebSocket (no stale data).
+// Component names come from the SFC `<script setup>` filename.
+const keepAliveInclude = ['Dashboard', 'Strategy'];
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
