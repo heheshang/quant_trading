@@ -2,10 +2,17 @@
 //!
 //! Holds all domain services and their shared dependencies.
 //! This is the single entry point for business logic.
+//!
+//! **Design note (DIP / SRP):** `AppServices` is a *composition* (assembly)
+//! root only — it owns the shared infrastructure and exposes a narrow set of
+//! domain services. Business orchestration that spans multiple services
+//! (e.g. [`OrderProcessor`]) lives in dedicated use-cases, not in the command
+//! (Tauri) layer.
 
 use data_layer::market_data_repo::MarketDataRepository;
 use data_layer::OkxDataSource;
 use exchange_okx::ClientInterface;
+use monitor_engine::LogBuffer;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
 use quant_repository::{PgBacktestRepository, PgStrategyRepository, PostgresClient};
@@ -15,7 +22,7 @@ use strategy_engine::registry::default_registry;
 use strategy_engine::scheduler::StrategyScheduler;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
-use trading_engine::OkxExecutor;
+use trading_engine::{OkxExecutor, OrderManager};
 
 type SharedClient = Arc<RwLock<dyn ClientInterface + Send + Sync>>;
 
@@ -25,15 +32,16 @@ use crate::config_service::ConfigService;
 use crate::market_data_provider::LockingProvider;
 use crate::market_service::MarketService;
 use crate::okx_service::OkxService;
+use crate::order_processor::OrderProcessor;
 use crate::risk_service::RiskService;
 use crate::strategy_service::StrategyService;
 
-/// Shared application services container.
+/// Bundle of shared infrastructure references used to wire [`AppServices`].
 ///
-/// Each service receives only the dependencies it needs.
-/// This struct owns the shared infrastructure and creates services from it.
-pub struct AppServices {
-    // Shared infrastructure
+/// Grouping these into a single value keeps the composition-root constructors
+/// small (SRP) and makes the dependency footprint explicit. Constructed at the
+/// call site (e.g. `src-tauri/src/main.rs`) via a struct literal.
+pub struct SharedInfra {
     pub config: Arc<RwLock<AppConfig>>,
     pub postgres: Option<Arc<PostgresClient>>,
     pub redis: Option<Arc<RedisCache>>,
@@ -41,15 +49,37 @@ pub struct AppServices {
     pub okx_client: Arc<RwLock<Option<SharedClient>>>,
     pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+    pub order_manager: Arc<OrderManager>,
+    pub log_buffer: Arc<LogBuffer>,
+}
+
+/// Shared application services container.
+///
+/// Each service receives only the dependencies it needs.
+/// This struct owns the shared infrastructure and creates services from it.
+pub struct AppServices {
+    // Shared infrastructure (owned by the composition root)
+    pub config: Arc<RwLock<AppConfig>>,
+    pub postgres: Option<Arc<PostgresClient>>,
+    pub redis: Option<Arc<RedisCache>>,
+    pub market_data: Option<Arc<MarketDataRepository>>,
+    pub okx_client: Arc<RwLock<Option<SharedClient>>>,
+    pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
+    pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
+    pub order_manager: Arc<OrderManager>,
+    pub log_buffer: Arc<LogBuffer>,
 
     // Domain services
     pub config_service: ConfigService,
     pub auth_service: AuthService,
-    pub account_service: AccountService,
-    pub market_service: MarketService,
+    pub account_service: Arc<AccountService>,
+    pub market_service: Arc<MarketService>,
     pub strategy_service: StrategyService,
     pub okx_service: OkxService,
-    pub risk_service: RiskService,
+    pub risk_service: Arc<RiskService>,
+
+    // Cross-service use-cases
+    pub order_processor: OrderProcessor,
 }
 
 impl AppServices {
@@ -75,80 +105,45 @@ impl AppServices {
         strategy_service
     }
 
-    /// Construct AppServices from raw infrastructure references.
-    ///
-    /// Each service is wired with only the dependencies it needs.
+    /// Construct `AppServices` from a [`SharedInfra`] bundle (in-memory config).
     #[instrument(skip_all)]
-    pub fn new(
-        config: Arc<RwLock<AppConfig>>,
-        postgres: Option<Arc<PostgresClient>>,
-        redis: Option<Arc<RedisCache>>,
-        market_data: Option<Arc<MarketDataRepository>>,
-        okx_client: Arc<RwLock<Option<SharedClient>>>,
-        okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
-        okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
-    ) -> Self {
+    pub fn new(infra: SharedInfra) -> Self {
         info!("Initializing AppServices");
         let scheduler = Arc::new(StrategyScheduler::new(
-            config.blocking_read().scheduler.clone(),
+            infra.config.blocking_read().scheduler.clone(),
         ));
-        let strategy_service = Self::build_strategy_service(&postgres, &okx_data_source, scheduler);
-        Self {
-            config_service: ConfigService::new(config.clone()),
-            auth_service: AuthService::new(config.clone(), postgres.clone()),
-            account_service: AccountService::new(postgres.clone()),
-            market_service: MarketService::new(okx_data_source.clone()),
-            strategy_service,
-            okx_service: OkxService::new(
-                okx_client.clone(),
-                okx_executor.clone(),
-                okx_data_source.clone(),
-            ),
-            risk_service: RiskService::new(postgres.clone()),
-            config,
-            postgres,
-            redis,
-            market_data,
-            okx_client,
-            okx_executor,
-            okx_data_source,
-        }
+        let strategy_service =
+            Self::build_strategy_service(&infra.postgres, &infra.okx_data_source, scheduler);
+        let config_service = ConfigService::new(infra.config.clone());
+        Self::assemble(infra, strategy_service, config_service)
     }
 
-    /// Construct AppServices with a config file path for persistence.
+    /// Construct `AppServices` with a config file path for persistence.
     #[instrument(skip_all)]
-    pub fn with_config_path(
-        config: Arc<RwLock<AppConfig>>,
-        config_path: PathBuf,
-        postgres: Option<Arc<PostgresClient>>,
-        redis: Option<Arc<RedisCache>>,
-        market_data: Option<Arc<MarketDataRepository>>,
-        okx_client: Arc<RwLock<Option<SharedClient>>>,
-        okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
-        okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
-    ) -> Self {
+    pub fn with_config_path(infra: SharedInfra, config_path: PathBuf) -> Self {
         info!(
             "Initializing AppServices with config path: {}",
             config_path.display()
         );
-        let scheduler_config = config
+        let scheduler_config = infra
+            .config
             .try_read()
             .map(|c| c.scheduler.clone())
             .unwrap_or_default();
         let scheduler = Arc::new(StrategyScheduler::new(scheduler_config));
-        let strategy_service = Self::build_strategy_service(&postgres, &okx_data_source, scheduler);
-        Self {
-            config_service: ConfigService::with_path(config.clone(), config_path),
-            auth_service: AuthService::new(config.clone(), postgres.clone()),
-            account_service: AccountService::new(postgres.clone()),
-            market_service: MarketService::new(okx_data_source.clone()),
-            strategy_service,
-            okx_service: OkxService::new(
-                okx_client.clone(),
-                okx_executor.clone(),
-                okx_data_source.clone(),
-            ),
-            risk_service: RiskService::new(postgres.clone()),
+        let strategy_service =
+            Self::build_strategy_service(&infra.postgres, &infra.okx_data_source, scheduler);
+        let config_service = ConfigService::with_path(infra.config.clone(), config_path);
+        Self::assemble(infra, strategy_service, config_service)
+    }
+
+    /// Shared assembly used by both constructors.
+    fn assemble(
+        infra: SharedInfra,
+        strategy_service: StrategyService,
+        config_service: ConfigService,
+    ) -> Self {
+        let SharedInfra {
             config,
             postgres,
             redis,
@@ -156,6 +151,46 @@ impl AppServices {
             okx_client,
             okx_executor,
             okx_data_source,
+            order_manager,
+            log_buffer,
+        } = infra;
+
+        let account_service = Arc::new(AccountService::new(postgres.clone()));
+        let market_service = Arc::new(MarketService::new(okx_data_source.clone()));
+        let risk_service = Arc::new(RiskService::new(postgres.clone()));
+
+        let order_processor = OrderProcessor::new(
+            config.clone(),
+            okx_executor.clone(),
+            order_manager.clone(),
+            log_buffer.clone(),
+            market_service.clone(),
+            risk_service.clone(),
+            account_service.clone(),
+        );
+
+        Self {
+            config_service,
+            auth_service: AuthService::new(config.clone(), postgres.clone()),
+            account_service,
+            market_service,
+            strategy_service,
+            okx_service: OkxService::new(
+                okx_client.clone(),
+                okx_executor.clone(),
+                okx_data_source.clone(),
+            ),
+            risk_service,
+            order_processor,
+            config,
+            postgres,
+            redis,
+            market_data,
+            okx_client,
+            okx_executor,
+            okx_data_source,
+            order_manager,
+            log_buffer,
         }
     }
 }

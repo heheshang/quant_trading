@@ -3,7 +3,6 @@ use chrono::Utc;
 use quant_common::config::AppConfig;
 use quant_common::types::{Account, MarketData, Order, Position};
 use rust_decimal::prelude::ToPrimitive;
-use rust_decimal::Decimal;
 use tauri::{Emitter, State};
 
 #[tauri::command]
@@ -127,161 +126,25 @@ pub async fn submit_order(
     state: State<'_, AppState>,
     order: Order,
 ) -> Result<String, String> {
-    use rust_decimal_macros::dec;
-    use std::sync::Arc;
-    use trading_layer::ExecutionEngine;
+    // The order-placement pipeline (market data → risk check → submit →
+    //   persist → emit → async execution) lives in `OrderProcessor` so the
+    //   command stays a *thin adapter* (SRP) and never reaches into the
+    //   domain / engine / infrastructure layers directly.
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| "Order service not initialized (no database connection)".to_string())?;
 
-    let order_manager = Arc::new(state.order_manager.clone());
-    let mut order = order;
-
-    let trading_config = state.config.read().await.trading.clone();
-    let mut risk_config = state.config.read().await.risk.clone();
-    let enable_pre_trade = risk_config.enable_pre_trade_check;
-
-    if let Some(ref services) = state.app_services {
-        if let Ok(db_risk_config) = services.risk_service.get_risk_config().await {
-            risk_config = db_risk_config;
-        }
-    }
-
-    let market_data = get_market_data_internal(&state, &order.symbol)
+    let placement = services
+        .order_processor
+        .place_order(order)
         .await
-        .unwrap_or_else(|_| {
-            let fallback_price = order.price.unwrap_or(dec!(100));
-            MarketData {
-                symbol: order.symbol.clone(),
-                timestamp: chrono::Utc::now(),
-                open: fallback_price,
-                high: fallback_price,
-                low: fallback_price,
-                close: fallback_price,
-                volume: dec!(0),
-                turnover: dec!(0),
-                open_interest: None,
-                bid_prices: vec![],
-                bid_volumes: vec![],
-                ask_prices: vec![],
-                ask_volumes: vec![],
-            }
-        });
+        .map_err(|e| e.to_string())?;
 
-    if enable_pre_trade {
-        let checker = risk_layer::PreTradeRiskChecker::new(risk_config);
+    // Forward the UI event; the use-case already ran persistence + async execution.
+    let _ = app.emit("order:submitted", placement.event);
 
-        // Fetch account/positions from DB if available for the risk check
-        if let Some(ref services) = state.app_services {
-            if let (Ok(account), Ok(positions)) = (
-                services.account_service.get_account_info().await,
-                services.account_service.get_positions().await,
-            ) {
-                checker
-                    .check_order_with_reference_price(
-                        &order,
-                        &account,
-                        &positions,
-                        Some(market_data.close),
-                    )
-                    .map_err(|e| format!("Risk check failed: {}", e))?;
-            }
-        }
-    }
-
-    // Get OKX executor from shared state
-    let okx_executor = state.okx_executor.read().await.clone();
-
-    // Create execution engine with shared instances
-    let execution_engine = ExecutionEngine::new(
-        order_manager.clone(),
-        trading_config,
-        okx_executor.map(Arc::new),
-    );
-
-    // Submit order to shared order manager
-    let order_id = order_manager
-        .submit_order(order.clone())
-        .await
-        .map_err(|e| format!("Failed to submit order: {}", e))?;
-    order.order_id = order_id;
-    let order_id_str = order_id.to_string();
-
-    // Log order submission
-    state
-        .log_buffer
-        .add_entry(quant_common::types::LogEntry {
-            timestamp: Utc::now(),
-            level: "info".to_string(),
-            message: format!(
-                "Order {} submitted for symbol {}",
-                order_id_str, order.symbol
-            ),
-            module: Some("trading".to_string()),
-        })
-        .await;
-
-    // Persist order to PostgreSQL (graceful degradation if DB unavailable)
-    if let Some(ref services) = state.app_services {
-        match services.account_service.get_account_info().await {
-            Ok(account) => {
-                if let Err(e) = services
-                    .account_service
-                    .persist_order(&order, &account.account_id)
-                    .await
-                {
-                    state
-                        .log_buffer
-                        .add_entry(quant_common::types::LogEntry {
-                            timestamp: Utc::now(),
-                            level: "warn".to_string(),
-                            message: format!("Order persisted to DB failed: {}", e),
-                            module: Some("commands".to_string()),
-                        })
-                        .await;
-                }
-            }
-            Err(_) => {
-                state
-                    .log_buffer
-                    .add_entry(quant_common::types::LogEntry {
-                        timestamp: Utc::now(),
-                        level: "warn".to_string(),
-                        message: "Account not available for order persistence".to_string(),
-                        module: Some("commands".to_string()),
-                    })
-                    .await;
-            }
-        }
-    }
-
-    let _ = app.emit(
-        "order:submitted",
-        serde_json::json!({
-            "order_id": order_id,
-            "symbol": order.symbol,
-            "side": order.side,
-            "order_type": order.order_type,
-            "price": order.price,
-            "quantity": order.quantity,
-            "status": "Submitted",
-            "timestamp": Utc::now().to_rfc3339(),
-        }),
-    );
-
-    // Execute order asynchronously
-    let log = state.log_buffer.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        if let Err(e) = execution_engine.execute_order(order, &market_data).await {
-            log.add_entry(quant_common::types::LogEntry {
-                timestamp: chrono::Utc::now(),
-                level: "error".to_string(),
-                message: format!("Order execution failed: {}", e),
-                module: Some("trading".to_string()),
-            })
-            .await;
-        }
-    });
-
-    Ok(order_id_str)
+    Ok(placement.order_id.to_string())
 }
 
 #[tauri::command]

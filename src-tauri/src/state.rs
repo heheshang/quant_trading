@@ -35,7 +35,7 @@ pub struct AppState {
     pub pg_client: Option<Arc<PostgresClient>>,
     pub redis_cache: Option<RedisCache>,
     pub okx_client: Arc<RwLock<Option<SharedClient>>>,
-    pub okx_executor: Arc<RwLock<Option<OkxExecutor>>>,
+    pub okx_executor: Arc<RwLock<Option<Arc<OkxExecutor>>>>,
     pub okx_data_source: Arc<RwLock<Option<OkxDataSource>>>,
     pub order_manager: OrderManager,
     pub app_services: Option<AppServices>,

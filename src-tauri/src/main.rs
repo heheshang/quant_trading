@@ -58,7 +58,7 @@ async fn main() {
         .await;
 
     // 初始化 OKX 客户端
-    let (okx_client, okx_executor, okx_data_source, okx_executor_arc) = if config.okx.enable
+    let (okx_client, okx_executor, okx_data_source) = if config.okx.enable
         && !config.okx.api_key.is_empty()
     {
         match Client::new(
@@ -86,16 +86,11 @@ async fn main() {
                 // Coerce to trait object for the shared state (enables mocking in tests).
                 // `OkxExecutor` accepts the `ClientInterface` trait object.
                 let client_trait: Arc<RwLock<dyn ClientInterface + Send + Sync>> = client_arc;
-                let executor = OkxExecutor::new(client_trait.clone());
-                // AppServices needs Arc<OkxExecutor> (separate instance, same underlying client)
-                let executor_arc = Arc::new(OkxExecutor::new(client_trait.clone()));
+                // A single shared executor instance for both the command layer and the
+                // services container (DIP: one instance, shared via `Arc`).
+                let executor = Arc::new(OkxExecutor::new(client_trait.clone()));
 
-                (
-                    Some(client_trait),
-                    Some(executor),
-                    Some(data_source),
-                    Some(executor_arc),
-                )
+                (Some(client_trait), Some(executor), Some(data_source))
             }
             Err(e) => {
                 warn!("Failed to initialize OKX client: {}", e);
@@ -107,12 +102,12 @@ async fn main() {
                             module: Some("okx".to_string()),
                         })
                         .await;
-                (None, None, None, None)
+                (None, None, None)
             }
         }
     } else {
         info!("OKX integration disabled");
-        (None, None, None, None)
+        (None, None, None)
     };
 
     // 初始化数据库连接池（懒加载，不阻塞 Tauri 启动）。
@@ -203,18 +198,22 @@ async fn main() {
     let okx_executor_shared = Arc::new(RwLock::new(okx_executor));
     let okx_data_source_shared = Arc::new(RwLock::new(okx_data_source));
 
-    // Create AppServices with config file path for persistence
+    // Create AppServices with config file path for persistence.
+    // Infrastructure is grouped into a single `SharedInfra` bundle (DIP/SRP)
+    // instead of a long argument list.
     let config_path = std::path::PathBuf::from("config.toml");
-    let app_services = AppServices::with_config_path(
-        config_arc.clone(),
-        config_path,
-        repo_pg.clone(),
-        None,
-        None,
-        okx_client_shared.clone(),
-        Arc::new(RwLock::new(okx_executor_arc)),
-        okx_data_source_shared.clone(),
-    );
+    let infra = quant_services::SharedInfra {
+        config: config_arc.clone(),
+        postgres: repo_pg.clone(),
+        redis: None,
+        market_data: None,
+        okx_client: okx_client_shared.clone(),
+        okx_executor: okx_executor_shared.clone(),
+        okx_data_source: okx_data_source_shared.clone(),
+        order_manager: Arc::new(order_manager.clone()),
+        log_buffer: log_buffer.clone(),
+    };
+    let app_services = AppServices::with_config_path(infra, config_path);
 
     let app_state = AppState {
         config: config_arc,
