@@ -1,0 +1,487 @@
+use crate::state::AppState;
+use chrono::Utc;
+use quant_common::types::{Account, Alert, Order, Position, StrategyParams};
+use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
+use std::collections::HashMap;
+use tauri::State;
+
+/// 获取所有策略
+#[tauri::command]
+pub async fn get_strategies(state: State<'_, AppState>) -> Result<Vec<StrategyParams>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .get_strategies()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 创建或更新策略
+#[tauri::command]
+pub async fn save_strategy(
+    state: State<'_, AppState>,
+    strategy: StrategyParams,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .save_strategy(&strategy)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 删除策略
+#[tauri::command]
+pub async fn delete_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<bool, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .delete_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 启用/禁用策略
+#[tauri::command]
+pub async fn toggle_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+    enabled: bool,
+) -> Result<bool, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .toggle_strategy(&strategy_id, enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 部署策略
+#[tauri::command]
+pub async fn deploy_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .deploy_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 启动策略
+#[tauri::command]
+pub async fn start_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .start_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 停止策略
+#[tauri::command]
+pub async fn stop_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .stop_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 暂停策略
+#[tauri::command]
+pub async fn pause_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .pause_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 恢复策略
+#[tauri::command]
+pub async fn resume_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .resume_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 归档策略
+#[tauri::command]
+pub async fn archive_strategy(
+    state: State<'_, AppState>,
+    strategy_id: String,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    let status = services
+        .strategy_service
+        .archive_strategy(&strategy_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{:?}", status))
+}
+
+/// 列出所有已注册的策略类型元数据
+#[tauri::command]
+pub async fn list_strategy_types(
+    state: State<'_, AppState>,
+) -> Result<Vec<strategy_layer::registry::StrategyTypeInfo>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .list_strategy_types()
+        .map_err(|e| e.to_string())
+}
+
+/// 获取单个策略类型的元数据（含参数 Schema）
+#[tauri::command]
+pub async fn get_strategy_type_info(
+    state: State<'_, AppState>,
+    type_name: String,
+) -> Result<strategy_layer::registry::StrategyTypeInfo, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .strategy_service
+        .get_strategy_type_info(&type_name)
+        .map_err(|e| e.to_string())
+}
+
+/// 创建新策略（自动生成 UUID v7 strategy_id，含参数验证）
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn create_strategy(
+    state: State<'_, AppState>,
+    type_name: String,
+    strategy_name: String,
+    params: serde_json::Value,
+    enabled: bool,
+    max_position: f64,
+    max_daily_loss: f64,
+    instance_label: Option<String>,
+    description: Option<String>,
+    tags: Vec<String>,
+    symbols: Vec<String>,
+    user_id: i64,
+) -> Result<String, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+
+    let max_pos = rust_decimal::Decimal::from_f64(max_position)
+        .ok_or_else(|| format!("Invalid max_position: {}", max_position))?;
+    let max_loss = rust_decimal::Decimal::from_f64(max_daily_loss)
+        .ok_or_else(|| format!("Invalid max_daily_loss: {}", max_daily_loss))?;
+
+    services
+        .strategy_service
+        .create_strategy(
+            &type_name,
+            &strategy_name,
+            params,
+            enabled,
+            max_pos,
+            max_loss,
+            instance_label,
+            description,
+            tags,
+            symbols,
+            user_id,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 获取风险指标
+#[tauri::command]
+pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<String, f64>, String> {
+    // Prefer RiskService (DB-backed) for real VaR computation with historical returns
+    if let Some(ref services) = state.app_services {
+        match services.risk_service.get_risk_metrics().await {
+            Ok(metrics) => return Ok(metrics),
+            Err(e) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: format!(
+                            "RiskService unavailable, using config-only metrics: {}",
+                            e
+                        ),
+                        module: Some("risk".to_string()),
+                    })
+                    .await;
+            }
+        }
+    }
+
+    // Fallback: compute VaR with empty returns (returns 0.0 with internal warning)
+    // and return config-based metrics
+    use risk_layer::VaRCalculator;
+    use rust_decimal::prelude::ToPrimitive;
+
+    let mut metrics = HashMap::new();
+    let config = state.config.read().await;
+    let risk_config = &config.risk;
+
+    let var_95 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.95);
+    let var_99 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.99);
+
+    metrics.insert("var_95".to_string(), var_95.to_f64().unwrap_or(0.0));
+    metrics.insert("var_99".to_string(), var_99.to_f64().unwrap_or(0.0));
+    metrics.insert(
+        "max_position_size".to_string(),
+        risk_config.max_position_size,
+    );
+    metrics.insert("max_daily_loss".to_string(), risk_config.max_daily_loss);
+    metrics.insert("max_drawdown".to_string(), risk_config.max_drawdown);
+
+    Ok(metrics)
+}
+
+/// 获取风险配置
+#[tauri::command]
+pub async fn get_risk_config(
+    state: State<'_, AppState>,
+) -> Result<quant_common::config::RiskConfig, String> {
+    if let Some(ref services) = state.app_services {
+        match services.risk_service.get_risk_config().await {
+            Ok(config) => {
+                state.config.write().await.risk = config.clone();
+                return Ok(config);
+            }
+            Err(e) => {
+                state
+                    .log_buffer
+                    .add_entry(quant_common::types::LogEntry {
+                        timestamp: Utc::now(),
+                        level: "warn".to_string(),
+                        message: format!(
+                            "Risk config DB read failed, falling back to memory: {}",
+                            e
+                        ),
+                        module: Some("risk".to_string()),
+                    })
+                    .await;
+            }
+        }
+    }
+
+    let config = state.config.read().await;
+    Ok(config.risk.clone())
+}
+
+/// 更新风险配置
+#[tauri::command]
+pub async fn update_risk_config(
+    state: State<'_, AppState>,
+    config: quant_common::config::RiskConfig,
+) -> Result<bool, String> {
+    match state.app_services.as_ref() {
+        Some(services) => {
+            let mut new_config = services.config_service.get_config().await;
+            new_config.risk = config.clone();
+            let status = services.config_service.update_config(new_config).await;
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: if status.contains("failed") {
+                        "warn".to_string()
+                    } else {
+                        "info".to_string()
+                    },
+                    message: status,
+                    module: Some("config".to_string()),
+                })
+                .await;
+
+            match services.risk_service.update_risk_config(&config).await {
+                Ok(true) => {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "info".to_string(),
+                            message: "Risk config saved to database".to_string(),
+                            module: Some("risk".to_string()),
+                        })
+                        .await;
+                    Ok(true)
+                }
+                Ok(false) => {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "warn".to_string(),
+                            message: "Risk config row not found in database".to_string(),
+                            module: Some("risk".to_string()),
+                        })
+                        .await;
+                    Ok(false)
+                }
+                Err(e) => {
+                    state
+                        .log_buffer
+                        .add_entry(quant_common::types::LogEntry {
+                            timestamp: Utc::now(),
+                            level: "warn".to_string(),
+                            message: format!(
+                                "Risk config DB update failed, kept memory/file config: {}",
+                                e
+                            ),
+                            module: Some("risk".to_string()),
+                        })
+                        .await;
+                    Ok(true)
+                }
+            }
+        }
+        None => {
+            let mut app_config = state.config.write().await;
+            app_config.risk = config;
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "warn".to_string(),
+                    message: "Risk config updated in memory only (no persistence)".to_string(),
+                    module: Some("config".to_string()),
+                })
+                .await;
+            Ok(true)
+        }
+    }
+}
+
+/// 执行事前风控检查
+#[tauri::command]
+pub async fn pre_trade_check(
+    state: State<'_, AppState>,
+    order: Order,
+    account: Account,
+    positions: Vec<Position>,
+) -> Result<bool, String> {
+    use risk_layer::PreTradeRiskChecker;
+
+    // Use the application's live risk configuration instead of hardcoded defaults
+    let mut risk_config = state.config.read().await.risk.clone();
+    if let Some(ref services) = state.app_services {
+        if let Ok(db_risk_config) = services.risk_service.get_risk_config().await {
+            risk_config = db_risk_config;
+        }
+    }
+
+    let checker = PreTradeRiskChecker::new(risk_config);
+
+    match checker.check_order(&order, &account, &positions) {
+        Ok(_) => {
+            // Log successful check
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "info".to_string(),
+                    message: format!("Pre-trade check passed for order {}", order.order_id),
+                    module: Some("risk".to_string()),
+                })
+                .await;
+            Ok(true)
+        }
+        Err(e) => {
+            let error_msg = format!("Pre-trade check failed: {}", e);
+
+            // Create alert for failed check
+            let alert = Alert {
+                alert_id: 0,
+                level: quant_common::types::AlertLevel::Warning,
+                source: "Risk Management".to_string(),
+                message: error_msg.clone(),
+                timestamp: Utc::now(),
+                acknowledged: false,
+            };
+            state.alert_manager.send_alert(alert).await;
+
+            // Log the failure
+            state
+                .log_buffer
+                .add_entry(quant_common::types::LogEntry {
+                    timestamp: Utc::now(),
+                    level: "warning".to_string(),
+                    message: error_msg,
+                    module: Some("risk".to_string()),
+                })
+                .await;
+
+            Ok(false)
+        }
+    }
+}
