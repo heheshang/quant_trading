@@ -55,6 +55,11 @@
             <span>个人账户</span>
           </el-menu-item>
           
+          <el-menu-item index="/binance">
+            <el-icon><Sell /></el-icon>
+            <span>币安交易</span>
+          </el-menu-item>
+
           <el-menu-item index="/test">
             <el-icon><Setting /></el-icon>
             <span>测试页面</span>
@@ -113,6 +118,7 @@ const pageTitle = computed(() => {
     '/monitor': '实时监控',
     '/settings': '系统设置',
     '/profile': '个人账户',
+    '/binance': '币安交易',
     '/test': '测试页面',
   };
   return titles[route.path] || '量化交易系统';

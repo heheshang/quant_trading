@@ -313,6 +313,7 @@ export interface AppConfig {
   monitoring: MonitoringConfig
   security: SecurityConfig
   okx: OkxConfig
+  binance?: BinanceConfig
 }
 
 export interface DatabaseConfig {
@@ -375,6 +376,13 @@ export interface OkxConfig {
   enable: boolean
 }
 
+export interface BinanceConfig {
+  api_key: string
+  api_secret: string
+  environment: string
+  enable: boolean
+}
+
 // ── OKX View Types (匹配 Rust serde camelCase 输出) ──
 
 export interface OkxBalance {
@@ -432,6 +440,54 @@ export interface OkxCandle {
   l: number
   c: number
   vol: number
+}
+
+// ── Binance ──
+
+export interface BinanceBalance {
+  asset: string
+  free: number
+  locked: number
+}
+
+export interface BinanceKline {
+  open_time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  close_time: number
+  quote_volume: number
+  trades: number
+}
+
+export interface BinanceOrderBook {
+  symbol: string
+  bids: [number, number][]
+  asks: [number, number][]
+}
+
+export interface BinancePlaceOrderRequest {
+  symbol: string
+  side: 'Buy' | 'Sell'
+  order_type: 'Market' | 'Limit'
+  price?: number
+  quantity: number
+}
+
+export interface BinanceOrder {
+  symbol: string
+  order_id: number
+  client_order_id: string
+  status: string
+  executed_qty: number
+  cummulative_quote_qty: number
+  price: number
+}
+
+export interface BinanceStatus {
+  connected: boolean
 }
 
 export interface OkxInstrument {
