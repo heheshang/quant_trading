@@ -184,6 +184,19 @@ impl AppConfig {
             config.param_optimizer.parallel_jobs,
         );
 
+        // Exchange credentials / toggles (dotenv-injected at startup).
+        config.okx.api_key = env_string("OKX_API_KEY", &config.okx.api_key);
+        config.okx.api_secret = env_string("OKX_API_SECRET", &config.okx.api_secret);
+        config.okx.passphrase = env_string("OKX_PASSPHRASE", &config.okx.passphrase);
+        config.okx.environment = env_string("OKX_ENVIRONMENT", &config.okx.environment);
+        config.okx.enable = env_parse("OKX_ENABLE", config.okx.enable);
+
+        config.binance.api_key = env_string("BINANCE_API_KEY", &config.binance.api_key);
+        config.binance.api_secret = env_string("BINANCE_API_SECRET", &config.binance.api_secret);
+        config.binance.environment =
+            env_string("BINANCE_ENVIRONMENT", &config.binance.environment);
+        config.binance.enable = env_parse("BINANCE_ENABLE", config.binance.enable);
+
         config
     }
 }

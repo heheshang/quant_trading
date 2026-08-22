@@ -75,19 +75,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a running PostgreSQL instance"]
     async fn test_connection() {
-        let config = DatabaseConfig {
-            host: dotenv::var("DATABASE_HOST").unwrap_or_else(|_| "localhost".into()),
-            port: dotenv::var("DATABASE_PORT")
-                .unwrap_or_else(|_| "5432".into())
-                .parse::<u16>()
-                .unwrap_or(5432),
-            username: dotenv::var("DATABASE_USERNAME").unwrap_or_else(|_| "postgres".into()),
-            password: dotenv::var("DATABASE_PASSWORD").unwrap_or_else(|_| "postgres".into()),
-            database: dotenv::var("DATABASE_NAME").unwrap_or_else(|_| "quant_trading".into()),
-            max_connections: 5,
-            connect_timeout_seconds: 5,
-        };
-
+        // Config is loaded from env via the centralized dotenv-based loader.
+        let config = quant_common::config::AppConfig::from_env().database;
         let client = PostgresClient::new(&config).await;
         // This test requires a running PostgreSQL instance
         assert!(client.is_ok());

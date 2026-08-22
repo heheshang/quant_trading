@@ -219,10 +219,9 @@ async fn main() {
     let okx_executor_shared = Arc::new(RwLock::new(okx_executor));
     let okx_data_source_shared = Arc::new(RwLock::new(okx_data_source));
 
-    // Create AppServices with config file path for persistence.
-    // Infrastructure is grouped into a single `SharedInfra` bundle (DIP/SRP)
-    // instead of a long argument list.
-    let config_path = std::path::PathBuf::from("config.toml");
+    // Create AppServices. Config is loaded from env via dotenv at startup;
+    // the previous `config.toml` file persistence is replaced by dotenv.
+    // Infrastructure is grouped into a single `SharedInfra` bundle (DIP/SRP).
     let infra = quant_services::SharedInfra {
         config: config_arc.clone(),
         postgres: repo_pg.clone(),
@@ -235,7 +234,7 @@ async fn main() {
         order_manager: Arc::new(order_manager.clone()),
         log_buffer: log_buffer.clone(),
     };
-    let app_services = AppServices::with_config_path(infra, config_path);
+    let app_services = AppServices::new(infra);
 
     let app_state = AppState {
         config: config_arc,

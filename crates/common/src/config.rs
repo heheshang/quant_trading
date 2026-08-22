@@ -354,23 +354,20 @@ impl Default for AppConfig {
                 enable_2fa: false,
                 allowed_ips: vec!["127.0.0.1".to_string()],
             },
+            // Deterministic dev defaults — environment variables are applied
+            // by `AppConfig::from_env()` (dotenv-based) at startup.
             okx: OkxConfig {
-                api_key: std::env::var("OKX_API_KEY").unwrap_or_default(),
-                api_secret: std::env::var("OKX_API_SECRET").unwrap_or_default(),
-                passphrase: std::env::var("OKX_PASSPHRASE").unwrap_or_default(),
-                environment: std::env::var("OKX_ENVIRONMENT")
-                    .unwrap_or_else(|_| "demo".to_string()),
-                enable: std::env::var("OKX_ENABLE").unwrap_or_else(|_| "false".to_string())
-                    == "true",
+                api_key: String::new(),
+                api_secret: String::new(),
+                passphrase: String::new(),
+                environment: "demo".to_string(),
+                enable: false,
             },
             binance: BinanceConfig {
-                api_key: std::env::var("BINANCE_API_KEY").unwrap_or_default(),
-                api_secret: std::env::var("BINANCE_API_SECRET").unwrap_or_default(),
-                environment: std::env::var("BINANCE_ENVIRONMENT")
-                    .unwrap_or_else(|_| "spot".to_string()),
-                enable: std::env::var("BINANCE_ENABLE")
-                    .unwrap_or_else(|_| "false".to_string())
-                    == "true",
+                api_key: String::new(),
+                api_secret: String::new(),
+                environment: "spot".to_string(),
+                enable: false,
             },
             data_puller: DataPullerConfig::default(),
             scheduler: SchedulerConfig::default(),
@@ -498,5 +495,29 @@ mod tests {
         let cfg = AppConfig::default();
         assert!(!cfg.param_optimizer.enabled);
         assert_eq!(cfg.param_optimizer.max_iterations, 100);
+    }
+
+    #[test]
+    fn test_default_is_neutral_for_exchange_credentials() {
+        // `AppConfig::default()` must NOT read environment variables; it is a
+        // deterministic dev baseline that `from_env()` (dotenv) overrides.
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.okx.api_key, "");
+        assert_eq!(cfg.okx.api_secret, "");
+        assert!(!cfg.okx.enable);
+        assert_eq!(cfg.binance.api_key, "");
+        assert!(!cfg.binance.enable);
+        assert_eq!(cfg.binance.environment, "spot");
+    }
+
+    #[test]
+    fn test_from_env_is_robust_and_uses_defaults_when_unset() {
+        // `from_env()` is the single entry point for env config; with no env
+        // vars set it must produce a valid, non-panicking config.
+        let cfg = AppConfig::from_env();
+        assert_eq!(cfg.database.host, "localhost");
+        assert_eq!(cfg.database.port, 5432);
+        assert_eq!(cfg.okx.environment, "demo");
+        assert_eq!(cfg.binance.environment, "spot");
     }
 }
