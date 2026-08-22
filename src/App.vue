@@ -484,6 +484,9 @@ body {
 
 /* ── Mobile / narrow-screen component adaptation ── */
 @media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
   .el-dialog {
     --el-dialog-width: 92%;
     width: 92%;
@@ -509,6 +512,15 @@ body {
   }
   .el-card__header {
     padding: 12px 14px;
+  }
+
+  /* Wide tables scroll horizontally inside their card instead of cropping. */
+  .el-table .el-scrollbar__wrap {
+    overflow-x: auto;
+  }
+  .el-table__body-wrapper,
+  .el-table__header-wrapper {
+    overflow-x: auto;
   }
 }
 </style>
