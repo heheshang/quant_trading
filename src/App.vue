@@ -153,9 +153,9 @@ const prefetch = (path: string) => {
 };
 
 // Cache frequently-visited pages so switching back is instant; these views
-// keep their data fresh via internal polling/WebSocket (no stale data).
-// Component names come from the SFC `<script setup>` filename.
-const keepAliveInclude = ['Dashboard', 'Strategy'];
+// keep their data fresh via internal polling/WebSocket and refresh on
+// `onActivated`. Component names come from the SFC `<script setup>` filename.
+const keepAliveInclude = ['Dashboard', 'Strategy', 'Monitor', 'Trading'];
 
 // ── Theme (light / dark), persisted — Element Plus dark css-vars handle ep components. ──
 const theme = ref<'light' | 'dark'>(

@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, onActivated, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getMetrics, getAlerts, getLogs, acknowledgeAlert as apiAcknowledgeAlert } from '@/services/monitor'
 import { useWebSocketStatus } from '@/composables/useWebSocketStatus'
@@ -163,6 +163,11 @@ onMounted(async () => {
   await refreshData()
   await startWsListeners()
   startMarketListening()
+})
+
+// Cache-friendly: refresh latest data when the page is re-activated.
+onActivated(() => {
+  refreshData()
 })
 
 onUnmounted(() => {

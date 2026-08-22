@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { ElMessage } from 'element-plus'
 import { getAccountInfo, getPositions } from '@/services/account'
@@ -281,6 +281,14 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (orderEventUnlisten) orderEventUnlisten.then(fn => fn())
+})
+
+// Cache-friendly: refresh account/positions/orders on re-activation.
+onActivated(() => {
+  fetchAccountInfo()
+  fetchPositions()
+  fetchActiveOrders()
+  fetchOkxStatus()
 })
 
 defineExpose({
