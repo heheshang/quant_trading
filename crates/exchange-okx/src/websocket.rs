@@ -3,7 +3,7 @@ use futures::{SinkExt, StreamExt};
 use quant_common::{Error, Result};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
@@ -32,7 +32,7 @@ pub struct OkxWebSocket {
     message_rx: Arc<RwLock<mpsc::UnboundedReceiver<WsMessage>>>,
     command_tx: broadcast::Sender<WsCommand>,
     unsubscribe_tx: broadcast::Sender<WsCommand>,
-    shutdown_tx: broadcast::Sender<()>,
+    shutdown_tx: watch::Sender<bool>,
 }
 
 impl OkxWebSocket {
@@ -41,7 +41,7 @@ impl OkxWebSocket {
         let (message_tx, message_rx) = mpsc::unbounded_channel();
         let (command_tx, _) = broadcast::channel(256);
         let (unsubscribe_tx, _) = broadcast::channel(256);
-        let (shutdown_tx, _) = broadcast::channel(1);
+        let (shutdown_tx, _) = watch::channel(false);
 
         Self {
             environment,
@@ -128,7 +128,12 @@ impl OkxWebSocket {
 
     /// 停止后台连接循环。
     pub fn stop(&self) {
-        let _ = self.shutdown_tx.send(());
+        let _ = self.shutdown_tx.send(true);
+    }
+
+    /// 判断重连循环是否应退出：显式 stop()（值为 true）或 shutdown 发送端已销毁。
+    fn shutdown_requested(rx: &watch::Receiver<bool>) -> bool {
+        *rx.borrow() || rx.has_changed().is_err()
     }
 
     /// 处理单条 WS 消息并返回是否应该断开
@@ -212,7 +217,7 @@ impl OkxWebSocket {
             let mut retry_delay = 1u64;
 
             loop {
-                if shutdown_rx.try_recv().is_ok() {
+                if Self::shutdown_requested(&shutdown_rx) {
                     info!("WebSocket shutdown requested");
                     break;
                 }
@@ -277,9 +282,11 @@ impl OkxWebSocket {
                                 }
 
                                 // 优雅停止
-                                _ = shutdown_rx.recv() => {
-                                    info!("WebSocket shutdown requested while connected");
-                                    break;
+                                _ = shutdown_rx.changed() => {
+                                    if Self::shutdown_requested(&shutdown_rx) {
+                                        info!("WebSocket shutdown requested while connected");
+                                        break;
+                                    }
                                 }
 
                                 // 处理 broadcast 命令 (新订阅)
@@ -485,5 +492,25 @@ mod tests {
     async fn test_websocket_creation() {
         let ws = OkxWebSocket::new(OkxEnvironment::Demo);
         assert!(ws.subscribe_ticker("BTC-USDT").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_requested_semantics() {
+        let ws = OkxWebSocket::new(OkxEnvironment::Demo);
+        let rx = ws.shutdown_tx.subscribe();
+        // 初始未停止
+        assert!(!OkxWebSocket::shutdown_requested(&rx));
+        // 显式 stop 后应请求停止
+        ws.stop();
+        assert!(OkxWebSocket::shutdown_requested(&rx));
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_requested_on_sender_drop() {
+        let ws = OkxWebSocket::new(OkxEnvironment::Demo);
+        let rx = ws.shutdown_tx.subscribe();
+        drop(ws);
+        // shutdown 发送端销毁也应视为停止请求，避免任务泄漏
+        assert!(OkxWebSocket::shutdown_requested(&rx));
     }
 }
