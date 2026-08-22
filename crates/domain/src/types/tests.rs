@@ -636,24 +636,16 @@ fn test_account_can_cover_zero() {
 // ── StrategyParams ────────────────────────────────────────────────────────
 
 fn make_strategy_params() -> StrategyParams {
-    StrategyParams {
-        strategy_id: "strat_1".into(),
-        strategy_name: "Test Strategy".into(),
-        strategy_type: StrategyType::TrendFollowing,
-        params: serde_json::Value::Object(Default::default()),
-        enabled: true,
-        max_position: dec!(1000),
-        max_daily_loss: dec!(50000),
-        status: StrategyStatus::Draft,
-        description: Some("Test".into()),
-        user_id: 0,
-        version: 0,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    }
+    StrategyParams::builder(
+        "strat_1".to_string(),
+        "Test Strategy".to_string(),
+        StrategyType::TrendFollowing,
+    )
+    .params(serde_json::Value::Object(Default::default()))
+    .max_position(dec!(1000))
+    .max_daily_loss(dec!(50000))
+    .description(Some("Test".to_string()))
+    .build()
 }
 
 #[test]

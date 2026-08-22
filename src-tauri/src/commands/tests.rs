@@ -8,8 +8,8 @@ use exchange_okx::ClientInterface;
 use exchange_okx::MockOkxClient;
 use monitor_layer::{AlertManager, LogBuffer};
 use quant_common::config::AppConfig;
+use quant_common::types::StrategyType;
 use quant_common::types::{Order, StrategyParams};
-use quant_common::types::{StrategyStatus, StrategyType};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::sync::Arc;
@@ -165,24 +165,16 @@ async fn test_save_strategy_requires_services() {
     let state = make_test_state();
     let state_guard: tauri::State<'_, AppState> =
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
-    let strategy = StrategyParams {
-        strategy_id: "test_001".to_string(),
-        strategy_name: "Test Strategy".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: dec!(100000),
-        max_daily_loss: dec!(5000),
-        status: StrategyStatus::Draft,
-        description: Some("Test".to_string()),
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        user_id: 0,
-        version: 0,
-    };
+    let strategy = StrategyParams::builder(
+        "test_001".to_string(),
+        "Test Strategy".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(dec!(100000))
+    .max_daily_loss(dec!(5000))
+    .description(Some("Test".to_string()))
+    .build();
     let result = save_strategy(state_guard, strategy).await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), "Application services not initialized");

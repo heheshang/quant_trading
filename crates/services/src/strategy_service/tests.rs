@@ -25,24 +25,15 @@ async fn get_strategies_no_db_returns_error() {
 #[tokio::test]
 async fn save_strategy_no_db_returns_error() {
     let svc = make_service_no_db();
-    let strategy = StrategyParams {
-        strategy_id: "test_001".to_string(),
-        strategy_name: "Test".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: Decimal::ZERO,
-        max_daily_loss: Decimal::ZERO,
-        user_id: 0,
-        status: Default::default(),
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        version: 0,
-    };
+    let strategy = StrategyParams::builder(
+        "test_001".to_string(),
+        "Test".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(Decimal::ZERO)
+    .max_daily_loss(Decimal::ZERO)
+    .build();
     let result = svc.save_strategy(&strategy).await;
     assert!(result.is_err());
     assert!(matches!(
@@ -259,24 +250,16 @@ mock! {
 // ── Convenience Helpers ───────────────────────────────────────────────────
 
 fn mock_strategy_params(status: StrategyStatus) -> StrategyParams {
-    StrategyParams {
-        strategy_id: "test_001".to_string(),
-        strategy_name: "Test Strategy".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: Decimal::ZERO,
-        max_daily_loss: Decimal::ZERO,
-        status,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        user_id: 0,
-        version: 0,
-    }
+    StrategyParams::builder(
+        "test_001".to_string(),
+        "Test Strategy".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(Decimal::ZERO)
+    .max_daily_loss(Decimal::ZERO)
+    .status(status)
+    .build()
 }
 
 fn mock_summary_row(id: i32, strategy_id: &str) -> StrategySummaryRow {
@@ -688,24 +671,15 @@ async fn test_save_strategy_update_fills_defaults() {
     let mut mock_repo = MockStrategyRepo::new();
 
     // Existing strategy with empty params
-    let existing = StrategyParams {
-        strategy_id: "test_001".to_string(),
-        strategy_name: "Test".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: Decimal::from(10000),
-        max_daily_loss: Decimal::from(500),
-        status: StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        user_id: 0,
-        version: 0,
-    };
+    let existing = StrategyParams::builder(
+        "test_001".to_string(),
+        "Test".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(Decimal::from(10000))
+    .max_daily_loss(Decimal::from(500))
+    .build();
 
     let existing_for_mock = existing.clone();
     mock_repo
@@ -737,27 +711,18 @@ async fn test_save_strategy_update_preserves_existing_params() {
     let mut mock_repo = MockStrategyRepo::new();
 
     // Existing strategy with some params already set
-    let existing = StrategyParams {
-        strategy_id: "test_001".to_string(),
-        strategy_name: "Test".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 50,
-            "entry_threshold": 3.0,
-        }),
-        enabled: true,
-        max_position: Decimal::from(10000),
-        max_daily_loss: Decimal::from(500),
-        status: StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        user_id: 0,
-        version: 0,
-    };
+    let existing = StrategyParams::builder(
+        "test_001".to_string(),
+        "Test".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 50,
+        "entry_threshold": 3.0,
+    }))
+    .max_position(Decimal::from(10000))
+    .max_daily_loss(Decimal::from(500))
+    .build();
 
     let existing_for_mock = existing.clone();
     mock_repo

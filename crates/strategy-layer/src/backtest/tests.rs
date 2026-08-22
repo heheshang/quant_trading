@@ -232,9 +232,7 @@ async fn test_profit_loss_ratio_calculation() {
 async fn test_backtest_executes_at_next_bar_open() {
     use crate::strategy::{Strategy, StrategyContext};
     use async_trait::async_trait;
-    use quant_common::types::{
-        OrderSide, OrderStatus, OrderType, StrategyParams, StrategyStatus, StrategyType,
-    };
+    use quant_common::types::{OrderSide, OrderStatus, OrderType, StrategyParams, StrategyType};
     use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
     struct BuyOnceStrategy {
@@ -283,24 +281,16 @@ async fn test_backtest_executes_at_next_bar_open() {
     }
 
     let now = Utc::now();
-    let params = StrategyParams {
-        strategy_id: "buy_once".to_string(),
-        strategy_name: "BuyOnce".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: Decimal::from(10000),
-        max_daily_loss: Decimal::from(1000),
-        created_at: now,
-        updated_at: now,
-        status: StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec!["BTC-USDT".to_string()],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "buy_once".to_string(),
+        "BuyOnce".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(Decimal::from(10000))
+    .max_daily_loss(Decimal::from(1000))
+    .symbols(vec!["BTC-USDT".to_string()])
+    .build();
     let strategy = BuyOnceStrategy {
         params,
         signaled: AtomicBool::new(false),

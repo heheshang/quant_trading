@@ -303,28 +303,19 @@ mod tests {
     #[tokio::test]
     async fn test_trend_following_golden_cross_triggers_buy() {
         let mut strategy = TrendFollowingStrategy::new();
-        let params = StrategyParams {
-            strategy_id: "tf_test".to_string(),
-            strategy_name: "TF Test".to_string(),
-            strategy_type: quant_common::types::StrategyType::TrendFollowing,
-            params: serde_json::json!({
-                "short_period": 5,
-                "long_period": 10,
-                "signal_period": 3,
-            }),
-            enabled: true,
-            max_position: Decimal::from(100000),
-            max_daily_loss: Decimal::from(5000),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            status: quant_common::types::StrategyStatus::Draft,
-            description: None,
-            tags: vec![],
-            symbols: vec![],
-            instance_label: None,
-            user_id: 0,
-            version: 0,
-        };
+        let params = StrategyParams::builder(
+            "tf_test".to_string(),
+            "TF Test".to_string(),
+            quant_common::types::StrategyType::TrendFollowing,
+        )
+        .params(serde_json::json!({
+            "short_period": 5,
+            "long_period": 10,
+            "signal_period": 3,
+        }))
+        .max_position(Decimal::from(100000))
+        .max_daily_loss(Decimal::from(5000))
+        .build();
         strategy.initialize(params).await.unwrap();
 
         let data = build_crossover_series(true, "BTC/USDT");
@@ -343,28 +334,19 @@ mod tests {
     #[tokio::test]
     async fn test_trend_following_death_cross_triggers_sell() {
         let mut strategy = TrendFollowingStrategy::new();
-        let params = StrategyParams {
-            strategy_id: "tf_test".to_string(),
-            strategy_name: "TF Test".to_string(),
-            strategy_type: quant_common::types::StrategyType::TrendFollowing,
-            params: serde_json::json!({
-                "short_period": 5,
-                "long_period": 10,
-                "signal_period": 3,
-            }),
-            enabled: true,
-            max_position: Decimal::from(100000),
-            max_daily_loss: Decimal::from(5000),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            status: quant_common::types::StrategyStatus::Draft,
-            description: None,
-            tags: vec![],
-            symbols: vec![],
-            instance_label: None,
-            user_id: 0,
-            version: 0,
-        };
+        let params = StrategyParams::builder(
+            "tf_test".to_string(),
+            "TF Test".to_string(),
+            quant_common::types::StrategyType::TrendFollowing,
+        )
+        .params(serde_json::json!({
+            "short_period": 5,
+            "long_period": 10,
+            "signal_period": 3,
+        }))
+        .max_position(Decimal::from(100000))
+        .max_daily_loss(Decimal::from(5000))
+        .build();
         strategy.initialize(params).await.unwrap();
 
         let data = build_crossover_series(false, "BTC/USDT");
@@ -383,53 +365,35 @@ mod tests {
     #[tokio::test]
     async fn test_trend_following_update_params_preserves_runtime_state() {
         let mut strategy = TrendFollowingStrategy::new();
-        let initial_params = StrategyParams {
-            strategy_id: "tf_orig".to_string(),
-            strategy_name: "TF Original".to_string(),
-            strategy_type: quant_common::types::StrategyType::TrendFollowing,
-            params: serde_json::json!({
-                "short_period": 8,
-                "long_period": 20,
-                "signal_period": 5,
-            }),
-            enabled: true,
-            max_position: Decimal::from(100000),
-            max_daily_loss: Decimal::from(5000),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            status: quant_common::types::StrategyStatus::Draft,
-            description: None,
-            tags: vec![],
-            symbols: vec![],
-            instance_label: None,
-            user_id: 0,
-            version: 0,
-        };
+        let initial_params = StrategyParams::builder(
+            "tf_orig".to_string(),
+            "TF Original".to_string(),
+            quant_common::types::StrategyType::TrendFollowing,
+        )
+        .params(serde_json::json!({
+            "short_period": 8,
+            "long_period": 20,
+            "signal_period": 5,
+        }))
+        .max_position(Decimal::from(100000))
+        .max_daily_loss(Decimal::from(5000))
+        .build();
         strategy.initialize(initial_params).await.unwrap();
         assert_eq!(strategy.short_period, 8);
 
-        let new_params = StrategyParams {
-            strategy_id: "tf_orig".to_string(),
-            strategy_name: "TF Original".to_string(),
-            strategy_type: quant_common::types::StrategyType::TrendFollowing,
-            params: serde_json::json!({
-                "short_period": 15,
-                "long_period": 50,
-                "signal_period": 9,
-            }),
-            enabled: true,
-            max_position: Decimal::from(100000),
-            max_daily_loss: Decimal::from(5000),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            status: quant_common::types::StrategyStatus::Draft,
-            description: None,
-            tags: vec![],
-            symbols: vec![],
-            instance_label: None,
-            user_id: 0,
-            version: 0,
-        };
+        let new_params = StrategyParams::builder(
+            "tf_orig".to_string(),
+            "TF Original".to_string(),
+            quant_common::types::StrategyType::TrendFollowing,
+        )
+        .params(serde_json::json!({
+            "short_period": 15,
+            "long_period": 50,
+            "signal_period": 9,
+        }))
+        .max_position(Decimal::from(100000))
+        .max_daily_loss(Decimal::from(5000))
+        .build();
         strategy.update_params(new_params).await.unwrap();
         assert_eq!(
             strategy.short_period, 8,

@@ -208,27 +208,23 @@ impl StrategyService {
                 ServiceError::InvalidParameter(format!("Unknown strategy type '{}'", type_name))
             })?;
 
-        let now = chrono::Utc::now();
         let strategy_id = uuid::Uuid::now_v7().to_string();
 
-        let strategy = StrategyParams {
-            strategy_id: strategy_id.clone(),
-            strategy_name: strategy_name.to_string(),
+        let strategy = StrategyParams::builder(
+            strategy_id.clone(),
+            strategy_name.to_string(),
             strategy_type,
-            params,
-            enabled,
-            max_position,
-            max_daily_loss,
-            status: StrategyStatus::Draft,
-            description,
-            tags,
-            symbols,
-            instance_label,
-            created_at: now,
-            updated_at: now,
-            user_id,
-            version: 0,
-        };
+        )
+        .params(params)
+        .enabled(enabled)
+        .max_position(max_position)
+        .max_daily_loss(max_daily_loss)
+        .description(description)
+        .tags(tags)
+        .symbols(symbols)
+        .instance_label(instance_label)
+        .user_id(user_id)
+        .build();
 
         if !strategy.is_valid() {
             return Err(ServiceError::InvalidParameter(

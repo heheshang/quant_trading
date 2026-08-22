@@ -342,8 +342,8 @@ impl StrategyParamsBuilder {
 
     /// 设置描述。
     #[must_use]
-    pub fn description(mut self, v: impl Into<String>) -> Self {
-        self.description = Some(v.into());
+    pub fn description(mut self, v: Option<String>) -> Self {
+        self.description = v;
         self
     }
 
@@ -363,8 +363,8 @@ impl StrategyParamsBuilder {
 
     /// 设置实例标签。
     #[must_use]
-    pub fn instance_label(mut self, v: impl Into<String>) -> Self {
-        self.instance_label = Some(v.into());
+    pub fn instance_label(mut self, v: Option<String>) -> Self {
+        self.instance_label = v;
         self
     }
 

@@ -90,28 +90,19 @@ async fn test_insufficient_data_returns_empty_signals() {
 #[tokio::test]
 async fn test_rsi_oversold_triggers_buy() {
     let mut strategy = MeanReversionStrategy::new();
-    let params = StrategyParams {
-        strategy_id: "test".to_string(),
-        strategy_name: "Test".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 5,
-            "entry_threshold": 0.5,
-            "exit_threshold": 0.5,
-        }),
-        enabled: true,
-        max_position: Decimal::from(100000),
-        max_daily_loss: Decimal::from(5000),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "test".to_string(),
+        "Test".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 5,
+        "entry_threshold": 0.5,
+        "exit_threshold": 0.5,
+    }))
+    .max_position(Decimal::from(100000))
+    .max_daily_loss(Decimal::from(5000))
+    .build();
     strategy.initialize(params).await.unwrap();
 
     let data = build_regime_series(20, 15, 100, 1, "BTC/USDT");
@@ -130,28 +121,19 @@ async fn test_rsi_oversold_triggers_buy() {
 #[tokio::test]
 async fn test_rsi_overbought_triggers_sell() {
     let mut strategy = MeanReversionStrategy::new();
-    let params = StrategyParams {
-        strategy_id: "test".to_string(),
-        strategy_name: "Test".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 5,
-            "entry_threshold": 0.5,
-            "exit_threshold": 0.5,
-        }),
-        enabled: true,
-        max_position: Decimal::from(100000),
-        max_daily_loss: Decimal::from(5000),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "test".to_string(),
+        "Test".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 5,
+        "entry_threshold": 0.5,
+        "exit_threshold": 0.5,
+    }))
+    .max_position(Decimal::from(100000))
+    .max_daily_loss(Decimal::from(5000))
+    .build();
     strategy.initialize(params).await.unwrap();
 
     let data = build_regime_series(20, 15, 100, 199, "BTC/USDT");
@@ -170,55 +152,37 @@ async fn test_rsi_overbought_triggers_sell() {
 #[tokio::test]
 async fn test_update_params_preserves_runtime_state() {
     let mut strategy = MeanReversionStrategy::new();
-    let initial_params = StrategyParams {
-        strategy_id: "orig-001".to_string(),
-        strategy_name: "Original".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 10,
-            "entry_threshold": 1.5,
-            "exit_threshold": 0.3,
-        }),
-        enabled: true,
-        max_position: Decimal::from(100000),
-        max_daily_loss: Decimal::from(5000),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let initial_params = StrategyParams::builder(
+        "orig-001".to_string(),
+        "Original".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 10,
+        "entry_threshold": 1.5,
+        "exit_threshold": 0.3,
+    }))
+    .max_position(Decimal::from(100000))
+    .max_daily_loss(Decimal::from(5000))
+    .build();
     strategy.initialize(initial_params).await.unwrap();
 
     assert_eq!(strategy.lookback_period, 10);
     assert!((strategy.entry_threshold - 1.5).abs() < f64::EPSILON);
 
-    let new_params = StrategyParams {
-        strategy_id: "orig-001".to_string(),
-        strategy_name: "Original".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 50,
-            "entry_threshold": 4.0,
-            "exit_threshold": 1.0,
-        }),
-        enabled: true,
-        max_position: Decimal::from(100000),
-        max_daily_loss: Decimal::from(5000),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let new_params = StrategyParams::builder(
+        "orig-001".to_string(),
+        "Original".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 50,
+        "entry_threshold": 4.0,
+        "exit_threshold": 1.0,
+    }))
+    .max_position(Decimal::from(100000))
+    .max_daily_loss(Decimal::from(5000))
+    .build();
     strategy.update_params(new_params.clone()).await.unwrap();
 
     assert_eq!(strategy.params().strategy_id, "orig-001");
@@ -241,53 +205,35 @@ async fn test_update_params_preserves_runtime_state() {
 #[tokio::test]
 async fn test_reinitialize_resets_state_with_new_params() {
     let mut strategy = MeanReversionStrategy::new();
-    let initial_params = StrategyParams {
-        strategy_id: "orig-002".to_string(),
-        strategy_name: "Original".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 10,
-            "entry_threshold": 1.5,
-            "exit_threshold": 0.3,
-        }),
-        enabled: true,
-        max_position: Decimal::from(100000),
-        max_daily_loss: Decimal::from(5000),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let initial_params = StrategyParams::builder(
+        "orig-002".to_string(),
+        "Original".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 10,
+        "entry_threshold": 1.5,
+        "exit_threshold": 0.3,
+    }))
+    .max_position(Decimal::from(100000))
+    .max_daily_loss(Decimal::from(5000))
+    .build();
     strategy.initialize(initial_params).await.unwrap();
     assert_eq!(strategy.lookback_period, 10);
 
-    let new_params = StrategyParams {
-        strategy_id: "orig-002".to_string(),
-        strategy_name: "Original".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 50,
-            "entry_threshold": 4.0,
-            "exit_threshold": 1.0,
-        }),
-        enabled: true,
-        max_position: Decimal::from(100000),
-        max_daily_loss: Decimal::from(5000),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let new_params = StrategyParams::builder(
+        "orig-002".to_string(),
+        "Original".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 50,
+        "entry_threshold": 4.0,
+        "exit_threshold": 1.0,
+    }))
+    .max_position(Decimal::from(100000))
+    .max_daily_loss(Decimal::from(5000))
+    .build();
     strategy.reinitialize(new_params).await.unwrap();
 
     assert_eq!(

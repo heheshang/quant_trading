@@ -39,28 +39,19 @@ async fn test_create_via_registry() {
         "",
     );
 
-    let params = StrategyParams {
-        strategy_id: "test_001".to_string(),
-        strategy_name: "Test MR".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({
-            "lookback_period": 20,
-            "entry_threshold": 2.0,
-            "exit_threshold": 0.5,
-        }),
-        enabled: true,
-        max_position: rust_decimal::Decimal::new(100000, 0),
-        max_daily_loss: rust_decimal::Decimal::new(5000, 0),
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "test_001".to_string(),
+        "Test MR".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({
+        "lookback_period": 20,
+        "entry_threshold": 2.0,
+        "exit_threshold": 0.5,
+    }))
+    .max_position(rust_decimal::Decimal::new(100000, 0))
+    .max_daily_loss(rust_decimal::Decimal::new(5000, 0))
+    .build();
 
     let strategy = registry.create("MeanReversion", params).await;
     assert!(strategy.is_ok());
@@ -70,24 +61,15 @@ async fn test_create_via_registry() {
 #[tokio::test]
 async fn test_create_unknown_type_returns_error() {
     let registry = StrategyRegistry::new();
-    let params = StrategyParams {
-        strategy_id: "t".to_string(),
-        strategy_name: "T".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: rust_decimal::Decimal::ZERO,
-        max_daily_loss: rust_decimal::Decimal::ZERO,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        instance_label: None,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "t".to_string(),
+        "T".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(rust_decimal::Decimal::ZERO)
+    .max_daily_loss(rust_decimal::Decimal::ZERO)
+    .build();
     let result = registry.create("NonExistent", params).await;
     assert!(result.is_err());
 }
@@ -185,24 +167,15 @@ async fn test_factory_create_propagates_initialize_errors() {
     }
 
     let factory = FailingFactory;
-    let params = StrategyParams {
-        strategy_id: "fail-001".to_string(),
-        strategy_name: "Failing".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: rust_decimal::Decimal::ZERO,
-        max_daily_loss: rust_decimal::Decimal::ZERO,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        instance_label: None,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "fail-001".to_string(),
+        "Failing".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(rust_decimal::Decimal::ZERO)
+    .max_daily_loss(rust_decimal::Decimal::ZERO)
+    .build();
 
     let result = factory.create(params).await;
     assert!(
@@ -221,24 +194,15 @@ async fn test_factory_create_propagates_initialize_errors() {
 #[tokio::test]
 async fn test_registry_create_unknown_type_returns_typed_error() {
     let registry = StrategyRegistry::new();
-    let params = StrategyParams {
-        strategy_id: "x".to_string(),
-        strategy_name: "X".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: rust_decimal::Decimal::ZERO,
-        max_daily_loss: rust_decimal::Decimal::ZERO,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        instance_label: None,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "x".to_string(),
+        "X".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(rust_decimal::Decimal::ZERO)
+    .max_daily_loss(rust_decimal::Decimal::ZERO)
+    .build();
 
     let result = registry.create("NonExistent", params).await;
     assert!(result.is_err());
@@ -278,24 +242,15 @@ async fn test_registry_propagates_invalid_parameters_error() {
         "always fails parameter validation",
     );
 
-    let params = StrategyParams {
-        strategy_id: "bp-1".to_string(),
-        strategy_name: "BP".to_string(),
-        strategy_type: quant_common::types::StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: rust_decimal::Decimal::ZERO,
-        max_daily_loss: rust_decimal::Decimal::ZERO,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        instance_label: None,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "bp-1".to_string(),
+        "BP".to_string(),
+        quant_common::types::StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(rust_decimal::Decimal::ZERO)
+    .max_daily_loss(rust_decimal::Decimal::ZERO)
+    .build();
 
     let result = registry.create("BadParam", params).await;
     match result.err().unwrap() {

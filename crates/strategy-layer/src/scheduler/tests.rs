@@ -11,24 +11,15 @@ fn make_scheduler() -> StrategyScheduler {
 
 async fn make_dummy_strategy() -> Box<dyn Strategy> {
     let mut s = MeanReversionStrategy::new();
-    let params = StrategyParams {
-        strategy_id: "test_scheduler".to_string(),
-        strategy_name: "Scheduler Test".to_string(),
-        strategy_type: StrategyType::MeanReversion,
-        params: serde_json::json!({}),
-        enabled: true,
-        max_position: rust_decimal::Decimal::new(100000, 0),
-        max_daily_loss: rust_decimal::Decimal::new(5000, 0),
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        status: quant_common::types::StrategyStatus::Draft,
-        description: None,
-        tags: vec![],
-        symbols: vec![],
-        instance_label: None,
-        user_id: 0,
-        version: 0,
-    };
+    let params = StrategyParams::builder(
+        "test_scheduler".to_string(),
+        "Scheduler Test".to_string(),
+        StrategyType::MeanReversion,
+    )
+    .params(serde_json::json!({}))
+    .max_position(rust_decimal::Decimal::new(100000, 0))
+    .max_daily_loss(rust_decimal::Decimal::new(5000, 0))
+    .build();
     // 忽略 initialize 错误
     let _ = s.initialize(params).await;
     Box::new(s)
