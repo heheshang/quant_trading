@@ -31,9 +31,16 @@ const { status, retryIn, startListening } = useWebSocketStatus()
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
-  border-radius: 6px;
-  background: #f5f7fa;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  color: var(--color-text-regular);
+  font-size: var(--font-size-sm);
+}
+
+.status-text {
+  color: var(--color-text-regular);
+  white-space: nowrap;
 }
 
 .status-dot {
