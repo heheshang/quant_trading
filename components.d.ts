@@ -110,6 +110,7 @@ declare module 'vue' {
     SettingsRisk: typeof import('./src/components/settings/SettingsRisk.vue')['default']
     SettingsSecurity: typeof import('./src/components/settings/SettingsSecurity.vue')['default']
     SettingsTrading: typeof import('./src/components/settings/SettingsTrading.vue')['default']
+    SidebarNav: typeof import('./src/components/layout/SidebarNav.vue')['default']
     StatsCard: typeof import('./src/components/StatsCard.vue')['default']
     StrategyBacktestDialog: typeof import('./src/components/strategy/StrategyBacktestDialog.vue')['default']
     StrategyDetailPanel: typeof import('./src/components/strategy/StrategyDetailPanel.vue')['default']
