@@ -6,8 +6,10 @@
 
 pub mod client;
 pub mod types;
+pub mod websocket;
 
 pub use client::{Client, ClientInterface};
+pub use websocket::{BinanceWebSocket, BinanceWsMessage};
 pub use types::{
     BinanceBalance, BinanceEnvironment, BinanceKline, BinanceOrder, BinanceOrderBook,
     BinanceOrderType, BinancePlaceOrderRequest, BinanceSide, from_binance_symbol,

@@ -22,6 +22,9 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
+futures = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tungstenite = { workspace = true }
 async-trait = "0.1"
 hmac = { workspace = true }
 sha2 = { workspace = true }
