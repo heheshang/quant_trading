@@ -70,7 +70,7 @@
         <el-header class="header" v-if="auth.isAuthenticated">
           <div class="header-content">
             <div class="header-left">
-              <el-button text circle class="menu-toggle" @click="isCollapse = !isCollapse">
+              <el-button text circle class="menu-toggle" @click="toggleCollapse">
                 <el-icon><MenuIcon /></el-icon>
               </el-button>
               <div class="header-titles">
@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Menu as MenuIcon, Moon, Sunny } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
@@ -117,9 +117,31 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-// Fixed left sidebar that can collapse to an icon rail (stays on the left).
-const isCollapse = ref(false);
+// Fixed left sidebar that can collapse to an icon rail (stays on the left),
+// remembers the preference, and auto-collapses on narrow screens.
+const COLLAPSE_KEY = 'sidebarCollapse';
+const isCollapse = ref(localStorage.getItem(COLLAPSE_KEY) === 'true');
 const sidebarWidth = computed(() => (isCollapse.value ? '64px' : '200px'));
+
+function toggleCollapse() {
+  isCollapse.value = !isCollapse.value;
+  localStorage.setItem(COLLAPSE_KEY, String(isCollapse.value));
+}
+
+function handleSidebarResize() {
+  // Auto-collapse on small screens; restore saved preference when there's room.
+  if (window.innerWidth < 768) {
+    isCollapse.value = true;
+  } else if (localStorage.getItem(COLLAPSE_KEY) !== null) {
+    isCollapse.value = localStorage.getItem(COLLAPSE_KEY) === 'true';
+  }
+}
+
+onMounted(() => {
+  handleSidebarResize();
+  window.addEventListener('resize', handleSidebarResize);
+});
+onBeforeUnmount(() => window.removeEventListener('resize', handleSidebarResize));
 
 // Route-level loading indicator: show a top progress bar while the target
 // lazy chunk resolves, so slow first-loads feel responsive.
