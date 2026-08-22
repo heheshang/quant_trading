@@ -9,6 +9,7 @@ members = [
     "crates/common",
     "crates/security",
     "crates/exchange-okx",
+    "crates/exchange-binance",
     "crates/domain",
     "crates/repository",
     "crates/clients",
@@ -84,6 +85,9 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 rand = "0.8"
 jsonwebtoken = "9.2"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 
 # Configuration
 config = "0.14"

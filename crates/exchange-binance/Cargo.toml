@@ -1,0 +1,39 @@
+[package]
+name = "exchange-binance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Binance exchange client (REST + HMAC-SHA256 signing).
+# Mirrors `exchange-okx` structure: trait-based client with a `test-utils`
+# feature exposing a mock for unit tests.
+[dependencies]
+quant-common = { path = "../common" }
+security = { path = "../security" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+async-trait = "0.1"
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+mockall = { version = "0.13", optional = true }
+
+[features]
+test-utils = ["mockall"]
+
+[dev-dependencies]
+mockall = "0.13"
+async-trait = "0.1"
+
+[lints]
+workspace = true

@@ -12,6 +12,8 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     pub okx: OkxConfig,
     #[serde(default)]
+    pub binance: BinanceConfig,
+    #[serde(default)]
     pub data_puller: DataPullerConfig,
     #[serde(default)]
     pub scheduler: SchedulerConfig,
@@ -93,6 +95,14 @@ pub struct OkxConfig {
     pub api_secret: String,
     pub passphrase: String,
     pub environment: String, // "live" or "demo"
+    pub enable: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BinanceConfig {
+    pub api_key: String,
+    pub api_secret: String,
+    pub environment: String, // "spot" or "futures"
     pub enable: bool,
 }
 
@@ -351,6 +361,15 @@ impl Default for AppConfig {
                 environment: std::env::var("OKX_ENVIRONMENT")
                     .unwrap_or_else(|_| "demo".to_string()),
                 enable: std::env::var("OKX_ENABLE").unwrap_or_else(|_| "false".to_string())
+                    == "true",
+            },
+            binance: BinanceConfig {
+                api_key: std::env::var("BINANCE_API_KEY").unwrap_or_default(),
+                api_secret: std::env::var("BINANCE_API_SECRET").unwrap_or_default(),
+                environment: std::env::var("BINANCE_ENVIRONMENT")
+                    .unwrap_or_else(|_| "spot".to_string()),
+                enable: std::env::var("BINANCE_ENABLE")
+                    .unwrap_or_else(|_| "false".to_string())
                     == "true",
             },
             data_puller: DataPullerConfig::default(),

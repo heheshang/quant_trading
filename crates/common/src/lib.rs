@@ -14,7 +14,7 @@ pub use types::{
 };
 
 pub use config::{
-    AppConfig, CandlePullConfig, DataPullerConfig, DatabaseConfig, IntervalConfig,
+    AppConfig, BinanceConfig, CandlePullConfig, DataPullerConfig, DatabaseConfig, IntervalConfig,
     MonitoringConfig, OkxConfig, ParamOptimizerConfig, RedisConfig, RiskConfig, SchedulerConfig,
     SecurityConfig, TickerPullConfig, TradingConfig,
 };
