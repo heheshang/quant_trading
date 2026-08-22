@@ -30,7 +30,7 @@ pub enum BinanceWsMessage {
 }
 
 /// A parsed kline from the stream.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct BinanceWsKline {
     pub symbol: String,     // domain symbol, e.g. BTC-USDT
     pub interval: String,
@@ -44,7 +44,7 @@ pub struct BinanceWsKline {
 }
 
 /// A parsed depth update from the stream.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct BinanceWsDepth {
     pub symbol: String,
     pub bids: Vec<(rust_decimal::Decimal, rust_decimal::Decimal)>,
@@ -119,6 +119,11 @@ impl BinanceWebSocket {
 
     pub async fn subscriptions(&self) -> Vec<String> {
         self.streams.read().await.clone()
+    }
+
+    /// Request the reconnect/read loop to stop.
+    pub fn stop(&self) {
+        let _ = self.shutdown_tx.send(true);
     }
 
     /// Take an independent receiver for parsed messages.

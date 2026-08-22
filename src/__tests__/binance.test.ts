@@ -3,8 +3,18 @@ import {
   mockTauriInvoke,
   mockTauriInvokeError,
   resetTauriMocks,
+  mockInvoke,
 } from './mock-tauri'
-import { getBinanceBalance, getBinanceCandles, checkBinanceStatus } from '../services/binance'
+import {
+  getBinanceBalance,
+  getBinanceCandles,
+  checkBinanceStatus,
+  startBinanceMarketData,
+  stopBinanceMarketData,
+  subscribeBinanceCandle,
+  subscribeBinanceDepth,
+  getBinanceSubscriptions,
+} from '../services/binance'
 import { placeBinanceOrder } from '../services/binanceOrder'
 import type { BinanceOrder } from '../services/types'
 
@@ -57,5 +67,40 @@ describe('binance services', () => {
   it('surfaces command errors', async () => {
     mockTauriInvokeError('get_binance_balance', 'api down')
     await expect(getBinanceBalance()).rejects.toThrow('api down')
+  })
+
+  describe('binance websocket', () => {
+    it('startBinanceMarketData invokes start_binance_market_data', async () => {
+      mockTauriInvoke('start_binance_market_data', undefined)
+      await expect(startBinanceMarketData()).resolves.toBeUndefined()
+    })
+
+    it('subscribeBinanceCandle passes symbol and interval', async () => {
+      mockTauriInvoke('subscribe_binance_candle', null)
+      await subscribeBinanceCandle('BTC-USDT', '1m')
+      expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_candle', {
+        symbol: 'BTC-USDT',
+        interval: '1m',
+      })
+    })
+
+    it('subscribeBinanceDepth passes symbol', async () => {
+      mockTauriInvoke('subscribe_binance_depth', null)
+      await subscribeBinanceDepth('BTC-USDT')
+      expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_depth', {
+        symbol: 'BTC-USDT',
+      })
+    })
+
+    it('getBinanceSubscriptions returns list', async () => {
+      mockTauriInvoke('get_binance_subscriptions', ['btcusdt@kline_1m'])
+      const res = await getBinanceSubscriptions()
+      expect(res).toEqual(['btcusdt@kline_1m'])
+    })
+
+    it('stopBinanceMarketData invokes stop_binance_market_data', async () => {
+      mockTauriInvoke('stop_binance_market_data', undefined)
+      await expect(stopBinanceMarketData()).resolves.toBeUndefined()
+    })
   })
 })

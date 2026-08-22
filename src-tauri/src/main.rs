@@ -250,6 +250,7 @@ async fn main() {
         order_manager,
         app_services: Some(app_services),
         ws_state: state::WsState::new(),
+        binance_ws_state: state::BinanceWsState::new(),
     };
 
     // 初始化指标收集
@@ -322,6 +323,12 @@ async fn main() {
             commands::place_binance_order,
             commands::cancel_binance_order,
             commands::check_binance_status,
+            // Binance WebSocket commands
+            commands::start_binance_market_data,
+            commands::subscribe_binance_candle,
+            commands::subscribe_binance_depth,
+            commands::stop_binance_market_data,
+            commands::get_binance_subscriptions,
             // WebSocket commands
             ws_commands::start_market_data,
             ws_commands::subscribe_market_data,

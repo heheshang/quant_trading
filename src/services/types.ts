@@ -490,6 +490,24 @@ export interface BinanceStatus {
   connected: boolean
 }
 
+export interface BinanceWsKline {
+  symbol: string
+  interval: string
+  open_time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  is_closed: boolean
+}
+
+export interface BinanceWsDepth {
+  symbol: string
+  bids: [number, number][]
+  asks: [number, number][]
+}
+
 export interface OkxInstrument {
   instId: string
   instType: string

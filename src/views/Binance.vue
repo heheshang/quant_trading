@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getBinanceBalance, checkBinanceStatus } from '@/services/binance'
+import { listen } from '@tauri-apps/api/event'
+import { getBinanceBalance, checkBinanceStatus, startBinanceMarketData, stopBinanceMarketData, subscribeBinanceCandle, subscribeBinanceDepth } from '@/services/binance'
 import { placeBinanceOrder } from '@/services/binanceOrder'
-import type { BinanceBalance, BinanceStatus } from '@/services/types'
+import type { BinanceBalance, BinanceStatus, BinanceWsKline, BinanceWsDepth } from '@/services/types'
 
 const balances = ref<BinanceBalance[]>([])
 const status = ref<BinanceStatus | null>(null)
@@ -17,6 +18,33 @@ const form = ref({
   price: 0,
   quantity: 0,
 })
+
+// ── Realtime stream ──
+const wsRunning = ref(false)
+const streamSymbol = ref('BTCUSDT')
+const liveKlines = ref<BinanceWsKline[]>([])
+const liveDepth = ref<BinanceWsDepth | null>(null)
+const unlisten: Array<() => void> = []
+
+async function startStream() {
+  try {
+    await startBinanceMarketData()
+    await subscribeBinanceCandle(streamSymbol.value, '1m')
+    await subscribeBinanceDepth(streamSymbol.value)
+    wsRunning.value = true
+  } catch (e) {
+    ElMessage.error(`启动实时行情失败: ${e}`)
+  }
+}
+
+async function stopStream() {
+  try {
+    await stopBinanceMarketData()
+    wsRunning.value = false
+  } catch (e) {
+    ElMessage.error(`停止实时行情失败: ${e}`)
+  }
+}
 
 async function loadBalance() {
   loading.value = true
@@ -48,7 +76,23 @@ async function submitOrder() {
   }
 }
 
-onMounted(loadBalance)
+onMounted(async () => {
+  await loadBalance()
+  unlisten.push(await listen<BinanceWsKline>('binance:kline', (ev) => {
+    // Keep latest candle per stream; cap list length.
+    const existing = liveKlines.value.findIndex((k) => k.open_time === ev.payload.open_time)
+    if (existing >= 0) liveKlines.value[existing] = ev.payload
+    else liveKlines.value.push(ev.payload)
+    if (liveKlines.value.length > 60) liveKlines.value.shift()
+  }))
+  unlisten.push(await listen<BinanceWsDepth>('binance:depth', (ev) => { liveDepth.value = ev.payload }))
+})
+
+function fmtTime(row: { open_time: number }) {
+  return new Date(row.open_time).toLocaleTimeString('zh-CN')
+}
+
+onUnmounted(() => { unlisten.forEach((u) => u()) })
 </script>
 
 <template>
@@ -70,6 +114,23 @@ onMounted(loadBalance)
         <el-table-column prop="locked" label="锁定" />
       </el-table>
       <el-button class="mt" size="small" @click="loadBalance">刷新</el-button>
+    </el-card>
+
+    <el-card class="section">
+      <template #header>实时行情（WebSocket）</template>
+      <div class="ws-controls">
+        <el-input v-model="streamSymbol" size="small" style="width: 180px" />
+        <el-button size="small" type="primary" :disabled="wsRunning" @click="startStream">开始</el-button>
+        <el-button size="small" :disabled="!wsRunning" @click="stopStream">停止</el-button>
+      </div>
+      <el-table v-if="liveKlines.length" :data="liveKlines" size="small" max-height="240">
+        <el-table-column prop="open_time" label="时间" :formatter="fmtTime" />
+        <el-table-column prop="open" label="开" />
+        <el-table-column prop="high" label="高" />
+        <el-table-column prop="low" label="低" />
+        <el-table-column prop="close" label="收" />
+      </el-table>
+      <div v-else-if="wsRunning" class="hint">等待 K 线流…</div>
     </el-card>
 
     <el-card class="section">
@@ -108,4 +169,6 @@ onMounted(loadBalance)
 .binance-panel { max-width: 720px; }
 .section { margin-top: 16px; }
 .mt { margin-top: 12px; }
+.ws-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+.hint { color: #909399; padding: 8px 0; }
 </style>

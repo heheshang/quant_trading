@@ -36,6 +36,7 @@ fn make_test_state() -> AppState {
         order_manager: OrderManager::new(),
         app_services: None,
         ws_state: WsState::new(),
+        binance_ws_state: crate::state::BinanceWsState::new(),
     }
 }
 
@@ -67,6 +68,7 @@ fn create_mock_okx_state(mock_client: Option<MockOkxClient>) -> AppState {
         order_manager: OrderManager::new(),
         app_services: None,
         ws_state: WsState::new(),
+        binance_ws_state: crate::state::BinanceWsState::new(),
     }
 }
 

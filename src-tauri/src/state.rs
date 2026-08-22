@@ -1,5 +1,5 @@
 use data_layer::{OkxDataSource, PostgresClient};
-use exchange_binance::ClientInterface as BinanceClientInterface;
+use exchange_binance::{websocket::BinanceWebSocket, ClientInterface as BinanceClientInterface};
 use exchange_okx::websocket::OkxWebSocket;
 use exchange_okx::ClientInterface;
 use monitor_layer::{AlertManager, LogBuffer};
@@ -28,6 +28,21 @@ impl WsState {
     }
 }
 
+/// Binance WebSocket 连接状态
+pub struct BinanceWsState {
+    pub running: Arc<AtomicBool>,
+    pub ws: RwLock<Option<BinanceWebSocket>>,
+}
+
+impl BinanceWsState {
+    pub fn new() -> Self {
+        Self {
+            running: Arc::new(AtomicBool::new(false)),
+            ws: RwLock::new(None),
+        }
+    }
+}
+
 #[expect(dead_code)]
 pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
@@ -42,4 +57,5 @@ pub struct AppState {
     pub order_manager: OrderManager,
     pub app_services: Option<AppServices>,
     pub ws_state: WsState,
+    pub binance_ws_state: BinanceWsState,
 }

@@ -221,6 +221,7 @@ mod tests {
             order_manager: OrderManager::new(),
             app_services: None,
             ws_state: WsState::new(),
+            binance_ws_state: crate::state::BinanceWsState::new(),
         }
     }
 

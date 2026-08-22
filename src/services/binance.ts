@@ -27,3 +27,25 @@ export function getBinanceOrderBook(symbol: string, limit?: number): Promise<Bin
 export function checkBinanceStatus(): Promise<BinanceStatus> {
   return call<BinanceStatus>('check_binance_status')
 }
+
+// ── WebSocket real-time (SoC: transport lifecycle in this module) ──
+
+export function startBinanceMarketData(): Promise<void> {
+  return call<void>('start_binance_market_data')
+}
+
+export function stopBinanceMarketData(): Promise<void> {
+  return call<void>('stop_binance_market_data')
+}
+
+export function subscribeBinanceCandle(symbol: string, interval: string): Promise<void> {
+  return call<void>('subscribe_binance_candle', { symbol, interval })
+}
+
+export function subscribeBinanceDepth(symbol: string): Promise<void> {
+  return call<void>('subscribe_binance_depth', { symbol })
+}
+
+export function getBinanceSubscriptions(): Promise<string[]> {
+  return call<string[]>('get_binance_subscriptions')
+}
