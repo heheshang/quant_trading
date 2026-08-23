@@ -287,7 +287,18 @@ fn mock_summary_row(id: i32, strategy_id: &str) -> StrategySummaryRow {
 fn make_mock_service(repo: MockStrategyRepo, with_scheduler: bool) -> StrategyService {
     let strategy_repo: Arc<dyn StRepo> = Arc::new(repo);
     let scheduler = if with_scheduler {
-        Some(Arc::new(StrategyScheduler::new(SchedulerConfig::default())))
+        let sched_config = SchedulerConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let sched = StrategyScheduler::new(sched_config);
+        // Configure a (passthrough) pipeline + mock provider so the scheduler
+        // is "trading ready" and start_strategy can actually start the task.
+        sched.set_pipeline(Arc::new(strategy_engine::PipelineExecutor::new()));
+        sched.set_market_data_provider(Arc::new(
+            crate::market_data_provider::MockMarketDataProvider::new(Vec::new()),
+        ));
+        Some(Arc::new(sched))
     } else {
         None
     };
@@ -662,6 +673,54 @@ async fn test_create_strategy_defaults_filled() {
         .await;
 
     assert!(result.is_ok());
+}
+
+// ── create_strategy rejects unregistered types ────────────────────────────
+
+#[tokio::test]
+async fn test_create_strategy_rejects_unregistered_type() {
+    let mock_repo = MockStrategyRepo::new();
+
+    let mut svc = make_mock_service(mock_repo, false);
+    let registry = Arc::new(strategy_engine::registry::default_registry());
+    svc.set_registry(registry);
+
+    // The following are no longer valid StrategyType variants (removed as
+    // unimplemented) and are not registered, so create_strategy must reject them.
+    for unregistered in [
+        "Statistical",
+        "MachineLearning",
+        "Custom",
+        "Arbitrage",
+        "MarketMaking",
+    ] {
+        let result = svc
+            .create_strategy(
+                unregistered,
+                "Test Strategy",
+                serde_json::json!({}),
+                true,
+                Decimal::from(10000),
+                Decimal::from(500),
+                None,
+                None,
+                vec![],
+                vec![],
+                1,
+            )
+            .await;
+
+        assert!(
+            result.is_err(),
+            "type '{}' should be rejected",
+            unregistered
+        );
+        assert!(
+            matches!(result.unwrap_err(), ServiceError::NotFound(_)),
+            "type '{}' should yield NotFound",
+            unregistered
+        );
+    }
 }
 
 // ── save_strategy update path with defaults ─────────────────────────────────

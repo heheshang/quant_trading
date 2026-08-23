@@ -188,13 +188,34 @@ describe('Strategy.vue - 按钮测试', () => {
     expect(mockInvoke).toHaveBeenCalledWith('archive_strategy', { strategyId: 's1' })
   }, 30000)
 
-  it('回测按钮 - 打开回测对话框', async () => {
+  it('回测按钮 - 打开回测配置对话框', async () => {
     const wrapper = await mountComponent()
-    expect(wrapper.vm.backtestDialogVisible).toBe(false)
+    expect(wrapper.vm.backtestConfigDialogVisible).toBe(false)
     wrapper.vm.runBacktest('s1')
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
+    expect(wrapper.vm.backtestConfigDialogVisible).toBe(true)
+  }, 30000)
+
+  it('回测确认 - 运行回测并打开结果对话框', async () => {
+    const wrapper = await mountComponent()
+    wrapper.vm.runBacktest('s1')
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.vm.handleBacktestConfigConfirmed({
+      startDate: '2026-01-01',
+      endDate: '2026-06-01',
+      initialCapital: 1000000,
+      commissionRate: 0.0003,
+      slippage: 0.0001,
+      symbols: 'BTC-USDT',
+    })
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
     expect(wrapper.vm.backtestDialogVisible).toBe(true)
   }, 30000)
 

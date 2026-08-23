@@ -64,27 +64,40 @@
           {{ formatDate(scope.row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280">
+      <el-table-column label="操作" width="270">
         <template #default="scope">
-          <el-dropdown trigger="click" @command="(cmd: string) => emit('lifecycle', cmd, scope.row)">
-            <el-button size="small" type="primary">
-              生命周期 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="deploy">部署</el-dropdown-item>
-                <el-dropdown-item command="start">启动</el-dropdown-item>
-                <el-dropdown-item command="stop">停止</el-dropdown-item>
-                <el-dropdown-item command="pause">暂停</el-dropdown-item>
-                <el-dropdown-item command="resume">恢复</el-dropdown-item>
-                <el-dropdown-item command="archive" divided>归档</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-button size="small" @click="emit('detail', scope.row)">详情</el-button>
-          <el-button size="small" @click="emit('edit', scope.row)">编辑</el-button>
-          <el-button size="small" type="primary" @click="emit('backtest', scope.row.strategy_id)">回测</el-button>
-          <el-button size="small" type="danger" @click="emit('delete', scope.row.strategy_id)">删除</el-button>
+          <div class="action-cell">
+            <el-dropdown trigger="click" @command="(cmd: string) => emit('lifecycle', cmd, scope.row)">
+              <el-button size="small" type="primary" circle class="action-icon-btn">
+                <el-icon><Operation /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="deploy">部署</el-dropdown-item>
+                  <el-dropdown-item command="start">启动</el-dropdown-item>
+                  <el-dropdown-item command="stop">停止</el-dropdown-item>
+                  <el-dropdown-item command="pause">暂停</el-dropdown-item>
+                  <el-dropdown-item command="resume">恢复</el-dropdown-item>
+                  <el-dropdown-item command="archive" divided>归档</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-tooltip content="详情" :teleported="false">
+              <el-button size="small" circle class="action-icon-btn" @click="emit('detail', scope.row)"><el-icon><View /></el-icon></el-button>
+            </el-tooltip>
+            <el-tooltip content="编辑" :teleported="false">
+              <el-button size="small" circle class="action-icon-btn" @click="emit('edit', scope.row)"><el-icon><Edit /></el-icon></el-button>
+            </el-tooltip>
+            <el-tooltip content="回测" :teleported="false">
+              <el-button size="small" circle class="action-icon-btn" type="primary" @click="emit('backtest', scope.row.strategy_id)"><el-icon><TrendCharts /></el-icon></el-button>
+            </el-tooltip>
+            <el-tooltip content="参数优化" :teleported="false">
+              <el-button size="small" circle class="action-icon-btn" type="primary" @click="emit('optimize', scope.row)"><el-icon><Aim /></el-icon></el-button>
+            </el-tooltip>
+            <el-tooltip content="删除" :teleported="false">
+              <el-button size="small" circle class="action-icon-btn" type="danger" @click="emit('delete', scope.row.strategy_id)"><el-icon><Delete /></el-icon></el-button>
+            </el-tooltip>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -104,7 +117,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { Operation, View, Edit, TrendCharts, Delete, Aim } from '@element-plus/icons-vue'
 import type { StrategyParams } from '@/services/types'
 import { useFormatting } from '@/composables/useFormatting'
 import StrategyStatusTag from '@/components/strategy/StrategyStatusTag.vue'
@@ -147,6 +160,7 @@ const emit = defineEmits<{
   edit: [strategy: StrategyParams]
   delete: [strategyId: string]
   backtest: [strategyId: string]
+  optimize: [strategy: StrategyParams]
   lifecycle: [action: string, strategy: StrategyParams]
   'batch-start': [strategies: StrategyParams[]]
   'batch-stop': [strategies: StrategyParams[]]
@@ -198,4 +212,14 @@ function emitBatch(action: 'start' | 'stop' | 'delete') {
 .table-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; margin-bottom: 12px; gap: 12px; }
 .batch-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .table-footer { margin-top: 16px; display: flex; justify-content: flex-end; }
+.action-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.action-icon-btn {
+  min-width: 32px;
+  min-height: 32px;
+}
 </style>

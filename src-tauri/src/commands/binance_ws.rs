@@ -1,7 +1,7 @@
 //! Binance market-data WebSocket commands.
 //!
-//! Mirrors `ws_commands.rs`: manages the [`BinanceWebSocket`] lifecycle and
-//! forwards parsed kline/depth messages to the UI via Tauri events.
+//! Manages the [`BinanceWebSocket`] lifecycle and forwards parsed
+//! kline/depth/orderbook/ticker/trade messages to the UI via Tauri events.
 
 use exchange_binance::types::BinanceEnvironment;
 use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket};
@@ -53,6 +53,15 @@ pub async fn start_binance_market_data(
                 BinanceWsMessage::Depth(d) => {
                     let _ = app_clone.emit("binance:depth", &d);
                 }
+                BinanceWsMessage::OrderBook(d) => {
+                    let _ = app_clone.emit("binance:orderbook", &d);
+                }
+                BinanceWsMessage::Ticker(t) => {
+                    let _ = app_clone.emit("binance:ticker", &t);
+                }
+                BinanceWsMessage::Trade(t) => {
+                    let _ = app_clone.emit("binance:trade", &t);
+                }
                 BinanceWsMessage::ConnectionStatus(s) => {
                     let _ = app_clone.emit("binance:status", serde_json::json!({ "status": s }));
                 }
@@ -101,6 +110,51 @@ pub async fn subscribe_binance_depth(
 }
 
 #[tauri::command]
+pub async fn subscribe_binance_ticker(
+    state: State<'_, AppState>,
+    symbol: String,
+) -> Result<(), String> {
+    let guard = state.binance_ws_state.ws.read().await;
+    match guard.as_ref() {
+        Some(ws) => ws
+            .subscribe_ticker(&symbol)
+            .await
+            .map_err(|e| e.to_string()),
+        None => Err("Binance WebSocket not started".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn subscribe_binance_trades(
+    state: State<'_, AppState>,
+    symbol: String,
+) -> Result<(), String> {
+    let guard = state.binance_ws_state.ws.read().await;
+    match guard.as_ref() {
+        Some(ws) => ws
+            .subscribe_trades(&symbol)
+            .await
+            .map_err(|e| e.to_string()),
+        None => Err("Binance WebSocket not started".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn subscribe_binance_orderbook(
+    state: State<'_, AppState>,
+    symbol: String,
+) -> Result<(), String> {
+    let guard = state.binance_ws_state.ws.read().await;
+    match guard.as_ref() {
+        Some(ws) => ws
+            .subscribe_orderbook(&symbol)
+            .await
+            .map_err(|e| e.to_string()),
+        None => Err("Binance WebSocket not started".to_string()),
+    }
+}
+
+#[tauri::command]
 pub async fn stop_binance_market_data(state: State<'_, AppState>) -> Result<(), String> {
     {
         let mut guard = state.binance_ws_state.ws.write().await;
@@ -109,7 +163,10 @@ pub async fn stop_binance_market_data(state: State<'_, AppState>) -> Result<(), 
         }
         *guard = None;
     }
-    state.binance_ws_state.running.store(false, Ordering::SeqCst);
+    state
+        .binance_ws_state
+        .running
+        .store(false, Ordering::SeqCst);
     Ok(())
 }
 
@@ -137,16 +194,14 @@ mod tests {
             config: Arc::new(RwLock::new(AppConfig::default())),
             alert_manager: Arc::new(AlertManager::new(false, vec![])),
             log_buffer: Arc::new(LogBuffer::new(1000)),
+            audit_logger: Arc::new(security::AuditLogger::new(None)),
             pg_client: None,
             redis_cache: None,
-            okx_client: Arc::new(RwLock::new(None)),
-            okx_executor: Arc::new(RwLock::new(None)),
-            okx_data_source: Arc::new(RwLock::new(None)),
             binance_client: Arc::new(RwLock::new(None)),
             order_manager: OrderManager::new(),
             app_services: None,
-            ws_state: crate::state::WsState::new(),
             binance_ws_state: BinanceWsState::new(),
+            auth_session: Arc::new(RwLock::new(Some(crate::state::AuthedUser::admin()))),
         }
     }
 
@@ -168,12 +223,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn subscribe_depth_requires_running_ws() {
+        let state = make_test_state();
+        let result = subscribe_binance_depth(state_guard(&state), "BTC-USDT".to_string()).await;
+        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+    }
+
+    #[tokio::test]
+    async fn subscribe_ticker_requires_running_ws() {
+        let state = make_test_state();
+        let result = subscribe_binance_ticker(state_guard(&state), "BTC-USDT".to_string()).await;
+        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+    }
+
+    #[tokio::test]
+    async fn subscribe_trades_requires_running_ws() {
+        let state = make_test_state();
+        let result = subscribe_binance_trades(state_guard(&state), "BTC-USDT".to_string()).await;
+        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+    }
+
+    #[tokio::test]
+    async fn subscribe_orderbook_requires_running_ws() {
+        let state = make_test_state();
+        let result = subscribe_binance_orderbook(state_guard(&state), "BTC-USDT".to_string()).await;
+        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+    }
+
+    #[tokio::test]
     async fn stop_clears_ws_state() {
         let state = make_test_state();
-        *state.binance_ws_state.ws.write().await =
-            Some(exchange_binance::BinanceWebSocket::new(
-                exchange_binance::types::BinanceEnvironment::Spot,
-            ));
+        *state.binance_ws_state.ws.write().await = Some(exchange_binance::BinanceWebSocket::new(
+            exchange_binance::types::BinanceEnvironment::Spot,
+        ));
         state.binance_ws_state.running.store(true, Ordering::SeqCst);
         stop_binance_market_data(state_guard(&state)).await.unwrap();
         assert!(!state.binance_ws_state.running.load(Ordering::SeqCst));

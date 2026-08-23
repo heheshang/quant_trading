@@ -101,13 +101,13 @@ function formatDate(dateInput: string | { timestamp: string }): string {
   color: var(--color-text-secondary);
 }
 .log-info {
-  color: #409EFF;
+  color: var(--color-primary);
 }
 .log-warning {
-  color: #E6A23C;
+  color: var(--color-warning);
 }
 .log-error {
-  color: #F56C6C;
+  color: var(--color-danger);
 }
 .log-message {
   color: var(--color-text-primary);

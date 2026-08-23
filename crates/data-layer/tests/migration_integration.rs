@@ -1,4 +1,5 @@
 use quant_common::Result;
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -219,26 +220,49 @@ async fn test_data_insertion_after_migration() {
         .await
         .expect("Migrations should succeed");
 
+    // The demo-data migration already created an `admin` user plus its account,
+    // so insert a dedicated test user for isolation.
+    let user_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO users (username, email, password_hash)
+        VALUES ($1, $2, $3)
+        RETURNING user_id
+        "#,
+    )
+    .bind("integration_test_user")
+    .bind("integration_test_user@example.com")
+    .bind("test-password-hash")
+    .fetch_one(pool.as_ref())
+    .await
+    .expect("Failed to insert test user");
+
+    // accounts.user_id is NOT NULL FK -> users(user_id).
     let account_id: i64 = 0;
     sqlx::query(
         r#"
-        INSERT INTO accounts (account_id, account_type, total_assets)
-        VALUES ($1, $2, $3)
+        INSERT INTO accounts (account_id, user_id, account_type, total_assets)
+        VALUES ($1, $2, $3, $4)
         "#,
     )
     .bind(account_id)
+    .bind(user_id)
     .bind("SPOT")
-    .bind("10000")
+    .bind(Decimal::new(10000, 0))
     .execute(pool.as_ref())
     .await
     .expect("Failed to insert account");
 
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts")
+    // The demo migration also creates an account for `admin`, so a global
+    // COUNT(*) would be 2; assert on our own test user's account instead.
+    let account_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts WHERE user_id = $1")
+        .bind(user_id)
         .fetch_one(pool.as_ref())
         .await
         .expect("Failed to count accounts");
-    assert_eq!(count, 1, "Should have 1 account");
+    assert_eq!(account_count, 1, "Should have 1 account for test user");
 
+    // orders.symbol is FK -> instruments(symbol); 'BTC-USDT' is populated by the
+    // demo-data migration. quantity is DECIMAL(20,8).
     let order_id: i64 = 0;
     sqlx::query(
         r#"
@@ -251,11 +275,21 @@ async fn test_data_insertion_after_migration() {
     .bind("BTC-USDT")
     .bind("LIMIT")
     .bind("BUY")
-    .bind("1")
+    .bind(Decimal::new(1, 0))
     .bind("PENDING")
     .execute(pool.as_ref())
     .await
     .expect("Failed to insert order");
+
+    // NOTE: orders.account_id REFERENCES accounts(account_id) has NO
+    // ON DELETE CASCADE in migration 20240101000001, so deleting the account
+    // directly would violate the FK constraint (23503). Remove the dependent
+    // order first, then the account.
+    sqlx::query("DELETE FROM orders WHERE order_id = $1")
+        .bind(order_id)
+        .execute(pool.as_ref())
+        .await
+        .expect("Failed to delete order");
 
     sqlx::query("DELETE FROM accounts WHERE account_id = $1")
         .bind(account_id)
@@ -268,7 +302,18 @@ async fn test_data_insertion_after_migration() {
         .fetch_one(pool.as_ref())
         .await
         .expect("Failed to count orders");
-    assert_eq!(order_count, 0, "Order should be deleted via CASCADE");
+    assert_eq!(order_count, 0, "Order should be removed after delete");
+
+    let remaining_accounts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM accounts WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_one(pool.as_ref())
+            .await
+            .expect("Failed to count accounts");
+    assert_eq!(
+        remaining_accounts, 0,
+        "Account should be removed after delete"
+    );
 
     cleanup_test_db(pool.as_ref())
         .await

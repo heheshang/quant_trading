@@ -1,7 +1,7 @@
 //! Binance exchange client.
 //!
-//! Mirrors `exchange-okx`: a trait-based REST client (`ClientInterface`) with
-//! a `reqwest` + HMAC-SHA256 implementation (`Client`), plus shared types and
+//! Independent Binance implementation: a trait-based REST client (`ClientInterface`)
+//! with a `reqwest` + HMAC-SHA256 implementation (`Client`), plus shared types and
 //! symbol-conversion helpers.
 
 pub mod client;
@@ -9,12 +9,12 @@ pub mod types;
 pub mod websocket;
 
 pub use client::{Client, ClientInterface};
-pub use websocket::{BinanceWebSocket, BinanceWsMessage};
 pub use types::{
-    BinanceBalance, BinanceEnvironment, BinanceKline, BinanceOrder, BinanceOrderBook,
-    BinanceOrderType, BinancePlaceOrderRequest, BinanceSide, from_binance_symbol,
-    to_binance_symbol,
+    from_binance_symbol, to_binance_symbol, BinanceBalance, BinanceEnvironment, BinanceKline,
+    BinanceOrder, BinanceOrderBook, BinanceOrderType, BinancePlaceOrderRequest, BinancePosition,
+    BinanceSide, BinanceTicker24h,
 };
+pub use websocket::{BinanceWebSocket, BinanceWsMessage};
 
 #[cfg(test)]
 pub mod mock_data;

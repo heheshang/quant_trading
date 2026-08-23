@@ -1,5 +1,6 @@
 use chrono::Utc;
 use quant_common::types::{Alert, AlertLevel};
+use quant_repository::AlertRepository;
 use reqwest::Client;
 use serde_json::json;
 use std::collections::HashMap;
@@ -10,6 +11,7 @@ use tracing::{error, info, warn};
 
 pub struct AlertManager {
     alerts: Arc<RwLock<Vec<Alert>>>,
+    repo: Option<Arc<dyn AlertRepository>>,
     email_enabled: bool,
     webhook_urls: Vec<String>,
     http_client: Option<Client>,
@@ -31,6 +33,7 @@ impl AlertManager {
 
         Self {
             alerts: Arc::new(RwLock::new(Vec::new())),
+            repo: None,
             email_enabled,
             webhook_urls,
             http_client,
@@ -39,18 +42,33 @@ impl AlertManager {
         }
     }
 
+    /// Inject a persistent alert repository. Reads/acknowledgements prefer the
+    /// repository, falling back to in-memory storage on any DB error.
+    pub fn with_repository(mut self, repo: Option<Arc<dyn AlertRepository>>) -> Self {
+        self.repo = repo;
+        self
+    }
+
     pub async fn send_alert(&self, alert: Alert) {
         // Log the alert based on its level
-        match alert.level {
+        match &alert.level {
             AlertLevel::Info => info!("[ALERT] {}", alert.message),
             AlertLevel::Warning => warn!("[ALERT] {}", alert.message),
             AlertLevel::Critical => error!("[ALERT] {}", alert.message),
         }
 
-        // Add alert to internal storage
+        // Add alert to internal storage (using the DB-assigned id when a
+        // repository is wired; persistence failure never blocks delivery).
         {
             let mut alerts = self.alerts.write().await;
-            alerts.push(alert.clone());
+            let mut stored = alert.clone();
+            if let Some(repo) = self.repo.as_ref() {
+                match repo.insert(&alert).await {
+                    Ok(persisted) => stored.alert_id = persisted.alert_id,
+                    Err(e) => error!("Failed to persist alert to repository: {}", e),
+                }
+            }
+            alerts.push(stored);
 
             // Keep only the last 1000 alerts to prevent memory issues
             let len = alerts.len();
@@ -130,10 +148,27 @@ impl AlertManager {
     }
 
     pub async fn get_alerts(&self) -> Vec<Alert> {
+        if let Some(repo) = self.repo.as_ref() {
+            match repo.find_all(1000, 0).await {
+                Ok(alerts) => return alerts,
+                Err(e) => error!("Failed to read alerts from repository: {}", e),
+            }
+        }
         self.alerts.read().await.clone()
     }
 
     pub async fn get_alerts_by_level(&self, level: AlertLevel) -> Vec<Alert> {
+        if let Some(repo) = self.repo.as_ref() {
+            let level_str = match level {
+                AlertLevel::Info => "Info",
+                AlertLevel::Warning => "Warning",
+                AlertLevel::Critical => "Critical",
+            };
+            match repo.find_by_level(level_str, 1000, 0).await {
+                Ok(alerts) => return alerts,
+                Err(e) => error!("Failed to read alerts by level: {}", e),
+            }
+        }
         let alerts = self.alerts.read().await;
         alerts
             .iter()
@@ -143,6 +178,12 @@ impl AlertManager {
     }
 
     pub async fn get_alerts_by_source(&self, source: &str) -> Vec<Alert> {
+        if let Some(repo) = self.repo.as_ref() {
+            match repo.find_by_source(source, 1000, 0).await {
+                Ok(alerts) => return alerts,
+                Err(e) => error!("Failed to read alerts by source: {}", e),
+            }
+        }
         let alerts = self.alerts.read().await;
         alerts
             .iter()
@@ -152,13 +193,22 @@ impl AlertManager {
     }
 
     pub async fn acknowledge_alert(&self, alert_id: i64) -> bool {
+        let mut acknowledged = false;
+        if let Some(repo) = self.repo.as_ref() {
+            match repo.acknowledge(alert_id).await {
+                Ok(updated) => acknowledged = updated,
+                Err(e) => error!(
+                    "Failed to acknowledge alert {} in repository: {}",
+                    alert_id, e
+                ),
+            }
+        }
         let mut alerts = self.alerts.write().await;
         if let Some(alert) = alerts.iter_mut().find(|a| a.alert_id == alert_id) {
             alert.acknowledged = true;
-            true
-        } else {
-            false
+            acknowledged = true;
         }
+        acknowledged
     }
 
     pub async fn clear_acknowledged_alerts(&self) {
@@ -181,6 +231,12 @@ impl AlertManager {
         start: chrono::DateTime<Utc>,
         end: chrono::DateTime<Utc>,
     ) -> Vec<Alert> {
+        if let Some(repo) = self.repo.as_ref() {
+            match repo.find_by_time_range(start, end, 1000, 0).await {
+                Ok(alerts) => return alerts,
+                Err(e) => error!("Failed to read alerts by time range: {}", e),
+            }
+        }
         let alerts = self.alerts.read().await;
         alerts
             .iter()
@@ -268,4 +324,159 @@ pub struct AlertStatistics {
     pub info: usize,
     pub warning: usize,
     pub critical: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use chrono::{DateTime, Utc};
+    use parking_lot::Mutex;
+    use quant_repository::{AlertRepository, RepoError};
+
+    /// In-memory [`AlertRepository`] used to exercise repo-backed alert flows.
+    struct InMemoryAlertRepository {
+        alerts: Mutex<Vec<Alert>>,
+    }
+
+    impl InMemoryAlertRepository {
+        fn new() -> Self {
+            Self {
+                alerts: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl AlertRepository for InMemoryAlertRepository {
+        async fn insert(&self, alert: &Alert) -> Result<Alert, RepoError> {
+            let mut alerts = self.alerts.lock();
+            let next_id = alerts.len() as i64 + 1;
+            let mut stored = alert.clone();
+            stored.alert_id = next_id;
+            alerts.push(stored.clone());
+            Ok(stored)
+        }
+
+        async fn find_all(&self, limit: i64, offset: i64) -> Result<Vec<Alert>, RepoError> {
+            let alerts = self.alerts.lock();
+            Ok(alerts
+                .iter()
+                .rev()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .cloned()
+                .collect())
+        }
+
+        async fn find_by_level(
+            &self,
+            level: &str,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Vec<Alert>, RepoError> {
+            let alerts = self.alerts.lock();
+            Ok(alerts
+                .iter()
+                .filter(|a| format!("{:?}", a.level) == level)
+                .rev()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .cloned()
+                .collect())
+        }
+
+        async fn find_by_source(
+            &self,
+            source: &str,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Vec<Alert>, RepoError> {
+            let alerts = self.alerts.lock();
+            Ok(alerts
+                .iter()
+                .filter(|a| a.source == source)
+                .rev()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .cloned()
+                .collect())
+        }
+
+        async fn find_by_time_range(
+            &self,
+            start: DateTime<Utc>,
+            end: DateTime<Utc>,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Vec<Alert>, RepoError> {
+            let alerts = self.alerts.lock();
+            Ok(alerts
+                .iter()
+                .filter(|a| a.timestamp >= start && a.timestamp <= end)
+                .rev()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .cloned()
+                .collect())
+        }
+
+        async fn acknowledge(&self, alert_id: i64) -> Result<bool, RepoError> {
+            let mut alerts = self.alerts.lock();
+            if let Some(alert) = alerts.iter_mut().find(|a| a.alert_id == alert_id) {
+                alert.acknowledged = true;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+
+        async fn count(&self) -> Result<i64, RepoError> {
+            Ok(self.alerts.lock().len() as i64)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_send_alert_persists_to_repository() {
+        let repo = Arc::new(InMemoryAlertRepository::new());
+        let manager = AlertManager::new(false, vec![]).with_repository(Some(repo.clone()));
+
+        let alert = Alert::new(AlertLevel::Warning, "test".to_string(), "hello".to_string());
+        manager.send_alert(alert).await;
+
+        // Repository-backed read returns the alert with a DB-assigned id.
+        let alerts = manager.get_alerts().await;
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].message, "hello");
+        assert_eq!(alerts[0].alert_id, 1);
+    }
+
+    #[tokio::test]
+    async fn test_repo_acknowledge_reflected_in_reads() {
+        let repo = Arc::new(InMemoryAlertRepository::new());
+        let manager = AlertManager::new(false, vec![]).with_repository(Some(repo.clone()));
+
+        let alert = Alert::new(
+            AlertLevel::Critical,
+            "risk".to_string(),
+            "breach".to_string(),
+        );
+        manager.send_alert(alert).await;
+
+        let alerts = manager.get_alerts().await;
+        let id = alerts[0].alert_id;
+        assert!(manager.acknowledge_alert(id).await);
+
+        let refreshed = manager.get_alerts().await;
+        assert!(refreshed[0].acknowledged);
+    }
+
+    #[tokio::test]
+    async fn test_memory_fallback_when_repo_errors() {
+        // No repository wired → pure in-memory path still works.
+        let manager = AlertManager::new(false, vec![]);
+        let alert = Alert::new(AlertLevel::Info, "s".to_string(), "m".to_string());
+        manager.send_alert(alert).await;
+        assert_eq!(manager.get_alerts().await.len(), 1);
+    }
 }

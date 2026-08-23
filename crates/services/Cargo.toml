@@ -12,7 +12,6 @@ quant-domain = { path = "../domain" }
 quant-common = { path = "../common" }
 quant-repository = { path = "../repository" }
 quant-clients = { path = "../clients" }
-exchange-okx = { path = "../exchange-okx", features = ["test-utils"] }
 exchange-binance = { path = "../exchange-binance", features = ["test-utils"] }
 strategy-engine = { package = "strategy-layer", path = "../strategy-layer" }
 trading-engine = { package = "trading-layer", path = "../trading-layer" }
@@ -39,10 +38,10 @@ rust_decimal_macros = { workspace = true }
 toml = "0.8"
 
 [dev-dependencies]
-okx = { workspace = true }
 mockall = "0.13"
 futures = { workspace = true }
 insta = { version = "1", features = ["yaml", "redactions"] }
+parking_lot = "0.12"
 
 [lints]
 workspace = true

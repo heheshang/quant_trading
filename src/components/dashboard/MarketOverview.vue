@@ -8,10 +8,16 @@
             <el-button size="small" @click="fetchMarketData" :loading="marketLoading">刷新</el-button>
           </div>
         </template>
+
         <div v-if="marketError" class="market-data-placeholder">
           <el-icon><Warning /></el-icon>
           <span>{{ marketError }}</span>
         </div>
+
+        <div v-else-if="marketLoading && !marketData" class="market-data-loading">
+          <el-skeleton :rows="2" animated />
+        </div>
+
         <div v-else-if="marketData" class="market-data-grid">
           <div class="market-item">
             <span class="market-label">标的</span>
@@ -40,9 +46,10 @@
             <span class="market-value">{{ marketData.low ?? '-' }}</span>
           </div>
         </div>
+
         <div v-else class="market-data-placeholder">
           <el-icon><Coin /></el-icon>
-          <span>点击刷新加载行情数据</span>
+          <span>暂无行情数据</span>
         </div>
       </el-card>
     </el-col>
@@ -50,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Coin, Warning } from '@element-plus/icons-vue'
 import { getMarketData } from '@/services/market'
 
@@ -73,8 +80,18 @@ async function fetchMarketData() {
   marketLoading.value = true
   marketError.value = ''
   try {
-    const data = await getMarketData('default')
-    marketData.value = data as MarketTicker
+    const data = await getMarketData('BTC-USDT')
+    const change = Number(data.close) - Number(data.open)
+    const changePct = Number(data.open) ? (change / Number(data.open)) * 100 : 0
+    marketData.value = {
+      symbol: data.symbol,
+      price: Number(data.close),
+      change,
+      change_percent: `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`,
+      volume: Number(data.volume),
+      high: Number(data.high),
+      low: Number(data.low),
+    }
   } catch (err: unknown) {
     marketData.value = null
     const message = err instanceof Error ? err.message : '未知错误'
@@ -92,6 +109,10 @@ defineExpose({
   marketLoading,
   fetchMarketData,
 })
+
+onMounted(() => {
+  fetchMarketData()
+})
 </script>
 
 <style scoped>
@@ -104,41 +125,50 @@ defineExpose({
 .market-data-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: var(--space-md);
 }
 
 .market-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xxs);
 }
 
 .market-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
 
 .market-value {
-  font-size: 16px;
+  font-size: var(--font-size-md);
   font-weight: 600;
 }
 
 .market-value.positive {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 
 .market-value.negative {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .market-data-placeholder {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 0;
-  gap: 12px;
+  padding: var(--space-md) 0;
+  gap: var(--space-xs);
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
+}
+
+.market-data-loading {
+  padding: var(--space-xs) 0;
+}
+
+@media (max-width: 768px) {
+  .market-data-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>

@@ -163,7 +163,7 @@ function handleRefresh() {
 }
 
 .header-icon {
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .status-tag {

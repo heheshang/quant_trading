@@ -37,6 +37,7 @@
         @edit="openEditDialog"
         @delete="confirmDeleteStrategy"
         @backtest="runBacktest"
+        @optimize="openOptimizer"
         @lifecycle="handleLifecycle"
         @batch-start="batchStart"
         @batch-stop="batchStop"
@@ -71,9 +72,17 @@
       @saved="onStrategySaved"
     />
 
-    <StrategyBacktestDialog
-      v-model:visible="backtestDialogVisible"
-      :result="backtestResult"
+    <BacktestConfigDialog
+      v-model:visible="backtestConfigDialogVisible"
+      :strategy-name="pendingStrategyName"
+      :loading="backtestLoading"
+      @confirm="handleBacktestConfigConfirmed"
+    />
+
+    <StrategyOptimizerDialog
+      v-model:visible="optimizerDialogVisible"
+      :strategy-id="optimizerStrategy?.strategy_id"
+      :strategy-name="optimizerStrategy?.strategy_name"
     />
 
     <ConfirmDialog
@@ -96,8 +105,9 @@ import { runBacktest as apiRunBacktest } from '@/services/backtest';
 import type { StrategyParams } from '@/services/types';
 import StrategyTable from '@/components/strategy/StrategyTable.vue';
 import StrategyDetailPanel from '@/components/strategy/StrategyDetailPanel.vue';
-import StrategyFormDialog from '@/components/strategy/StrategyFormDialog.vue';
-import StrategyBacktestDialog from '@/components/strategy/StrategyBacktestDialog.vue';
+import BacktestConfigDialog from '@/components/backtest/BacktestConfigDialog.vue';
+import type { BacktestRunParams } from '@/components/backtest/BacktestConfigDialog.vue';
+import StrategyOptimizerDialog from '@/components/strategy/StrategyOptimizerDialog.vue';
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 
 const store = useStrategyStore();
@@ -145,17 +155,46 @@ function openDetailPanel(strategy: StrategyParams) {
   detailPanelVisible.value = true;
 }
 
-// --- Backtest ---
+const backtestConfigDialogVisible = ref(false);
+const pendingBacktestStrategyId = ref('');
+const pendingStrategyName = ref('');
 const backtestDialogVisible = ref(false);
 const backtestResult = ref<Record<string, unknown> | null>(null);
 const backtestLoading = ref(false);
+const optimizerDialogVisible = ref(false);
+const optimizerStrategy = ref<StrategyParams | null>(null);
 
-async function runBacktest(strategyId: string) {
+function openOptimizer(strategy: StrategyParams) {
+  optimizerStrategy.value = strategy;
+  optimizerDialogVisible.value = true;
+}
+
+function runBacktest(strategyId: string) {
+  pendingBacktestStrategyId.value = strategyId;
+  const strategy = store.strategies.find((s) => s.strategy_id === strategyId);
+  pendingStrategyName.value = strategy?.strategy_name ?? '';
+  backtestConfigDialogVisible.value = true;
+}
+
+async function handleBacktestConfigConfirmed(params: BacktestRunParams) {
+  if (!pendingBacktestStrategyId.value) return;
+  const strategyId = pendingBacktestStrategyId.value;
+  backtestConfigDialogVisible.value = false;
   try {
     backtestLoading.value = true;
-    const now = new Date();
-    const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const result = await apiRunBacktest(strategyId, startDate.toISOString(), now.toISOString(), 1000000, 0.0003, 0.0001, []);
+    const symbols = params.symbols
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const result = await apiRunBacktest(
+      strategyId,
+      params.startDate,
+      params.endDate,
+      params.initialCapital,
+      params.commissionRate,
+      params.slippage,
+      symbols,
+    );
     backtestResult.value = result as unknown as Record<string, unknown>;
     backtestDialogVisible.value = true;
   } catch {
@@ -164,7 +203,6 @@ async function runBacktest(strategyId: string) {
     backtestLoading.value = false;
   }
 }
-
 // --- Batch operations ---
 async function batchStart(strategies: StrategyParams[]) {
   for (const s of strategies) {
@@ -249,6 +287,9 @@ defineExpose({
   editingStrategy,
   detailPanelVisible,
   detailStrategy,
+  backtestConfigDialogVisible,
+  pendingBacktestStrategyId,
+  pendingStrategyName,
   backtestDialogVisible,
   backtestResult,
   backtestLoading,
@@ -261,13 +302,14 @@ defineExpose({
   toggleStrategyStatus,
   openDetailPanel,
   runBacktest,
+  handleBacktestConfigConfirmed,
   batchStart,
   batchStop,
   batchDelete,
   handleLifecycle,
   confirmDeleteStrategy,
   executeDelete,
-});
+})
 // --- Init ---
 onMounted(() => {
   store.fetchStrategies();

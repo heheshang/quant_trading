@@ -11,15 +11,13 @@
       <el-tab-pane label="监控" name="monitoring"><SettingsMonitoring ref="monitoringRef" v-model="config.monitoring" /></el-tab-pane>
       <el-tab-pane label="安全" name="security"><SettingsSecurity ref="securityRef" v-model="config.security" /></el-tab-pane>
     </el-tabs>
-    <el-card class="action-card">
-      <div class="action-buttons">
-        <el-button type="primary" @click="saveConfig" :loading="saving">保存配置</el-button>
-        <el-button @click="resetConfig">重置</el-button>
-        <el-button @click="exportConfig">导出配置</el-button>
-        <el-button @click="triggerImport">导入配置</el-button>
-        <input ref="importFileInput" type="file" accept=".json" style="display:none" @change="handleImport" />
-      </div>
-    </el-card>
+    <div class="action-bar">
+      <el-button type="primary" @click="saveConfig" :loading="saving">保存配置</el-button>
+      <el-button @click="resetConfig">重置</el-button>
+      <el-button @click="exportConfig">导出配置</el-button>
+      <el-button @click="triggerImport">导入配置</el-button>
+      <input ref="importFileInput" type="file" accept=".json" style="display:none" @change="handleImport" />
+    </div>
     <ConfirmDialog v-model:visible="resetDialogVisible" title="确认重置"
       message="确定要重置所有系统设置吗？此操作不可撤销。" type="danger" confirm-text="重置" @confirm="confirmReset" />
   </div>
@@ -63,7 +61,6 @@ const config = ref({
   risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, max_concentration: 0.2, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
   monitoring: { enable_prometheus: true, prometheus_port: 9090, log_level: 'info', alert_email: null as string | null, alert_webhook: null as string | null },
   security: { enable_encryption: true, jwt_secret: '', token_expiry_hours: 24, enable_2fa: false, allowed_ips: ['127.0.0.1'] },
-  okx: { api_key: '', api_secret: '', passphrase: '', environment: 'demo', enable: false },
 })
 
 function mergeConfig<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
@@ -96,7 +93,6 @@ function buildAppPayload(cfg: typeof config.value, sys: SystemInfo): AppConfig {
     trading: cfg.trading, risk: cfg.risk,
     monitoring: { ...cfg.monitoring, alert_email: cfg.monitoring.alert_email ?? '', alert_webhook: cfg.monitoring.alert_webhook ?? '' },
     security: cfg.security,
-    okx: cfg.okx,
   }
 }
 
@@ -171,7 +167,20 @@ onMounted(() => { fetchConfig() })
 <style scoped>
 .system-settings { padding: 20px; }
 .header { margin-bottom: 20px; }
-.settings-tabs { margin-bottom: 20px; }
-.action-card { margin-top: 20px; }
-.action-buttons { display: flex; gap: 10px; justify-content: center; }
+.settings-tabs { margin-bottom: var(--space-md); }
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-sm);
+  border-top: 1px solid var(--color-border-light);
+}
+@media (max-width: 768px) {
+  .action-bar {
+    flex-wrap: wrap;
+  }
+  .action-bar .el-button {
+    flex: 1 1 auto;
+  }
+}
 </style>

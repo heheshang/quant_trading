@@ -1,19 +1,23 @@
 use crate::state::AppState;
 use chrono::Utc;
 use quant_common::config::AppConfig;
-use quant_common::types::{Account, MarketData, Order, Position};
+use quant_common::types::{Account, MarketData, Order, OrderStatus, Position};
 use rust_decimal::prelude::ToPrimitive;
 use tauri::{Emitter, State};
 
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
+    state.require_auth().await?;
     let config = state.config.read().await;
-    Ok(config.clone())
+    // Redact sensitive values (DB password, JWT secret, exchange API
+    // keys/secrets/passphrase) so they never leave the backend.
+    Ok(config.redacted())
 }
 
 /// 更新系统配置
 #[tauri::command]
 pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Result<bool, String> {
+    state.require_role("admin").await?;
     // Delegate to ConfigService which updates both in-memory state and persistent file
     match state.app_services.as_ref() {
         Some(services) => {
@@ -79,6 +83,7 @@ pub async fn submit_order(
     state: State<'_, AppState>,
     order: Order,
 ) -> Result<String, String> {
+    state.require_auth().await?;
     // The order-placement pipeline (market data → risk check → submit →
     //   persist → emit → async execution) lives in `OrderProcessor` so the
     //   command stays a *thin adapter* (SRP) and never reaches into the
@@ -88,16 +93,67 @@ pub async fn submit_order(
         .as_ref()
         .ok_or_else(|| "Order service not initialized (no database connection)".to_string())?;
 
+    let symbol = order.symbol.clone();
+    let side = format!("{:?}", order.side);
+    let quantity = order.quantity.to_string();
+
     let placement = services
         .order_processor
         .place_order(order)
         .await
         .map_err(|e| e.to_string())?;
 
+    let _ = state
+        .audit_logger
+        .log_order_submit(
+            "0",
+            "admin",
+            &placement.order_id.to_string(),
+            &symbol,
+            &side,
+            &quantity,
+        )
+        .await;
+
     // Forward the UI event; the use-case already ran persistence + async execution.
     let _ = app.emit("order:submitted", placement.event);
 
     Ok(placement.order_id.to_string())
+}
+
+/// 运行算法订单（TWAP / VWAP / Iceberg）。
+///
+/// 将一笔大单按所选算法拆分为若干普通 Market / Limit 子订单，每个子订单经
+/// [`OrderProcessor::place_order`] 走完整下单链路（风控 + 纸面/实盘执行 + 持久化）。
+/// 子订单类型永远不是 `TWAP/VWAP/Iceberg`，故 Binance 实盘能将其作为普通市价/限价单接收。
+///
+/// 返回每个子订单的 `order_id`，并按子订单逐个发送 `order:submitted` UI 事件。
+#[tauri::command]
+pub async fn run_algorithmic_order(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    order: Order,
+    algorithm: String,
+    params: quant_services::order_processor::AlgorithmicOrderParams,
+) -> Result<Vec<i64>, String> {
+    state.require_auth().await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| "Order service not initialized (no database connection)".to_string())?;
+
+    let placements = services
+        .order_processor
+        .place_algorithmic_order(order, &algorithm, &params)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Forward one UI event per placed slice so the frontend can track children.
+    for placement in &placements {
+        let _ = app.emit("order:submitted", placement.event.clone());
+    }
+
+    Ok(placements.iter().map(|p| p.order_id).collect())
 }
 
 #[tauri::command]
@@ -162,4 +218,70 @@ pub async fn get_active_orders(state: State<'_, AppState>) -> Result<Vec<Order>,
 
     // 无任何数据源可用 → 返回空列表（不再返回硬编码 mock 假数据）
     Ok(Vec::new())
+}
+
+/// 撤销订单（paper / OrderManager 订单）
+///
+/// 对未成交/进行中的订单（Submitted / PartiallyFilled）执行取消：
+/// 优先从内存 `OrderManager` 取消；否则降级到数据库订单表。
+#[tauri::command]
+pub async fn cancel_order(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    order_id: i64,
+) -> Result<bool, String> {
+    let cancelled = cancel_order_core(state.inner(), order_id).await?;
+    if cancelled {
+        let _ = app.emit("order:cancelled", order_id);
+        let _ = state
+            .audit_logger
+            .log(
+                "0",
+                "admin",
+                security::audit::AuditAction::OrderCancel,
+                &order_id.to_string(),
+                serde_json::json!({}),
+                None,
+                true,
+                None,
+            )
+            .await;
+    }
+    Ok(cancelled)
+}
+
+pub(crate) async fn cancel_order_core(state: &AppState, order_id: i64) -> Result<bool, String> {
+    // Paper / in-memory orders live in the OrderManager.
+    if let Ok(order) = state.order_manager.get_order(order_id).await {
+        if !matches!(
+            order.status,
+            OrderStatus::Submitted | OrderStatus::PartiallyFilled
+        ) {
+            return Err(format!(
+                "Order {} is not in a cancellable state: {:?}",
+                order_id, order.status
+            ));
+        }
+        state
+            .order_manager
+            .cancel_order(order_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+
+    // Fallback: order persisted in the database.
+    if let Some(services) = state.app_services.as_ref() {
+        services
+            .account_service
+            .cancel_order(order_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+
+    Err(format!(
+        "Cannot cancel order {}: no active order found",
+        order_id
+    ))
 }

@@ -7,7 +7,7 @@
 ### 1.1 核心特性
 
 - ✅ **模块化架构**：高内聚低耦合的五大核心模块
-- ✅ **多数据库支持**：PostgreSQL (关系型) + Redis (缓存) + InfluxDB (时序)
+- ✅ **多数据库支持**：PostgreSQL (关系型，含历史行情分区表) + Redis (缓存)
 - ✅ **完整回测系统**：支持策略开发、参数优化、性能评估
 - ✅ **智能执行算法**：TWAP、VWAP、冰山订单等
 - ✅ **三层风控体系**：事前、事中、事后全流程风险管理
@@ -21,7 +21,7 @@ quant-trading-system/
 ├── src-tauri/                 # Tauri 后端（Rust）
 │   └── src/
 │       ├── main.rs            # 主入口
-│       ├── commands.rs        # Tauri 命令
+│       ├── commands/          # Tauri 命令（分文件：twofa/audit/optimizer 等）
 │       └── state.rs           # 应用状态
 ├── crates/                    # Rust 模块
 │   ├── common/                # 公共模块（类型、错误、工具）
@@ -47,7 +47,7 @@ quant-trading-system/
 - **Node.js**: 18+
 - **PostgreSQL**: 14+
 - **Redis**: 6+
-- **InfluxDB**: 2.x (可选)
+- **历史行情**: 存储于 PostgreSQL 分区表（不使用 InfluxDB）
 
 ### 2.2 安装步骤
 
@@ -60,7 +60,7 @@ cd ea_test
 2. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，配置数据库连接、OKX/币安密钥等
+# 编辑 .env 文件，配置数据库连接、币安密钥等
 ```
 
 3. **用 Docker 启动数据库组件（推荐）**
@@ -131,7 +131,7 @@ npm run tauri build
 
 - **PostgreSQL**: 存储订单、持仓、账户等关系型数据
 - **Redis**: 缓存热点数据，降低延迟
-- **InfluxDB**: 存储高频行情时序数据
+- **历史行情**: 存储于 PostgreSQL 分区表（不使用 InfluxDB）
 - **数据质量**：实时清洗、去重、异常检测
 
 ### 3.2 策略开发模块 (strategy-layer)

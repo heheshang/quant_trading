@@ -33,7 +33,10 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-# Environment
+# Config secrets (repository must never track plaintext exchange credentials)
+config.toml
+src-tauri/config.toml
+# Environment (real credentials must never be committed)
 .env
 .env.local
 .env.*.local

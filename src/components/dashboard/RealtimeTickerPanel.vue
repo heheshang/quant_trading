@@ -1,115 +1,79 @@
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useMarketData } from '@/composables/useMarketData'
-import { useFormatting } from '@/composables/useFormatting'
-import type { WsTicker } from '@/services/types'
-
-const props = defineProps<{
-  symbols: string[]
-}>()
-
-const { tickerData } = useMarketData()
-const { formatCurrency } = useFormatting()
-
-function getPricePrecision(value: string | undefined): number {
-  if (!value) return 2
-  const str = value.trim()
-  const dotIndex = str.indexOf('.')
-  if (dotIndex === -1) return 0
-  return Math.min(str.length - dotIndex - 1, 8)
-}
-
-function formatPrice(value: string | undefined): string {
-  if (!value) return '-'
-  const precision = getPricePrecision(value)
-  return parseFloat(value).toFixed(precision)
-}
-
-function computeChangePct(ticker: WsTicker | undefined): number {
-  if (!ticker) return 0
-  const last = Number(ticker.last)
-  const open = Number(ticker.open24h)
-  if (!open || open === 0) return 0
-  return ((last - open) / open) * 100
-}
-
-const tickerList = computed(() => {
-  return props.symbols.map((symbol) => {
-    const ticker = tickerData.value[symbol]
-    const changePct = computeChangePct(ticker)
-    return {
-      symbol,
-      ticker,
-      changePct,
-      isPositive: changePct >= 0,
-    }
-  })
-})
-</script>
-
 <template>
   <el-card class="realtime-ticker-panel" shadow="never">
     <template #header>
       <div class="card-header">
-        <span>实时行情</span>
+        <span class="title"><el-icon><TrendCharts /></el-icon> 实时行情</span>
+        <span v-if="tickers.length" class="updated-at">更新于 {{ lastUpdated }}</span>
       </div>
     </template>
 
-    <el-empty
-      v-if="!symbols || symbols.length === 0"
-      description="无持仓交易对"
-      :image-size="60"
-    />
-
-    <div v-else class="ticker-list">
-      <div class="ticker-header-row">
-        <div class="col-symbol">交易对</div>
-        <div class="col-price">最新价</div>
-        <div class="col-change">24h 涨跌</div>
-        <div class="col-high-low">24h 高/低</div>
-      </div>
-
-      <div
-        v-for="item in tickerList"
-        :key="item.symbol"
-        class="ticker-row"
-      >
-        <div class="col-symbol">
-          <span class="symbol-name">{{ item.symbol }}</span>
-        </div>
-        <div
-          class="col-price"
-          :class="item.isPositive ? 'up' : 'down'"
-        >
-          {{ item.ticker ? formatPrice(item.ticker.last) : '-' }}
-        </div>
-        <div class="col-change">
-          <span
-            class="change-badge"
-            :class="item.isPositive ? 'up' : 'down'"
-          >
-            {{ item.isPositive ? '+' : '' }}{{ item.changePct.toFixed(2) }}%
+    <div v-if="tickers.length" class="ticker-grid">
+      <div v-for="t in tickers" :key="t.symbol" class="ticker-item">
+        <div class="ticker-top">
+          <span class="ticker-symbol">{{ t.symbol }}</span>
+          <span class="ticker-change" :class="changeClass(t.price_change_percent)">
+            {{ changePercent(t.price_change_percent) }}
           </span>
         </div>
-        <div class="col-high-low">
-          <div class="high-low-row">
-            <span class="label">高:</span>
-            <span class="value">{{ item.ticker ? formatCurrency(item.ticker.high24h) : '-' }}</span>
-          </div>
-          <div class="high-low-row">
-            <span class="label">低:</span>
-            <span class="value">{{ item.ticker ? formatCurrency(item.ticker.low24h) : '-' }}</span>
-          </div>
+        <div class="ticker-price">{{ formatPrice(t.last_price) }}</div>
+        <div class="ticker-stats">
+          <span class="ticker-stat">高 {{ formatPrice(t.high) }}</span>
+          <span class="ticker-stat">低 {{ formatPrice(t.low) }}</span>
         </div>
+        <div class="ticker-volume">量 {{ formatQty(t.volume) }}</div>
       </div>
     </div>
+
+    <EmptyState v-else title="暂无行情" description="等待实时行情数据…" />
   </el-card>
 </template>
 
+<script setup lang="ts">
+import { computed } from 'vue'
+import { TrendCharts } from '@element-plus/icons-vue'
+import type { BinanceWsTicker } from '@/services/types'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { useFormatting } from '@/composables/useFormatting'
+
+const props = defineProps<{
+  tickers: BinanceWsTicker[]
+}>()
+
+const { formatNumber } = useFormatting()
+
+function formatPrice(value: number): string {
+  const abs = Math.abs(value)
+  const digits = abs >= 1000 ? 2 : abs >= 1 ? 4 : 8
+  return value.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: digits,
+  })
+}
+
+function formatQty(value: number): string {
+  return formatNumber(Number(value ?? 0))
+}
+
+function changeClass(percent: number): string {
+  return percent >= 0 ? 'positive' : 'negative'
+}
+
+function changePercent(percent: number): string {
+  const p = Number(percent ?? 0)
+  if (!Number.isFinite(p)) return '0.00%'
+  return `${p >= 0 ? '+' : ''}${p.toFixed(2)}%`
+}
+
+const lastUpdated = computed(() => {
+  const t = props.tickers[0]
+  if (!t || !t.event_time) return '-'
+  return new Date(t.event_time).toLocaleTimeString('zh-CN')
+})
+</script>
+
 <style scoped>
-.realtime-ticker-panel {
-  --ticker-up-color: #f56c6c;
-  --ticker-down-color: #67c23a;
+.realtime-ticker-panel :deep(.el-card__header) {
+  padding: 12px 16px;
 }
 
 .card-header {
@@ -118,113 +82,81 @@ const tickerList = computed(() => {
   align-items: center;
 }
 
-.ticker-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.ticker-header-row {
-  display: flex;
+.title {
+  display: inline-flex;
   align-items: center;
-  padding: 8px 12px;
-  background-color: var(--el-fill-color-light);
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  font-weight: 500;
-}
-
-.ticker-row {
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  transition: background-color 0.2s ease;
-}
-
-.ticker-row:hover {
-  background-color: var(--el-fill-color-light);
-}
-
-.ticker-row:last-child {
-  border-bottom: none;
-}
-
-.col-symbol {
-  flex: 1.5;
-  min-width: 0;
-}
-
-.col-price {
-  flex: 1.5;
-  min-width: 0;
-  text-align: right;
-  font-family: var(--el-font-family-monospace, monospace);
+  gap: 6px;
+  font-size: 15px;
   font-weight: 600;
-  font-size: 14px;
 }
 
-.col-change {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
+.updated-at {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 
-.change-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
+.ticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ticker-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-bg-white);
+}
+
+.ticker-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ticker-symbol {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.ticker-change {
   font-size: 13px;
   font-weight: 600;
 }
 
-.change-badge.up {
-  background-color: #f56c6c;
-  color: #ffffff;
+.ticker-change.positive {
+  color: var(--color-success);
 }
 
-.change-badge.down {
-  background-color: #67c23a;
-  color: #ffffff;
+.ticker-change.negative {
+  color: var(--color-danger);
 }
 
-.col-high-low {
-  flex: 2;
-  min-width: 0;
-  text-align: right;
+.ticker-price {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.ticker-stats {
+  display: flex;
+  gap: 12px;
   font-size: 12px;
-  color: var(--el-text-color-regular);
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
 }
 
-.symbol-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
+.ticker-volume {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 
-.high-low-row {
-  display: inline-flex;
-  align-items: center;
-}
-
-.high-low-row + .high-low-row {
-  margin-left: 8px;
-}
-
-.label {
-  color: var(--el-text-color-secondary);
-  margin-right: 2px;
-}
-
-.value {
-  font-family: var(--el-font-family-monospace, monospace);
-}
-
-.up {
-  color: var(--ticker-up-color);
-}
-
-.down {
-  color: var(--ticker-down-color);
+@media (max-width: 768px) {
+  .ticker-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
 }
 </style>

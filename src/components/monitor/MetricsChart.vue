@@ -22,7 +22,7 @@
             </el-select>
           </div>
         </template>
-        <div ref="chartRef" style="height: 400px;"></div>
+        <div ref="chartRef" style="height: 320px;"></div>
       </el-card>
     </el-col>
   </el-row>
@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
 const props = defineProps<{
   metricsHistory: Array<{ time: string; metrics: Record<string, number> }>
@@ -53,41 +54,85 @@ const metricLabels: Record<string, string> = {
   daily_pnl: '今日盈亏',
 }
 
+const chartColorKeys = ['blue', 'green', 'orange', 'purple', 'teal', 'gray', 'red']
+
+function seriesColor(index: number): string {
+  const colors = getChartSeriesColors()
+  const key = chartColorKeys[index % chartColorKeys.length]
+  return colors[key] || '#409eff'
+}
+
+function buildOption(): echarts.EChartsCoreOption {
+  const theme = useChartTheme().palette.value
+  const hasData = props.metricsHistory.length > 0
+
+  if (!hasData) {
+    return {
+      title: {
+        text: '暂无历史数据',
+        left: 'center',
+        top: 'center',
+        textStyle: { color: theme.text, fontSize: 14, fontWeight: 'normal' },
+      },
+      tooltip: { trigger: 'axis' as const },
+      legend: { show: false },
+      grid: { left: 50, right: 20, bottom: 30, top: 20 },
+      xAxis: { type: 'category' as const, data: [] as string[] },
+      yAxis: { type: 'value' as const },
+      series: [],
+    }
+  }
+
+  const times = props.metricsHistory.map(item => item.time)
+  const series = props.selectedMetrics.map((key, index) => ({
+    name: metricLabels[key] || key,
+    type: 'line' as const,
+    smooth: true,
+    data: props.metricsHistory.map(item => item.metrics[key] ?? 0),
+    itemStyle: { color: seriesColor(index) },
+    lineStyle: { color: seriesColor(index) },
+  }))
+
+  return {
+    tooltip: {
+      trigger: 'axis' as const,
+      backgroundColor: theme.tooltipBg,
+      borderColor: theme.tooltipBorder,
+      borderWidth: 1,
+      textStyle: { color: theme.tooltipText },
+    },
+    legend: {
+      type: 'scroll' as const,
+      data: series.map(s => s.name),
+      bottom: 0,
+      textStyle: { color: theme.axisLabel },
+    },
+    grid: { left: 50, right: 20, bottom: 40, top: 20 },
+    xAxis: {
+      type: 'category' as const,
+      data: times,
+      axisLabel: { color: theme.axisLabel },
+    },
+    yAxis: {
+      type: 'value' as const,
+      axisLabel: { color: theme.axisLabel },
+      splitLine: { lineStyle: { color: theme.splitLine } },
+    },
+    series,
+  }
+}
+
 function initChart() {
   if (!chartRef.value) return
   chart.value?.dispose()
   chart.value = echarts.init(chartRef.value)
-
-  const series = props.selectedMetrics.map(key => ({
-    name: metricLabels[key] || key,
-    type: 'line' as const,
-    data: [] as number[],
-    smooth: true,
-  }))
-
-  chart.value.setOption({
-    tooltip: { trigger: 'axis' as const },
-    legend: { data: series.map(s => s.name) },
-    xAxis: { type: 'category' as const, data: [] as string[] },
-    yAxis: { type: 'value' as const },
-    series,
-  })
+  chart.value.setOption(buildOption(), { notMerge: true })
 }
 
 function updateChart() {
   const instance = chart.value
-  if (!instance || props.metricsHistory.length === 0) return
-
-  const times = props.metricsHistory.map(item => item.time)
-  const series = props.selectedMetrics.map(key => ({
-    name: metricLabels[key] || key,
-    data: props.metricsHistory.map(item => item.metrics[key] ?? 0),
-  }))
-
-  instance.setOption({
-    xAxis: { data: times },
-    series,
-  })
+  if (!instance) return
+  instance.setOption(buildOption(), { notMerge: true })
 }
 
 watch(() => props.selectedMetrics, updateChart, { deep: true })

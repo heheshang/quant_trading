@@ -12,7 +12,7 @@
 2. **数据库环境**
    - 安装 PostgreSQL（版本 14+）
    - 安装 Redis（版本 6+）
-   - 安装 InfluxDB（版本 2.x，可选）
+   - 历史行情存放于 PostgreSQL 分区表（无需 InfluxDB）
 
 3. **开发工具**
    - 推荐使用 VS Code 或 JetBrains RustRover
@@ -94,7 +94,7 @@ git checkout -b feature/功能名称
    - 合理划分功能职责
 
 2. **Tauri 命令开发**
-   - 在 `src-tauri/src/commands.rs` 中添加命令
+   - 在 `src-tauri/src/commands/` 目录中添加命令（分文件：twofa/audit/optimizer 等）
    - 确保命令有清晰的输入输出
    - 添加适当的错误处理
 

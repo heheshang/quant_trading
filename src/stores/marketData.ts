@@ -1,97 +1,144 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
+import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
-  subscribeChannel,
-  unsubscribeChannel,
-  getSubscriptions,
-} from '@/services/ws'
+  listenToBinanceEvents,
+  startBinanceStream,
+  stopBinanceStream,
+  type BinanceEventHandlers,
+} from '@/services/binanceWS'
+import {
+  subscribeBinanceTicker,
+  subscribeBinanceTrades,
+  subscribeBinanceOrderbook,
+  subscribeBinanceCandle,
+} from '@/services/binance'
+import type { BinanceWsTicker, BinanceWsTrade, BinanceWsDepth, BinanceWsKline } from '@/services/types'
 
-const CHANNEL_OPTIONS = ['ticker', 'trades', 'orderbook', 'candle'] as const
-export type Channel = (typeof CHANNEL_OPTIONS)[number]
+/** Default symbols tracked by the realtime stream. */
+export const DEFAULT_MARKET_SYMBOLS = ['BTC-USDT', 'ETH-USDT']
 
+/**
+ * Realtime Binance market data store.
+ *
+ * Owns the Binance WebSocket lifecycle (idempotent start) and translates the
+ * `binance:ticker` / `binance:trade` / `binance:orderbook` / `binance:kline`
+ * events into reactive state. Data is keyed per symbol so the ticker panel can
+ * show several instruments while charts/order book focus on the active symbol.
+ */
 export const useMarketDataStore = defineStore('marketData', () => {
-  const subscriptions = ref<string[]>([])
-  const activeSymbols = ref<string[]>([])
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const running = ref(false)
+  const starting = ref(false)
+  const status = ref('idle')
+  const activeSymbol = ref(DEFAULT_MARKET_SYMBOLS[0])
+  const symbols = ref<string[]>([])
+  const tickers = ref<Record<string, BinanceWsTicker>>({})
+  const trades = ref<Record<string, BinanceWsTrade[]>>({})
+  const orderBooks = ref<Record<string, BinanceWsDepth>>({})
+  const candles = ref<Record<string, BinanceWsKline[]>>({})
 
-  const subscriptionCount = computed(() => subscriptions.value.length)
+  let unlisteners: UnlistenFn[] = []
+  let handlers: BinanceEventHandlers | null = null
 
-  function hasSubscription(symbol: string, channel: string): boolean {
-    const key = `${symbol}:${channel}`
-    return subscriptions.value.includes(key)
-  }
+  const tickerList = computed(() => Object.values(tickers.value))
+  const tradesForActive = computed(() => trades.value[activeSymbol.value] ?? [])
+  const orderBookForActive = computed(() => orderBooks.value[activeSymbol.value] ?? null)
+  const candlesForActive = computed(() => candles.value[activeSymbol.value] ?? [])
 
-  async function subscribe(symbol: string, channel: string) {
-    const key = `${symbol}:${channel}`
-    if (hasSubscription(symbol, channel)) {
-      error.value = `已订阅 ${key}，请勿重复操作`
-      return
-    }
-    loading.value = true
-    error.value = null
-    try {
-      await subscribeChannel(symbol, channel)
-      subscriptions.value.push(key)
-      if (!activeSymbols.value.includes(symbol)) {
-        activeSymbols.value.push(symbol)
-      }
-    } catch (err) {
-      error.value = `订阅 ${key} 失败`
-      console.error('Failed to subscribe:', err)
-    } finally {
-      loading.value = false
+  function upsertCandle(k: BinanceWsKline) {
+    const list = candles.value[k.symbol] ?? []
+    const idx = list.findIndex((c) => c.open_time === k.open_time)
+    if (idx >= 0) {
+      const next = [...list]
+      next[idx] = k
+      candles.value = { ...candles.value, [k.symbol]: next }
+    } else {
+      candles.value = { ...candles.value, [k.symbol]: [...list, k].slice(-120) }
     }
   }
 
-  async function unsubscribe(symbol: string, channel: string) {
-    const key = `${symbol}:${channel}`
-    if (!hasSubscription(symbol, channel)) return
-    loading.value = true
-    error.value = null
-    try {
-      await unsubscribeChannel(symbol, channel)
-      subscriptions.value = subscriptions.value.filter((s) => s !== key)
-      const remaining = subscriptions.value.filter((s) => s.startsWith(`${symbol}:`))
-      if (remaining.length === 0) {
-        activeSymbols.value = activeSymbols.value.filter((s) => s !== symbol)
-      }
-    } catch (err) {
-      error.value = `取消订阅 ${key} 失败`
-      console.error('Failed to unsubscribe:', err)
-    } finally {
-      loading.value = false
+  async function buildHandlers(): Promise<BinanceEventHandlers> {
+    return {
+      onTicker: (t) => {
+        tickers.value = { ...tickers.value, [t.symbol]: t }
+      },
+      onTrade: (t) => {
+        const list = [t, ...(trades.value[t.symbol] ?? [])].slice(0, 100)
+        trades.value = { ...trades.value, [t.symbol]: list }
+      },
+      onOrderBook: (d) => {
+        orderBooks.value = { ...orderBooks.value, [d.symbol]: d }
+      },
+      onCandle: upsertCandle,
+      onStatus: (s) => {
+        status.value = s.status
+      },
+      onError: () => {
+        status.value = 'error'
+      },
     }
   }
 
-  async function refreshSubscriptions() {
-    loading.value = true
-    error.value = null
-    try {
-      subscriptions.value = await getSubscriptions()
-      const symbols = new Set<string>()
-      for (const sub of subscriptions.value) {
-        const [sym] = sub.split(':')
-        if (sym) symbols.add(sym)
-      }
-      activeSymbols.value = Array.from(symbols)
-    } catch (err) {
-      error.value = '获取订阅列表失败'
-      console.error('Failed to refresh subscriptions:', err)
-    } finally {
-      loading.value = false
+  async function ensureSubscribed(syms: string[]) {
+    for (const sym of syms) {
+      await Promise.all([
+        subscribeBinanceTicker(sym),
+        subscribeBinanceTrades(sym),
+        subscribeBinanceOrderbook(sym),
+        subscribeBinanceCandle(sym, '1m'),
+      ])
     }
+    symbols.value = Array.from(new Set([...symbols.value, ...syms]))
+  }
+
+  /** Start the stream once (idempotent). Subsequent calls no-op. */
+  async function start(syms: string[] = DEFAULT_MARKET_SYMBOLS) {
+    if (running.value || starting.value) return
+    starting.value = true
+    try {
+      await startBinanceStream()
+      handlers = await buildHandlers()
+      unlisteners = await listenToBinanceEvents(handlers)
+      await ensureSubscribed(syms)
+      activeSymbol.value = syms[0] ?? activeSymbol.value
+      running.value = true
+      status.value = 'connected'
+    } catch {
+      status.value = 'error'
+    } finally {
+      starting.value = false
+    }
+  }
+
+  /** Stop the stream and detach all listeners. */
+  async function stop() {
+    if (!running.value) return
+    unlisteners.forEach((u) => u())
+    unlisteners = []
+    await stopBinanceStream()
+    running.value = false
+    status.value = 'idle'
+  }
+
+  function setActiveSymbol(sym: string) {
+    if (symbols.value.includes(sym)) activeSymbol.value = sym
   }
 
   return {
-    subscriptions,
-    activeSymbols,
-    loading,
-    error,
-    subscriptionCount,
-    hasSubscription,
-    subscribe,
-    unsubscribe,
-    refreshSubscriptions,
+    running,
+    status,
+    activeSymbol,
+    symbols,
+    tickers,
+    trades,
+    orderBooks,
+    candles,
+    tickerList,
+    tradesForActive,
+    orderBookForActive,
+    candlesForActive,
+    start,
+    stop,
+    setActiveSymbol,
   }
 })

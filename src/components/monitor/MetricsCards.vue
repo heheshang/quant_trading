@@ -4,7 +4,7 @@
       <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
-            <div class="metric-icon" :style="{ background: '#409EFF' }">
+            <div class="metric-icon" :style="{ background: 'var(--color-primary)' }">
               <el-icon><TrendCharts /></el-icon>
             </div>
             <div class="metric-info">
@@ -17,7 +17,7 @@
       <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
-            <div class="metric-icon" :style="{ background: '#67C23A' }">
+            <div class="metric-icon" :style="{ background: 'var(--color-success)' }">
               <el-icon><Check /></el-icon>
             </div>
             <div class="metric-info">
@@ -30,7 +30,7 @@
       <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
-            <div class="metric-icon" :style="{ background: '#E6A23C' }">
+            <div class="metric-icon" :style="{ background: 'var(--color-warning)' }">
               <el-icon><Close /></el-icon>
             </div>
             <div class="metric-info">
@@ -46,7 +46,7 @@
       <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
-            <div class="metric-icon" :style="{ background: '#F56C6C' }">
+            <div class="metric-icon" :style="{ background: 'var(--color-danger)' }">
               <el-icon><Wallet /></el-icon>
             </div>
             <div class="metric-info">
@@ -155,9 +155,9 @@ const pnlPrefix = computed(() => (pnlValue.value > 0 ? '+' : ''))
   color: var(--color-text-primary);
 }
 .metric-value.positive {
-  color: #67C23A;
+  color: var(--color-success);
 }
 .metric-value.negative {
-  color: #F56C6C;
+  color: var(--color-danger);
 }
 </style>

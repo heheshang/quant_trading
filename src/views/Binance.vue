@@ -2,14 +2,39 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listen } from '@tauri-apps/api/event'
-import { getBinanceBalance, checkBinanceStatus, startBinanceMarketData, stopBinanceMarketData, subscribeBinanceCandle, subscribeBinanceDepth } from '@/services/binance'
-import { placeBinanceOrder } from '@/services/binanceOrder'
-import type { BinanceBalance, BinanceStatus, BinanceWsKline, BinanceWsDepth } from '@/services/types'
+import {
+  getBinanceBalance,
+  getBinancePositions,
+  getBinanceOrders,
+  checkBinanceStatus,
+  startBinanceMarketData,
+  stopBinanceMarketData,
+  subscribeBinanceCandle,
+  subscribeBinanceDepth,
+} from '@/services/binance'
+import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
+import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
+import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import type {
+  BinanceBalance,
+  BinanceStatus,
+  BinanceWsKline,
+  BinanceWsDepth,
+  BinancePosition,
+  BinanceOrder,
+} from '@/services/types'
 
 const balances = ref<BinanceBalance[]>([])
+const positions = ref<BinancePosition[]>([])
+const orders = ref<BinanceOrder[]>([])
 const status = ref<BinanceStatus | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
+const positionsLoading = ref(false)
+const ordersLoading = ref(false)
+const ordersHistory = ref(false)
+const ordersSymbol = ref('BTCUSDT')
 
 const form = ref({
   symbol: 'BTCUSDT',
@@ -25,6 +50,32 @@ const streamSymbol = ref('BTCUSDT')
 const liveKlines = ref<BinanceWsKline[]>([])
 const liveDepth = ref<BinanceWsDepth | null>(null)
 const unlisten: Array<() => void> = []
+
+const QUOTES = ['USDT', 'USDC', 'BUSD', 'BTC', 'ETH', 'FDUSD']
+
+/** Binance `BTCUSDT` -> domain `BTC-USDT` for display. */
+function domainSymbol(sym: string): string {
+  for (const q of QUOTES) {
+    if (sym.endsWith(q) && sym.length > q.length) {
+      return `${sym.slice(0, -q.length)}-${q}`
+    }
+  }
+  return sym
+}
+
+function fmtTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString('zh-CN')
+}
+
+function fmtNumber(value: number | undefined): string {
+  const n = Number(value ?? 0)
+  if (!Number.isFinite(n)) return '0'
+  return n.toLocaleString('zh-CN', { maximumFractionDigits: 8 })
+}
+
+function fmtKlineTime(row: BinanceWsKline): string {
+  return fmtTime(row.open_time)
+}
 
 async function startStream() {
   try {
@@ -58,6 +109,28 @@ async function loadBalance() {
   }
 }
 
+async function loadPositions() {
+  positionsLoading.value = true
+  try {
+    positions.value = await getBinancePositions()
+  } catch (e) {
+    ElMessage.error(`获取币安持仓失败: ${e}`)
+  } finally {
+    positionsLoading.value = false
+  }
+}
+
+async function loadOrders() {
+  ordersLoading.value = true
+  try {
+    orders.value = await getBinanceOrders(ordersSymbol.value, ordersHistory.value)
+  } catch (e) {
+    ElMessage.error(`获取币安订单失败: ${e}`)
+  } finally {
+    ordersLoading.value = false
+  }
+}
+
 async function submitOrder() {
   submitting.value = true
   try {
@@ -69,6 +142,7 @@ async function submitOrder() {
       quantity: form.value.quantity,
     })
     ElMessage.success(`下单成功: #${order.order_id} (${order.status})`)
+    await loadOrders()
   } catch (e) {
     ElMessage.error(`币安下单失败: ${e}`)
   } finally {
@@ -76,10 +150,25 @@ async function submitOrder() {
   }
 }
 
+async function cancelOrder(order: BinanceOrder) {
+  try {
+    await cancelBinanceOrder(order.symbol, order.order_id)
+    ElMessage.success(`撤单成功: #${order.order_id}`)
+    await loadOrders()
+  } catch (e) {
+    ElMessage.error(`撤单失败: ${e}`)
+  }
+}
+
+function toggleHistory() {
+  loadOrders()
+}
+
 onMounted(async () => {
   await loadBalance()
+  await loadPositions()
+  await loadOrders()
   unlisten.push(await listen<BinanceWsKline>('binance:kline', (ev) => {
-    // Keep latest candle per stream; cap list length.
     const existing = liveKlines.value.findIndex((k) => k.open_time === ev.payload.open_time)
     if (existing >= 0) liveKlines.value[existing] = ev.payload
     else liveKlines.value.push(ev.payload)
@@ -87,10 +176,6 @@ onMounted(async () => {
   }))
   unlisten.push(await listen<BinanceWsDepth>('binance:depth', (ev) => { liveDepth.value = ev.payload }))
 })
-
-function fmtTime(row: { open_time: number }) {
-  return new Date(row.open_time).toLocaleTimeString('zh-CN')
-}
 
 onUnmounted(() => { unlisten.forEach((u) => u()) })
 </script>
@@ -123,14 +208,77 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
         <el-button size="small" type="primary" :disabled="wsRunning" @click="startStream">开始</el-button>
         <el-button size="small" :disabled="!wsRunning" @click="stopStream">停止</el-button>
       </div>
-      <el-table v-if="liveKlines.length" :data="liveKlines" size="small" max-height="240">
-        <el-table-column prop="open_time" label="时间" :formatter="fmtTime" />
+
+      <BinanceDepthChart :symbol="streamSymbol" :depth="liveDepth" />
+
+      <el-table v-if="liveKlines.length" :data="liveKlines" size="small" max-height="240" class="mt">
+        <el-table-column prop="open_time" label="时间" :formatter="fmtKlineTime" />
         <el-table-column prop="open" label="开" />
         <el-table-column prop="high" label="高" />
         <el-table-column prop="low" label="低" />
         <el-table-column prop="close" label="收" />
       </el-table>
       <div v-else-if="wsRunning" class="hint">等待 K 线流…</div>
+    </el-card>
+
+    <BinanceKlineChart />
+
+    <el-card class="section">
+      <template #header>持仓</template>
+      <el-table :data="positions" v-loading="positionsLoading" size="small">
+        <el-table-column label="交易对">
+          <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
+        </el-table-column>
+        <el-table-column prop="position_amt" label="数量" />
+        <el-table-column prop="entry_price" label="开仓均价" />
+        <el-table-column prop="mark_price" label="标记价" />
+        <el-table-column label="未实现盈亏">
+          <template #default="{ row }">{{ fmtNumber(row.un_realized_profit) }}</template>
+        </el-table-column>
+        <el-table-column prop="leverage" label="杠杆" />
+        <el-table-column prop="margin_type" label="保证金模式" />
+        <el-table-column prop="position_side" label="方向" />
+      </el-table>
+      <EmptyState v-if="!positionsLoading && positions.length === 0" title="暂无持仓" description="当前账户没有 Binance 持仓" />
+      <el-button class="mt" size="small" @click="loadPositions">刷新</el-button>
+    </el-card>
+
+    <el-card class="section">
+      <template #header>
+        <div class="orders-header">
+          <span>订单</span>
+          <div class="orders-controls">
+            <el-input v-model="ordersSymbol" size="small" style="width: 160px" />
+            <el-radio-group v-model="ordersHistory" size="small" @change="toggleHistory">
+              <el-radio-button :value="false">活动</el-radio-button>
+              <el-radio-button :value="true">历史</el-radio-button>
+            </el-radio-group>
+            <el-button size="small" @click="loadOrders">刷新</el-button>
+          </div>
+        </div>
+      </template>
+      <el-table :data="orders" v-loading="ordersLoading" size="small">
+        <el-table-column label="时间">
+          <template #default="{ row }">{{ row.time ? fmtTime(row.time) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="交易对">
+          <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
+        </el-table-column>
+        <el-table-column prop="side" label="方向" />
+        <el-table-column prop="order_type" label="类型" />
+        <el-table-column prop="price" label="价格" />
+        <el-table-column label="数量">
+          <template #default="{ row }">{{ fmtNumber(row.orig_qty ?? row.executed_qty) }}</template>
+        </el-table-column>
+        <el-table-column prop="executed_qty" label="已成交" />
+        <el-table-column prop="status" label="状态" />
+        <el-table-column v-if="!ordersHistory" label="操作">
+          <template #default="{ row }">
+            <el-button size="small" type="danger" @click="cancelOrder(row)">撤单</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <EmptyState v-if="!ordersLoading && orders.length === 0" title="暂无订单" description="当前没有匹配的订单" />
     </el-card>
 
     <el-card class="section">
@@ -171,4 +319,6 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
 .mt { margin-top: 12px; }
 .ws-controls { display: flex; gap: 8px; margin-bottom: 12px; }
 .hint { color: var(--color-text-secondary); padding: 8px 0; }
+.orders-header { display: flex; justify-content: space-between; align-items: center; }
+.orders-controls { display: flex; gap: 8px; align-items: center; }
 </style>

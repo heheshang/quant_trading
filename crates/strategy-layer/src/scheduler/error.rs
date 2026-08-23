@@ -9,6 +9,9 @@ pub enum SchedulerError {
     #[error("Strategy not found in scheduler: {0}")]
     NotFound(String),
 
+    #[error("Scheduler is not configured for live trading: {0}")]
+    NotConfigured(String),
+
     #[error("Scheduler error: {0}")]
     Other(String),
 }

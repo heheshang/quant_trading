@@ -55,10 +55,10 @@ defineProps({
 }
 
 .positive {
-  color: #67C23A;
+  color: var(--color-success);
 }
 
 .negative {
-  color: #F56C6C;
+  color: var(--color-danger);
 }
 </style>

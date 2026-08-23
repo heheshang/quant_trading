@@ -14,3 +14,11 @@ export function submitOrder(order: Order): Promise<string> {
 export function getActiveOrders(): Promise<Order[]> {
   return call<Order[]>('get_active_orders')
 }
+
+/**
+ * Cancel an in-progress order (paper / OrderManager), identified by its
+ * internal `order_id`.
+ */
+export function cancelOrder(orderId: number): Promise<boolean> {
+  return call<boolean>('cancel_order', { orderId })
+}

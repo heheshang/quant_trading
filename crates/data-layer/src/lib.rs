@@ -1,12 +1,13 @@
+pub mod binance_source;
 pub mod data_quality;
 pub mod market_data;
 pub mod market_data_repo;
-pub mod okx_source;
 pub mod postgres;
 
+pub use binance_source::BinanceDataSource;
 pub use market_data_repo::{
-    MarketDataRecord, MarketDataRepository, NewAccountSnapshot, NewFundingRate, NewMarkPrice,
-    NewMarketDataRecord, NewPositionSnapshot, NewTickerSnapshot,
+    AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, MarketDataRecord,
+    MarketDataRepository, NewAccountSnapshot, NewFundingRate, NewMarkPrice, NewMarketDataRecord,
+    NewPositionSnapshot, NewTickerSnapshot, PositionSnapshotRecord, TickerSnapshotRecord,
 };
-pub use okx_source::OkxDataSource;
 pub use postgres::PostgresClient;

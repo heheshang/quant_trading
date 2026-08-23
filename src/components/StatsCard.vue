@@ -32,7 +32,7 @@ const props = withDefaults(
   }>(),
   {
     icon: undefined,
-    iconBg: '#409eff',
+    iconBg: 'var(--color-primary)',
     trend: undefined,
     loading: false,
     format: 'raw',

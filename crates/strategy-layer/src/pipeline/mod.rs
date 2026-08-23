@@ -72,6 +72,16 @@ impl PipelineExecutor {
         }
     }
 
+    /// 用一组预构建步骤创建流水线（同步构造，无需逐个异步添加）。
+    ///
+    /// 供组合根 / 装配层在启动时一次性注入步骤链使用。
+    #[must_use]
+    pub fn with_steps(steps: Vec<Box<dyn PipelineStep>>) -> Self {
+        Self {
+            steps: Arc::new(RwLock::new(steps)),
+        }
+    }
+
     /// 添加步骤到流水线末尾
     pub async fn add_step(&self, step: Box<dyn PipelineStep>) {
         let mut steps = self.steps.write().await;

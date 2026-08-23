@@ -63,11 +63,6 @@ export function useFormatting() {
     const map: Record<string, string> = {
       TrendFollowing: '趋势跟踪',
       MeanReversion: '均值回归',
-      Arbitrage: '套利',
-      MarketMaking: '做市',
-      Statistical: '统计套利',
-      MachineLearning: '机器学习',
-      Custom: '自定义',
     }
     return map[type] ?? type
   }

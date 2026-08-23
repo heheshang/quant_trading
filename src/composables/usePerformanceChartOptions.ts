@@ -1,6 +1,6 @@
 import * as echarts from 'echarts/core'
 import type { LineSeriesOption } from 'echarts/charts'
-import { useChartTheme } from './useChartTheme'
+import { useChartTheme , getChartSeriesColors } from './useChartTheme'
 
 /**
  * Data point shape consumed by the performance chart.
@@ -39,6 +39,9 @@ export function buildChartOptions(
   if (!data.length) return {}
   // React to the app theme so axis/text/tooltip adapt to dark mode.
   const theme = useChartTheme().palette.value
+  const chartColors = getChartSeriesColors()
+  const equityColor = chartColors.green
+  const drawdownColor = chartColors.red
 
   const dates = data.map((item) =>
     typeof item.date === 'string' ? item.date : `Day ${item.date}`,
@@ -55,8 +58,8 @@ export function buildChartOptions(
       type: 'line',
       smooth: 0.3,
       symbol: 'none',
-      lineStyle: { width: 2, color: '#67C23A' },
-      itemStyle: { color: '#67C23A' },
+      lineStyle: { width: 2, color: equityColor },
+      itemStyle: { color: equityColor },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
@@ -65,7 +68,7 @@ export function buildChartOptions(
       },
       markLine: {
         silent: true,
-        data: [{ type: 'max', name: '最高值', itemStyle: { color: '#67C23A' } }],
+        data: [{ type: 'max', name: '最高值', itemStyle: { color: equityColor } }],
       },
     },
   ]
@@ -77,11 +80,11 @@ export function buildChartOptions(
       type: 'line',
       smooth: 0.3,
       symbol: 'none',
-      lineStyle: { width: 1, color: '#F56C6C', type: 'dashed' },
-      itemStyle: { color: '#F56C6C' },
+      lineStyle: { width: 1, color: drawdownColor, type: 'dashed' },
+      itemStyle: { color: drawdownColor },
       markLine: {
         silent: true,
-        data: [{ type: 'min', name: '最低值', itemStyle: { color: '#F56C6C' } }],
+        data: [{ type: 'min', name: '最低值', itemStyle: { color: drawdownColor } }],
       },
     })
   }

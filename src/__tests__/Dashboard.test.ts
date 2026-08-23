@@ -7,15 +7,10 @@ import { nextTick } from 'vue'
 // Hoisted mock data — accessible inside vi.mock factories (which are hoisted)
 // ---------------------------------------------------------------------------
 const {
-  mockStartListening,
-  mockCleanup,
   defaultAccount,
   defaultPositions,
   defaultOrders,
 } = vi.hoisted(() => {
-  const mockStartListening = vi.fn()
-  const mockCleanup = vi.fn()
-
 const defaultAccount = {
   account_id: 0,
     total_assets: 1_000_000,
@@ -70,19 +65,8 @@ const defaultAccount = {
     },
   ]
 
-  return { mockStartListening, mockCleanup, defaultAccount, defaultPositions, defaultOrders }
+  return { defaultAccount, defaultPositions, defaultOrders }
 })
-
-// ---------------------------------------------------------------------------
-// Mock useMarketData — control startListening / cleanup spies
-// ---------------------------------------------------------------------------
-vi.mock('@/composables/useMarketData', () => ({
-  useMarketData: () => ({
-    startListening: mockStartListening,
-    cleanup: mockCleanup,
-    tickerData: { value: {} },
-  }),
-}))
 
 // ---------------------------------------------------------------------------
 // Mock useFormatting — real implementation for predictable formatting
@@ -125,14 +109,6 @@ vi.mock('@/components/StatsCard.vue', () => ({
     name: 'StatsCard',
     template: '<div class="stats-card-stub" :data-title="title"></div>',
     props: ['title', 'value', 'format', 'icon', 'iconBg', 'trend', 'loading'],
-  },
-}))
-
-vi.mock('@/components/dashboard/RealtimeTickerPanel.vue', () => ({
-  default: {
-    name: 'RealtimeTickerPanel',
-    template: '<div class="ticker-panel-stub" :data-symbols="JSON.stringify(symbols)"></div>',
-    props: ['symbols'],
   },
 }))
 
@@ -218,28 +194,6 @@ describe('Dashboard', () => {
   })
 
   // -----------------------------------------------------------------------
-  // 2. Real-time overview section renders RealtimeTickerPanel with position symbols
-  // -----------------------------------------------------------------------
-  it('renders RealtimeTickerPanel with position symbols', async () => {
-    const accountStore = useAccountStore()
-    accountStore.positions = [
-      { symbol: 'BTC-USDT', quantity: 1, available_quantity: 1, avg_price: 40000, market_value: 50000, unrealized_pnl: 10000, realized_pnl: 0, updated_at: '2024-01-01T00:00:00Z' },
-      { symbol: 'ETH-USDT', quantity: 10, available_quantity: 10, avg_price: 2000, market_value: 25000, unrealized_pnl: 5000, realized_pnl: 0, updated_at: '2024-01-01T00:00:00Z' },
-    ]
-
-    const wrapper = createWrapper()
-    await flushPromises()
-    await nextTick()
-
-    const tickerStub = wrapper.find('.ticker-panel-stub')
-    expect(tickerStub.exists()).toBe(true)
-
-    const symbolsAttr = tickerStub.attributes('data-symbols')
-    const symbols = JSON.parse(symbolsAttr ?? '[]')
-    expect(symbols).toEqual(['BTC-USDT', 'ETH-USDT'])
-  })
-
-  // -----------------------------------------------------------------------
   // 3. PnL card displays total_pnl and unrealized_pnl from accountStore
   // -----------------------------------------------------------------------
   it('displays total_pnl and unrealized_pnl in the PnL card', async () => {
@@ -275,8 +229,8 @@ describe('Dashboard', () => {
     await nextTick()
 
     const pnlValues = wrapper.findAll('.pnl-value')
-    expect(pnlValues[0].attributes('style')).toContain('rgb(103, 194, 58)')
-    expect(pnlValues[1].attributes('style')).toContain('rgb(103, 194, 58)')
+    expect(pnlValues[0].attributes('style')).toContain('var(--color-success)')
+    expect(pnlValues[1].attributes('style')).toContain('var(--color-success)')
   })
 
   it('applies red for negative PnL values', async () => {
@@ -290,8 +244,8 @@ describe('Dashboard', () => {
     await nextTick()
 
     const pnlValues = wrapper.findAll('.pnl-value')
-    expect(pnlValues[0].attributes('style')).toContain('rgb(245, 108, 108)')
-    expect(pnlValues[1].attributes('style')).toContain('rgb(245, 108, 108)')
+    expect(pnlValues[0].attributes('style')).toContain('var(--color-danger)')
+    expect(pnlValues[1].attributes('style')).toContain('var(--color-danger)')
   })
 
   it('applies different colors when total and unrealized PnL have opposite signs', async () => {
@@ -305,32 +259,8 @@ describe('Dashboard', () => {
     await nextTick()
 
     const pnlValues = wrapper.findAll('.pnl-value')
-    expect(pnlValues[0].attributes('style')).toContain('rgb(103, 194, 58)')
-    expect(pnlValues[1].attributes('style')).toContain('rgb(245, 108, 108)')
-  })
-
-  // -----------------------------------------------------------------------
-  // 5. Call to useMarketData().startListening() is made on mount
-  // -----------------------------------------------------------------------
-  it('calls startListening() on mount', async () => {
-    createWrapper()
-    await flushPromises()
-    await nextTick()
-
-    expect(mockStartListening).toHaveBeenCalledOnce()
-  })
-
-  // -----------------------------------------------------------------------
-  // 6. Cleanup calls useMarketData().cleanup() on unmount
-  // -----------------------------------------------------------------------
-  it('calls cleanup() on unmount', async () => {
-    const wrapper = createWrapper()
-    await flushPromises()
-    await nextTick()
-
-    wrapper.unmount()
-
-    expect(mockCleanup).toHaveBeenCalledOnce()
+    expect(pnlValues[0].attributes('style')).toContain('var(--color-success)')
+    expect(pnlValues[1].attributes('style')).toContain('var(--color-danger)')
   })
 
   // -----------------------------------------------------------------------

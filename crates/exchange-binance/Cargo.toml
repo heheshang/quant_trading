@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 # Binance exchange client (REST + HMAC-SHA256 signing).
-# Mirrors `exchange-okx` structure: trait-based client with a `test-utils`
+# Independent implementation: trait-based client with a `test-utils`
 # feature exposing a mock for unit tests.
 [dependencies]
 quant-common = { path = "../common" }

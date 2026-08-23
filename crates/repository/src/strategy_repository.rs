@@ -209,11 +209,6 @@ pub struct StrategyStats {
     pub archived: i64,
     pub trend_following: i64,
     pub mean_reversion: i64,
-    pub arbitrage: i64,
-    pub market_making: i64,
-    pub statistical: i64,
-    pub machine_learning: i64,
-    pub custom: i64,
 }
 
 /// PostgreSQL implementation of `StrategyRepository`.

@@ -44,7 +44,10 @@ fn kline_parses_from_row() {
 
 #[test]
 fn env_enum_parses_and_resolves_base() {
-    assert_eq!(BinanceEnvironment::parse("spot").base_url(), "https://api.binance.com");
+    assert_eq!(
+        BinanceEnvironment::parse("spot").base_url(),
+        "https://api.binance.com"
+    );
     assert_eq!(
         BinanceEnvironment::parse("futures").base_url(),
         "https://fapi.binance.com"

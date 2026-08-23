@@ -10,7 +10,6 @@ pub struct AppConfig {
     pub risk: RiskConfig,
     pub monitoring: MonitoringConfig,
     pub security: SecurityConfig,
-    pub okx: OkxConfig,
     #[serde(default)]
     pub binance: BinanceConfig,
     #[serde(default)]
@@ -84,18 +83,10 @@ pub struct MonitoringConfig {
 pub struct SecurityConfig {
     pub enable_encryption: bool,
     pub jwt_secret: String,
+    pub encryption_key: String,
     pub token_expiry_hours: u64,
     pub enable_2fa: bool,
     pub allowed_ips: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OkxConfig {
-    pub api_key: String,
-    pub api_secret: String,
-    pub passphrase: String,
-    pub environment: String, // "live" or "demo"
-    pub enable: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -186,7 +177,7 @@ impl Default for SchedulerConfig {
 }
 
 fn default_scheduler_enabled() -> bool {
-    false
+    true
 }
 fn default_scheduler_max_concurrent() -> usize {
     10
@@ -350,19 +341,13 @@ impl Default for AppConfig {
             security: SecurityConfig {
                 enable_encryption: true,
                 jwt_secret: "change_this_secret_in_production".to_string(),
+                encryption_key: "change_this_encryption_key_in_production".to_string(),
                 token_expiry_hours: 24,
                 enable_2fa: false,
                 allowed_ips: vec!["127.0.0.1".to_string()],
             },
             // Deterministic dev defaults — environment variables are applied
             // by `AppConfig::from_env()` (dotenv-based) at startup.
-            okx: OkxConfig {
-                api_key: String::new(),
-                api_secret: String::new(),
-                passphrase: String::new(),
-                environment: "demo".to_string(),
-                enable: false,
-            },
             binance: BinanceConfig {
                 api_key: String::new(),
                 api_secret: String::new(),
@@ -373,6 +358,54 @@ impl Default for AppConfig {
             scheduler: SchedulerConfig::default(),
             param_optimizer: ParamOptimizerConfig::default(),
         }
+    }
+}
+
+impl AppConfig {
+    /// Return a copy of this config with all sensitive values blanked.
+    ///
+    /// Used to redact the config before it is returned to the frontend via
+    /// `get_config`, so database passwords, JWT secrets and exchange
+    /// `api_key`/`api_secret`/`passphrase` never leave the backend.
+    #[must_use]
+    pub fn redacted(&self) -> Self {
+        let mut c = self.clone();
+        c.database.password.clear();
+        c.redis.password = None;
+        c.security.jwt_secret.clear();
+        c.security.encryption_key.clear();
+        c.binance.api_key.clear();
+        c.binance.api_secret.clear();
+        c
+    }
+
+    /// Restore secret values from `previous` where `self` has them blanked.
+    ///
+    /// When the frontend round-trips a redacted config back on save, empty
+    /// secret fields must not clobber the running configuration; this merges
+    /// the previous non-empty secrets back into `self`.
+    #[must_use]
+    pub fn with_secrets_from(&self, previous: &Self) -> Self {
+        let mut c = self.clone();
+        if c.database.password.is_empty() {
+            c.database.password = previous.database.password.clone();
+        }
+        if c.redis.password.is_none() {
+            c.redis.password = previous.redis.password.clone();
+        }
+        if c.security.jwt_secret.is_empty() {
+            c.security.jwt_secret = previous.security.jwt_secret.clone();
+        }
+        if c.security.encryption_key.is_empty() {
+            c.security.encryption_key = previous.security.encryption_key.clone();
+        }
+        if c.binance.api_key.is_empty() {
+            c.binance.api_key = previous.binance.api_key.clone();
+        }
+        if c.binance.api_secret.is_empty() {
+            c.binance.api_secret = previous.binance.api_secret.clone();
+        }
+        c
     }
 }
 
@@ -464,7 +497,7 @@ mod tests {
     #[test]
     fn test_scheduler_config_default() {
         let cfg = SchedulerConfig::default();
-        assert!(!cfg.enabled);
+        assert!(cfg.enabled);
         assert_eq!(cfg.max_concurrent_strategies, 10);
         assert_eq!(cfg.default_interval_secs, 60);
         assert_eq!(cfg.circuit_breaker_threshold, 5);
@@ -475,7 +508,7 @@ mod tests {
     #[test]
     fn test_app_config_includes_scheduler() {
         let cfg = AppConfig::default();
-        assert!(!cfg.scheduler.enabled);
+        assert!(cfg.scheduler.enabled);
         assert_eq!(cfg.scheduler.default_interval_secs, 60);
     }
 
@@ -502,22 +535,65 @@ mod tests {
         // `AppConfig::default()` must NOT read environment variables; it is a
         // deterministic dev baseline that `from_env()` (dotenv) overrides.
         let cfg = AppConfig::default();
-        assert_eq!(cfg.okx.api_key, "");
-        assert_eq!(cfg.okx.api_secret, "");
-        assert!(!cfg.okx.enable);
         assert_eq!(cfg.binance.api_key, "");
         assert!(!cfg.binance.enable);
         assert_eq!(cfg.binance.environment, "spot");
     }
 
     #[test]
-    fn test_from_env_is_robust_and_uses_defaults_when_unset() {
-        // `from_env()` is the single entry point for env config; with no env
-        // vars set it must produce a valid, non-panicking config.
-        let cfg = AppConfig::from_env();
-        assert_eq!(cfg.database.host, "localhost");
-        assert_eq!(cfg.database.port, 5432);
-        assert_eq!(cfg.okx.environment, "demo");
-        assert_eq!(cfg.binance.environment, "spot");
+    fn test_redacted_blanks_sensitive_fields() {
+        let mut cfg = AppConfig::default();
+        cfg.database.password = "db_pw".to_string();
+        cfg.redis.password = Some("redis_pw".to_string());
+        cfg.security.jwt_secret = "jwt_secret".to_string();
+        cfg.binance.api_key = "bin_key".to_string();
+        cfg.binance.api_secret = "bin_secret".to_string();
+
+        let redacted = cfg.redacted();
+
+        // Sensitive values must be blanked.
+        assert_eq!(redacted.database.password, "");
+        assert_eq!(redacted.redis.password, None);
+        assert_eq!(redacted.security.jwt_secret, "");
+        assert_eq!(redacted.binance.api_key, "");
+        assert_eq!(redacted.binance.api_secret, "");
+
+        // Non-sensitive display fields preserved.
+        assert_eq!(redacted.database.host, "localhost");
+        assert_eq!(redacted.database.port, 5432);
+        assert_eq!(redacted.trading.max_orders_per_second, 100);
+        assert!(redacted.risk.enable_pre_trade_check);
+        assert_eq!(redacted.monitoring.log_level, "info");
+    }
+
+    #[test]
+    fn test_with_secrets_from_restores_blanked_values() {
+        let mut previous = AppConfig::default();
+        previous.database.password = "db_pw".to_string();
+        previous.security.jwt_secret = "jwt".to_string();
+        previous.binance.api_key = "bin_key".to_string();
+
+        // Incoming config has secrets blanked (round-tripped from the UI).
+        let incoming = previous.redacted();
+        let restored = incoming.with_secrets_from(&previous);
+
+        assert_eq!(restored.database.password, "db_pw");
+        assert_eq!(restored.security.jwt_secret, "jwt");
+        assert_eq!(restored.binance.api_key, "bin_key");
+
+        // When the previous config also has a blank secret, it stays blank
+        // (nothing to restore), and non-secret values pass through unchanged.
+        let mut previous2 = AppConfig::default();
+        previous2.database.password.clear();
+        let incoming2 = previous2.redacted();
+        let restored2 = incoming2.with_secrets_from(&previous2);
+        assert_eq!(restored2.database.password, "");
+        // Non-secret values are left untouched by the secret restore.
+        let mut incoming2 = AppConfig::default();
+        incoming2.trading.max_orders_per_second = 7;
+        let mut previous2 = AppConfig::default();
+        previous2.trading.max_orders_per_second = 100;
+        let out2 = incoming2.with_secrets_from(&previous2);
+        assert_eq!(out2.trading.max_orders_per_second, 7);
     }
 }

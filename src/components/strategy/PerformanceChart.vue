@@ -189,7 +189,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', resize))
   border-radius: 2px;
 }
 
-.legend-color.equity-curve { background-color: #67C23A; }
-.legend-color.drawdown { background-color: #F56C6C; }
-.legend-color.sharpe { background-color: #409EFF; }
+.legend-color.equity-curve { background-color: var(--color-success); }
+.legend-color.drawdown { background-color: var(--color-danger); }
+.legend-color.sharpe { background-color: var(--color-primary); }
 </style>

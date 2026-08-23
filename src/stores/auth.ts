@@ -104,13 +104,18 @@ export const useAuthStore = defineStore('auth', () => {
    * Attempt login with username + password.
    * On success, persists session and returns the redirect path.
    */
-  async function login(usernameInput: string, password: string, remember: boolean): Promise<string> {
+  async function login(
+    usernameInput: string,
+    password: string,
+    remember: boolean,
+    code?: string,
+  ): Promise<string> {
     loading.value = true
     error.value = null
 
     try {
       // 1. Call Tauri login command
-      const newToken = await apiLogin(usernameInput, password)
+      const newToken = await apiLogin(usernameInput, password, code)
 
       // 2. Verify token validity
       try {

@@ -4,14 +4,6 @@ import ElementPlus from 'element-plus'
 import Trading from '@/views/Trading.vue'
 import { invoke } from '@tauri-apps/api/core'
 
-vi.mock('@/composables/useWebSocketStatus', () => ({
-  useWebSocketStatus: () => ({ status: 'connected', retryIn: 0, startListening: vi.fn(), cleanup: vi.fn() }),
-}))
-
-vi.mock('@/composables/useMarketData', () => ({
-  useMarketData: () => ({ startListening: vi.fn(), cleanup: vi.fn(), tickerData: { value: {} }, trades: { value: {} }, orderbook: { value: {} }, candleData: { value: {} } }),
-}))
-
 const mockPlaceOrder = vi.fn().mockResolvedValue('order-123')
 vi.mock('@/stores/order', () => ({
   useOrderStore: () => ({ placeOrder: mockPlaceOrder, orderCount: 0, activeOrders: [], loading: false, error: null, fetchActiveOrders: vi.fn().mockResolvedValue([]) }),
@@ -44,11 +36,6 @@ describe('Trading.vue - 按钮测试', () => {
         case 'get_positions': return []
         case 'get_active_orders': return []
         case 'get_strategies': return []
-        case 'check_okx_status': return { connected: true, demo_trading: true }
-        case 'get_okx_instruments': return [{ instId: 'BTC-USDT', baseCcy: 'BTC', quoteCcy: 'USDT', instType: 'SPOT' }]
-        case 'get_okx_balance': return [{ ccy: 'BTC', balance: 0.5, frozen: 0, available: 0.5 }]
-        case 'get_okx_positions': return [{ instId: 'BTC-USDT', pos: 0.1, avgPx: 50000, upl: 100 }]
-        case 'get_okx_announcements': return []
         default: return {}
       }
     })
@@ -107,39 +94,6 @@ describe('Trading.vue - 按钮测试', () => {
 
     clickSpy.mockRestore()
     createObjectURL.mockRestore()
-  }, 30000)
-
-  it('OKX 刷新状态 - 调用 check_okx_status', async () => {
-    const wrapper = await mountComponent()
-    mockInvoke.mockClear()
-
-    wrapper.vm.fetchOkxStatus()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
-    expect(mockInvoke).toHaveBeenCalledWith('check_okx_status')
-  }, 30000)
-
-  it('OKX 刷新余额 - 调用 get_okx_balance', async () => {
-    const wrapper = await mountComponent()
-    mockInvoke.mockClear()
-
-    wrapper.vm.fetchOkxBalance()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
-    expect(mockInvoke).toHaveBeenCalledWith('get_okx_balance', { ccy: undefined })
-  }, 30000)
-
-  it('OKX 刷新持仓 - 调用 get_okx_positions', async () => {
-    const wrapper = await mountComponent()
-    mockInvoke.mockClear()
-
-    wrapper.vm.fetchOkxPositions()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
-    expect(mockInvoke).toHaveBeenCalledWith('get_okx_positions', { instId: undefined })
   }, 30000)
 
   it('API 调用失败 - 不崩溃', async () => {

@@ -1,5 +1,12 @@
 import { call } from './transport'
-import type { BinanceBalance, BinanceKline, BinanceOrderBook, BinanceStatus } from './types'
+import type {
+  BinanceBalance,
+  BinanceKline,
+  BinanceOrder,
+  BinanceOrderBook,
+  BinancePosition,
+  BinanceStatus,
+} from './types'
 
 /**
  * Binance exchange service (SoC).
@@ -24,6 +31,26 @@ export function getBinanceOrderBook(symbol: string, limit?: number): Promise<Bin
   return call<BinanceOrderBook>('get_binance_order_book', { symbol, limit })
 }
 
+export function getBinancePositions(symbol?: string): Promise<BinancePosition[]> {
+  return call<BinancePosition[]>('get_binance_positions', { symbol })
+}
+
+export function getBinanceOrders(
+  symbol: string,
+  history?: boolean,
+  limit?: number,
+): Promise<BinanceOrder[]> {
+  return call<BinanceOrder[]>('get_binance_orders', { symbol, history, limit })
+}
+
+export function getBinanceOrder(symbol: string, orderId: number): Promise<BinanceOrder> {
+  return call<BinanceOrder>('get_binance_order', { symbol, orderId })
+}
+
+export function getBinanceInstruments(): Promise<unknown> {
+  return call<unknown>('get_binance_instruments')
+}
+
 export function checkBinanceStatus(): Promise<BinanceStatus> {
   return call<BinanceStatus>('check_binance_status')
 }
@@ -44,6 +71,18 @@ export function subscribeBinanceCandle(symbol: string, interval: string): Promis
 
 export function subscribeBinanceDepth(symbol: string): Promise<void> {
   return call<void>('subscribe_binance_depth', { symbol })
+}
+
+export function subscribeBinanceTicker(symbol: string): Promise<void> {
+  return call<void>('subscribe_binance_ticker', { symbol })
+}
+
+export function subscribeBinanceTrades(symbol: string): Promise<void> {
+  return call<void>('subscribe_binance_trades', { symbol })
+}
+
+export function subscribeBinanceOrderbook(symbol: string): Promise<void> {
+  return call<void>('subscribe_binance_orderbook', { symbol })
 }
 
 export function getBinanceSubscriptions(): Promise<string[]> {

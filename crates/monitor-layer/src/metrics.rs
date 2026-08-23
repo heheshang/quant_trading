@@ -100,36 +100,6 @@ lazy_static! {
         "system_memory_usage_bytes",
         "System memory usage in bytes"
     ).unwrap();
-
-    // OKX specific metrics
-    pub static ref OKX_API_CALLS: Counter = Counter::new(
-        "okx_api_calls_total",
-        "Total number of OKX API calls"
-    ).unwrap();
-
-    pub static ref OKX_API_ERRORS: Counter = Counter::new(
-        "okx_api_errors_total",
-        "Total number of OKX API errors"
-    ).unwrap();
-
-    pub static ref OKX_ORDERS_PLACED: Counter = Counter::new(
-        "okx_orders_placed_total",
-        "Total number of orders placed on OKX"
-    ).unwrap();
-
-    pub static ref OKX_ORDERS_CANCELLED: Counter = Counter::new(
-        "okx_orders_cancelled_total",
-        "Total number of orders cancelled on OKX"
-    ).unwrap();
-
-    pub static ref OKX_BALANCE_USDT: Gauge = Gauge::new(
-        "okx_balance_usdt",
-        "OKX USDT balance"
-    ).unwrap();
-
-    pub static ref OKX_API_LATENCY: Histogram = Histogram::with_opts(
-        HistogramOpts::new("okx_api_latency_seconds", "OKX API call latency")
-    ).unwrap();
 }
 
 pub struct MetricsCollector {
@@ -144,6 +114,12 @@ pub struct MetricsSnapshot {
     pub account_balance: f64,
     pub daily_pnl: f64,
     pub margin_ratio: f64,
+}
+
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetricsCollector {
@@ -173,14 +149,6 @@ impl MetricsCollector {
         let _ = REGISTRY.register(Box::new(STRATEGY_SHARPE_RATIO.clone()));
         let _ = REGISTRY.register(Box::new(SYSTEM_CPU_USAGE.clone()));
         let _ = REGISTRY.register(Box::new(SYSTEM_MEMORY_USAGE.clone()));
-
-        // Register OKX metrics
-        let _ = REGISTRY.register(Box::new(OKX_API_CALLS.clone()));
-        let _ = REGISTRY.register(Box::new(OKX_API_ERRORS.clone()));
-        let _ = REGISTRY.register(Box::new(OKX_ORDERS_PLACED.clone()));
-        let _ = REGISTRY.register(Box::new(OKX_ORDERS_CANCELLED.clone()));
-        let _ = REGISTRY.register(Box::new(OKX_BALANCE_USDT.clone()));
-        let _ = REGISTRY.register(Box::new(OKX_API_LATENCY.clone()));
 
         info!("Metrics collector initialized");
     }
@@ -341,8 +309,60 @@ impl MetricsCollector {
     }
 }
 
-impl Default for MetricsCollector {
-    fn default() -> Self {
-        Self::new()
+/// Handle a raw HTTP request for the Prometheus `/metrics` endpoint.
+///
+/// Returns a complete HTTP/1.1 response. A `GET /metrics` request yields the
+/// gathered metrics in the Prometheus text exposition format; any other path
+/// or method yields `404 Not Found`. Kept as a pure function so it can be
+/// unit-tested without binding a socket.
+pub fn handle_metrics_request(request: &[u8]) -> String {
+    let request = String::from_utf8_lossy(request);
+    let request_line = request.lines().next().unwrap_or("");
+
+    if request_line.starts_with("GET /metrics ") || request_line == "GET /metrics" {
+        let body = MetricsCollector::get_metrics_text();
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+    } else {
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+    }
+}
+
+#[cfg(test)]
+mod metrics_http_tests {
+    use super::*;
+
+    #[test]
+    fn test_get_metrics_text_has_content() {
+        MetricsCollector::init();
+        let text = MetricsCollector::get_metrics_text();
+        assert!(text.contains("# HELP"));
+        assert!(text.contains("orders_total"));
+        assert!(!text.is_empty());
+    }
+
+    #[test]
+    fn test_handle_metrics_request_get() {
+        MetricsCollector::init();
+        let response = handle_metrics_request(b"GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+        assert!(response.contains("Content-Type: text/plain; version=0.0.4"));
+        assert!(response.contains("orders_total"));
+    }
+
+    #[test]
+    fn test_handle_metrics_request_unknown_path() {
+        let response = handle_metrics_request(b"GET /nope HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(response.starts_with("HTTP/1.1 404 Not Found"));
+    }
+
+    #[test]
+    fn test_handle_metrics_request_post_405() {
+        // Non-GET methods are rejected (404 for simplicity).
+        let response = handle_metrics_request(b"POST /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(response.starts_with("HTTP/1.1 404 Not Found"));
     }
 }

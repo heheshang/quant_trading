@@ -401,24 +401,7 @@ impl StrategyRepository for PgStrategyRepository {
 
     #[instrument(skip(self))]
     async fn stats(&self) -> Result<StrategyStats, RepoError> {
-        let row: (
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-        ) = sqlx::query_as(
+        let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
             r#"
                 SELECT
                     COUNT(*) as total,
@@ -431,12 +414,7 @@ impl StrategyRepository for PgStrategyRepository {
                     COUNT(*) FILTER (WHERE status = 'Paused') as paused,
                     COUNT(*) FILTER (WHERE status = 'Archived') as archived,
                     COUNT(*) FILTER (WHERE strategy_type = 'TrendFollowing') as trend_following,
-                    COUNT(*) FILTER (WHERE strategy_type = 'MeanReversion') as mean_reversion,
-                    COUNT(*) FILTER (WHERE strategy_type = 'Arbitrage') as arbitrage,
-                    COUNT(*) FILTER (WHERE strategy_type = 'MarketMaking') as market_making,
-                    COUNT(*) FILTER (WHERE strategy_type = 'Statistical') as statistical,
-                    COUNT(*) FILTER (WHERE strategy_type = 'MachineLearning') as machine_learning,
-                    COUNT(*) FILTER (WHERE strategy_type = 'Custom') as custom
+                    COUNT(*) FILTER (WHERE strategy_type = 'MeanReversion') as mean_reversion
                 FROM strategies
                 "#,
         )
@@ -459,11 +437,6 @@ impl StrategyRepository for PgStrategyRepository {
             archived: row.8,
             trend_following: row.9,
             mean_reversion: row.10,
-            arbitrage: row.11,
-            market_making: row.12,
-            statistical: row.13,
-            machine_learning: row.14,
-            custom: row.15,
         })
     }
 }

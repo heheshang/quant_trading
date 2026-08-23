@@ -319,7 +319,7 @@ function handleClosed() {
   color: var(--color-text-primary);
   margin-bottom: 16px;
 }
-.section-header .el-icon { font-size: 18px; color: #409eff; }
+.section-header .el-icon { font-size: 18px; color: var(--color-primary); }
 .field-hint {
   margin: 4px 0 0;
   font-size: 12px;

@@ -3,7 +3,8 @@
 //! [`ExecutionEngine`] 持有可插拔的 [`ExecutionStrategy`]，`execute_order` 仅委托到策略，
 //! 不再包含 paper/real 硬编码分支；执行成功后通过 [`ExecutionCallback`] 通知观察者。
 
-use crate::okx_executor::OkxExecutor;
+use crate::binance_executor::BinanceExecutor;
+use crate::live_exchange::LiveExchange;
 use crate::order_manager::OrderManager;
 use chrono::{DateTime, Utc};
 use quant_common::config::TradingConfig;
@@ -18,7 +19,7 @@ mod strategy;
 #[cfg(test)]
 mod tests;
 
-pub use strategy::{ExecutionStrategy, OkxExecutionStrategy, PaperExecutionStrategy};
+pub use strategy::{BinanceExecutionStrategy, ExecutionStrategy, PaperExecutionStrategy};
 
 /// 执行结果
 #[derive(Debug, Clone)]
@@ -45,21 +46,43 @@ pub struct ExecutionEngine {
     callbacks: Vec<Box<dyn ExecutionCallback>>,
 }
 
+enum LiveExecutor {
+    Binance(Option<Arc<BinanceExecutor>>),
+}
+
 impl ExecutionEngine {
-    pub fn new(
+    /// 构建一个以 Binance 为实盘执行器、随配置切换 paper/real 的引擎。
+    ///
+    /// 纸面路径（`enable_paper_trading=true`）忽略实盘执行器，因而 `BinanceExecutor`
+    /// 是一个可替换的抽象而非纸面路径的耦合。
+    pub fn new_binance(
         order_manager: Arc<OrderManager>,
         config: TradingConfig,
-        okx_executor: Option<Arc<OkxExecutor>>,
+        binance_executor: Option<Arc<BinanceExecutor>>,
     ) -> Self {
-        // 依据配置一次性选择执行策略（paper / okx），运行时不再分支。
+        Self::with_executor(
+            order_manager,
+            config,
+            LiveExecutor::Binance(binance_executor),
+        )
+    }
+
+    /// 依据配置一次性选择执行策略（paper / binance），运行时不再分支。
+    fn with_executor(
+        order_manager: Arc<OrderManager>,
+        config: TradingConfig,
+        live: LiveExecutor,
+    ) -> Self {
         let strategy: Arc<dyn ExecutionStrategy> = if config.enable_paper_trading {
             Arc::new(PaperExecutionStrategy::new(order_manager, config))
         } else {
-            Arc::new(OkxExecutionStrategy::new(
-                order_manager,
-                config,
-                okx_executor,
-            ))
+            match live {
+                LiveExecutor::Binance(ex) => Arc::new(BinanceExecutionStrategy::new(
+                    order_manager,
+                    config,
+                    ex.map(|e| e as Arc<dyn LiveExchange>),
+                )),
+            }
         };
 
         Self {

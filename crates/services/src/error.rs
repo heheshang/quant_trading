@@ -14,6 +14,11 @@ pub enum ServiceError {
 
     #[error("Invalid credentials")]
     InvalidCredentials,
+    #[error("Two-factor authentication (2FA) code required")]
+    TwoFactorRequired,
+
+    #[error("Invalid two-factor authentication (2FA) code")]
+    TwoFactorInvalid,
 
     #[error("Token generation failed: {0}")]
     TokenGeneration(String),
@@ -37,18 +42,6 @@ pub enum ServiceError {
         #[source]
         source: serde_json::Error,
     },
-
-    #[error("OKX client not initialized")]
-    OkxNotInitialized,
-
-    #[error("OKX executor not initialized")]
-    OkxExecutorNotInitialized,
-
-    #[error("OKX data source not initialized")]
-    OkxDataSourceNotInitialized,
-
-    #[error("OKX API error: {0}")]
-    OkxApi(String),
 
     #[error("Binance API error: {0}")]
     BinanceApi(String),
@@ -87,6 +80,12 @@ pub enum ServiceError {
 
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
+
+    #[error("Order rate limit exceeded: {0}")]
+    RateLimited(String),
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 
     #[error("Service not initialized: {0}")]
     NotInitialized(String),

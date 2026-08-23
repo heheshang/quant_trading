@@ -7,7 +7,11 @@
     </el-row>
 
     <RiskMetricsCards :metrics="riskMetrics" @refresh="fetchRiskMetrics" />
-    <RiskChart />
+    <RiskChart
+      :metrics-history="riskHistory"
+      :selected-metrics="riskSelectedMetrics"
+      @update:selected-metrics="riskSelectedMetrics = $event"
+    />
     <RiskConfigForm :config="riskConfig" :saving="saving" @save="saveConfig" />
     <PreTradeCheckForm />
     <RiskAlertsTable :alerts="riskAlerts" @acknowledge="acknowledgeAlert" @refresh="fetchRiskAlerts" />
@@ -35,6 +39,9 @@ const riskMetrics = ref<Record<string, number>>({
   max_drawdown: 0.15,
 })
 
+const riskHistory = ref<Array<{ time: string; metrics: Record<string, number> }>>([])
+const riskSelectedMetrics = ref<string[]>(['var_95', 'var_99', 'max_drawdown'])
+
 const riskConfig = ref<RiskConfig>({
   max_position_size: 0.2,
   max_daily_loss: 0.05,
@@ -51,6 +58,9 @@ const saving = ref(false)
 async function fetchRiskMetrics() {
   try {
     riskMetrics.value = await getRiskMetrics()
+    const now = new Date().toLocaleTimeString('zh-CN')
+    riskHistory.value.push({ time: now, metrics: { ...riskMetrics.value } })
+    if (riskHistory.value.length > 20) riskHistory.value.shift()
   } catch (error) {
     console.error('Failed to fetch risk metrics:', error)
     ElMessage.error('获取风险指标失败')
@@ -108,6 +118,8 @@ onMounted(async () => {
 
 defineExpose({
   riskMetrics,
+  riskHistory,
+  riskSelectedMetrics,
   riskConfig,
   riskAlerts,
   saving,

@@ -10,6 +10,8 @@ use strategy_engine::signals::Signal;
 use strategy_engine::traits::{OrderExecError, OrderExecutor, RiskCheckError, RiskChecker};
 use trading_engine::ExecutionEngine;
 
+use crate::order_processor::OrderProcessor;
+
 /// Wraps [`PreTradeRiskChecker`] to implement the strategy-layer [`RiskChecker`] trait.
 struct RiskLayerChecker {
     inner: Arc<PreTradeRiskChecker>,
@@ -98,4 +100,47 @@ pub fn make_risk_check_step(checker: Arc<PreTradeRiskChecker>) -> RiskCheckStep 
 /// Create an [`OrderExecStep`] backed by a real [`ExecutionEngine`].
 pub fn make_order_exec_step(engine: Arc<ExecutionEngine>) -> OrderExecStep {
     OrderExecStep::new(Box::new(TradingLayerExecutor::new(engine)))
+}
+
+/// Wraps [`OrderProcessor`] to implement the strategy-layer [`OrderExecutor`] trait.
+///
+/// Routes each pipeline order through the full [`OrderProcessor::place_order`]
+/// use-case (market data resolve → pre-trade risk → in-memory submission →
+/// persistence → event descriptor → async execution), so strategy-generated
+/// orders are placed exactly like manually-submitted ones. When pre-trade risk
+/// is enabled, `place_order` enforces it with live account data (fail-closed).
+struct OrderProcessorExecutor {
+    inner: Arc<OrderProcessor>,
+}
+
+impl OrderProcessorExecutor {
+    fn new(inner: Arc<OrderProcessor>) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait]
+impl OrderExecutor for OrderProcessorExecutor {
+    async fn execute(&self, signal: &Signal) -> Result<String, OrderExecError> {
+        let order = signal.to_order(&signal.strategy_id).ok_or_else(|| {
+            OrderExecError::Internal("Cannot convert signal to order".to_string())
+        })?;
+
+        let placement = self
+            .inner
+            .place_order(order)
+            .await
+            .map_err(|e| OrderExecError::Internal(e.to_string()))?;
+
+        Ok(placement.order_id.to_string())
+    }
+}
+
+/// Create an [`OrderExecStep`] backed by a real [`OrderProcessor`].
+///
+/// Use this instead of [`make_order_exec_step`] when the pipeline should route
+/// strategy orders through the full single-placement use-case (risk + paper /
+/// real execution + persistence) rather than a bare [`ExecutionEngine`].
+pub fn make_order_processor_exec_step(processor: Arc<OrderProcessor>) -> OrderExecStep {
+    OrderExecStep::new(Box::new(OrderProcessorExecutor::new(processor)))
 }

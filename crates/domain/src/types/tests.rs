@@ -1055,7 +1055,7 @@ fn test_strategy_params_serialization_roundtrip() {
 
 #[test]
 fn test_strategy_params_default_status_is_draft() {
-    let json = r#"{"strategy_id":"x","strategy_name":"X","strategy_type":"Custom","params":{},"enabled":false,"max_position":0,"max_daily_loss":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
+    let json = r#"{"strategy_id":"x","strategy_name":"X","strategy_type":"TrendFollowing","params":{},"enabled":false,"max_position":0,"max_daily_loss":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
     let sp: StrategyParams = serde_json::from_str(json).unwrap();
     assert_eq!(sp.status, StrategyStatus::Draft);
     assert!(sp.tags.is_empty());

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Settings from '@/views/Settings.vue'
-import SettingsExchange from '@/components/settings/SettingsExchange.vue'
 import { invoke } from '@tauri-apps/api/core'
 
 vi.mock('element-plus', async () => {
@@ -19,7 +18,6 @@ const defaultConfig = {
   risk: { max_position_size: 0.2, max_daily_loss: 0.05, max_drawdown: 0.15, max_concentration: 0.2, enable_pre_trade_check: true, enable_real_time_monitor: true, var_confidence_level: 0.95 },
   monitoring: { enable_prometheus: true, prometheus_port: 9090, log_level: 'info', alert_email: '', alert_webhook: '' },
   security: { enable_encryption: true, enable_2fa: false, jwt_secret: 'secret', token_expiry_hours: 24, allowed_ips: [] },
-  okx: { api_key: 'okx-key', api_secret: 'okx-secret', passphrase: 'okx-pass', environment: 'demo', enable: true },
 }
 
 function mockFormRef() {
@@ -35,10 +33,6 @@ async function mountComponent(): Promise<any> {
   return wrapper
 }
 
-function exchangeVm(wrapper: any) {
-  return wrapper.findComponent(SettingsExchange).vm
-}
-
 describe('Settings.vue - 按钮测试', () => {
   beforeEach(() => {
     container = document.createElement('div')
@@ -48,7 +42,6 @@ describe('Settings.vue - 按钮测试', () => {
       switch (cmd) {
         case 'get_config': return defaultConfig
         case 'update_config': return true
-        case 'check_okx_status': return { connected: true, demo_trading: true, exchange_time: '2026-06-26T00:00:00Z', message: 'OK' }
         default: return {}
       }
     })
@@ -72,24 +65,6 @@ describe('Settings.vue - 按钮测试', () => {
     expect(mockInvoke).toHaveBeenCalledWith('update_config', { config: expect.any(Object) })
   }, 30000)
 
-  it('保存配置 - 保留已有 OKX 配置', async () => {
-    const wrapper = await mountComponent()
-    const formRefs = ['systemInfoFormRef', 'databaseFormRef', 'redisFormRef', 'tradingFormRef', 'riskFormRef', 'monitoringFormRef', 'securityFormRef']
-    formRefs.forEach(name => { (wrapper.vm as any)[name] = mockFormRef() })
-    mockInvoke.mockClear()
-
-    await wrapper.vm.saveConfig()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
-    expect(mockInvoke).toHaveBeenCalledWith(
-      'update_config',
-      expect.objectContaining({
-        config: expect.objectContaining({ okx: defaultConfig.okx }),
-      }),
-    )
-  }, 30000)
-
   it('重置按钮 - 打开确认对话框', async () => {
     const wrapper = await mountComponent()
     expect(wrapper.vm.resetDialogVisible).toBe(false)
@@ -108,17 +83,6 @@ describe('Settings.vue - 按钮测试', () => {
     expect(clickSpy).toHaveBeenCalled()
     clickSpy.mockRestore()
     createObjectURL.mockRestore()
-  }, 30000)
-
-  it('检测 OKX 连接 - 调用 check_okx_status', async () => {
-    const wrapper = await mountComponent()
-    mockInvoke.mockClear()
-
-    exchangeVm(wrapper).fetchConnStatus()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
-    expect(mockInvoke).toHaveBeenCalledWith('check_okx_status')
   }, 30000)
 
   it('切换 Tab - activeTab 更新', async () => {

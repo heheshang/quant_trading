@@ -21,7 +21,7 @@
 #### API 密钥管理 (`api_key.rs`)
 - ✅ API 密钥加密存储
 - ✅ HMAC-SHA256 签名生成
-- ✅ OKX 签名格式支持
+- ✅ Binance 签名格式支持
 - ✅ 时间戳生成（ISO 8601）
 - ✅ 密钥凭证结构
 
@@ -32,7 +32,7 @@
 - ✅ IP 地址记录
 - ✅ 成功/失败状态
 
-### 2. OKX 交易所集成 (exchange-okx)
+### 2. Binance 交易所集成 (exchange-binance)
 
 #### REST API 客户端 (`client.rs`)
 - ✅ 完整的签名认证
@@ -57,7 +57,7 @@
 - ✅ 错误处理和重连
 
 #### 类型定义 (`types.rs`)
-- ✅ OKX 环境配置
+- ✅ Binance 环境配置
 - ✅ 响应结构体
 - ✅ 余额/持仓/订单类型
 - ✅ K 线数据结构
@@ -91,13 +91,13 @@
 ```
 crates/
 ├── common/          # 公共类型和工具
-├── data-layer/      # 数据管理（PostgreSQL + Redis + InfluxDB）
+├── data-layer/      # 数据管理（PostgreSQL 分区表 + Redis，不用 InfluxDB）
 ├── strategy-layer/  # 策略开发和回测
 ├── trading-layer/   # 订单执行
 ├── risk-layer/      # 风险管理
 ├── monitor-layer/   # 监控告警
 ├── security/        # 安全合规 ✨ 新增
-└── exchange-okx/    # OKX 对接 ✨ 新增
+└── exchange-binance/  # Binance 对接 ✨ 新增
 ```
 
 ### 安全特性
@@ -116,7 +116,7 @@ crates/
    - 用户行为追踪
    - 异常事件告警
 
-### OKX 集成优势
+### Binance 集成优势
 1. **完整功能**
    - REST API 全覆盖
    - WebSocket 实时数据
@@ -136,9 +136,9 @@ crates/
 
 ### 1. 量化策略开发
 ```rust
-// 使用 OKX 获取实时数据
-let client = OkxClient::new(...)?;
-let candles = client.get_candles("BTC-USDT", "5m", Some(500)).await?;
+// 使用 Binance 获取实时数据
+let client = BinanceClient::new(...)?;
+let candles = client.get_klines("BTCUSDT", "5m", Some(500)).await?;
 
 // 运行策略回测
 let mut engine = BacktestEngine::new(...);
@@ -148,12 +148,12 @@ let result = engine.run(&strategy, candles).await?;
 ### 2. 实时交易执行
 ```rust
 // 下单
-let order = client.place_order(OkxPlaceOrderRequest {
-    inst_id: "BTC-USDT".to_string(),
-    side: "buy".to_string(),
-    ord_type: "limit".to_string(),
-    sz: "0.001".to_string(),
-    px: Some("50000".to_string()),
+let order = client.place_order(BinancePlaceOrderRequest {
+    symbol: "BTCUSDT".to_string(),
+    side: "BUY".to_string(),
+    type: "LIMIT".to_string(),
+    quantity: "0.001".to_string(),
+    price: Some("50000".to_string()),
     ...
 }).await?;
 
@@ -165,8 +165,8 @@ risk_checker.check_order(&order, &account, &positions)?;
 ### 3. 实时行情监控
 ```rust
 // WebSocket 订阅
-let ws = OkxWebSocket::new(OkxEnvironment::Live);
-ws.subscribe_ticker("BTC-USDT").await?;
+let ws = BinanceWebSocket::new(BinanceEnvironment::Spot);
+ws.subscribe_ticker("BTCUSDT").await?;
 ws.start().await?;
 
 // 处理消息
@@ -182,10 +182,10 @@ while let Some(msg) = ws.receive().await {
 
 ```bash
 # .env 配置
-OKX_API_KEY=your_api_key
-OKX_API_SECRET=your_secret
-OKX_PASSPHRASE=your_passphrase
-OKX_ENVIRONMENT=demo
+BINANCE_API_KEY=your_api_key
+BINANCE_API_SECRET=your_secret
+BINANCE_ENVIRONMENT=spot
+BINANCE_ENABLE=false
 
 # 加密密钥（生产环境必须修改！）
 ENCRYPTION_KEY=your_32_byte_encryption_key_here
@@ -196,12 +196,12 @@ JWT_SECRET=your_jwt_secret_minimum_256_bits
 
 ### 立即可用
 1. ✅ 克隆项目并安装依赖
-2. ✅ 配置 OKX API 密钥（建议先用模拟盘）
+2. ✅ 配置 Binance API 密钥（建议先用模拟盘）
 3. ✅ 运行数据库迁移
 4. ✅ 启动系统测试
 
 ### 进阶功能（可扩展）
-- [ ] 更多交易所支持（Binance, Huobi）
+- [ ] 更多交易所支持（例如 Coinbase、Bybit 等）
 - [ ] 高级订单类型（冰山单、TWAP）
 - [ ] 机器学习策略集成
 - [ ] 多账户管理
@@ -210,7 +210,6 @@ JWT_SECRET=your_jwt_secret_minimum_256_bits
 ## 📚 相关文档
 
 - [快速入门](../QUICKSTART.md)
-- [OKX 集成指南](./OKX_INTEGRATION.md)
 - [API 文档](./API.md)
 - [安全最佳实践](./SECURITY.md)
 

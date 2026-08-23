@@ -8,17 +8,8 @@
         <el-card>
           <template #header><div class="card-header"><span>API 服务</span></div></template>
           <div style="text-align:center;padding:20px 0;">
-            <el-icon :size="36" :color="apiStatus.api ? '#67C23A' : '#F56C6C'"><Connection /></el-icon>
+            <el-icon :size="36" :color="apiStatus.api ? 'var(--color-success)' : 'var(--color-danger)'"><Connection /></el-icon>
             <p style="margin-top:8px;font-size:14px;">{{ apiStatus.api ? '连接正常' : '连接失败' }}</p>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card>
-          <template #header><div class="card-header"><span>WebSocket</span></div></template>
-          <div style="text-align:center;padding:20px 0;">
-            <el-icon :size="36" :color="apiStatus.ws ? '#67C23A' : '#E6A23C'"><Connection /></el-icon>
-            <p style="margin-top:8px;font-size:14px;">{{ apiStatus.ws ? '连接正常' : '未连接' }}</p>
           </div>
         </el-card>
       </el-col>
@@ -26,7 +17,7 @@
         <el-card>
           <template #header><div class="card-header"><span>数据库</span></div></template>
           <div style="text-align:center;padding:20px 0;">
-            <el-icon :size="36" :color="apiStatus.db ? '#67C23A' : '#F56C6C'"><Connection /></el-icon>
+            <el-icon :size="36" :color="apiStatus.db ? 'var(--color-success)' : 'var(--color-danger)'"><Connection /></el-icon>
             <p style="margin-top:8px;font-size:14px;">{{ apiStatus.db ? '连接正常' : '连接失败' }}</p>
           </div>
         </el-card>
@@ -35,7 +26,7 @@
         <el-card>
           <template #header><div class="card-header"><span>Redis</span></div></template>
           <div style="text-align:center;padding:20px 0;">
-            <el-icon :size="36" :color="apiStatus.redis ? '#67C23A' : '#F56C6C'"><Connection /></el-icon>
+            <el-icon :size="36" :color="apiStatus.redis ? 'var(--color-success)' : 'var(--color-danger)'"><Connection /></el-icon>
             <p style="margin-top:8px;font-size:14px;">{{ apiStatus.redis ? '连接正常' : '连接失败' }}</p>
           </div>
         </el-card>
@@ -89,14 +80,10 @@ import { Connection } from '@element-plus/icons-vue';
 import { checkRedisStatus, getMetrics } from '@/services/monitor'
 import { getAccountInfo } from '@/services/account'
 import { verifyToken } from '@/services/auth';
-import { useWebSocketStatus } from '@/composables/useWebSocketStatus';
 import EmptyState from '@/components/common/EmptyState.vue';
-
-const { status: wsStatus } = useWebSocketStatus();
 
 const apiStatus = reactive({
   api: false,
-  ws: false,
   db: false,
   redis: false,
 });
@@ -128,7 +115,6 @@ async function runSystemTests() {
     { name: 'API 接口测试', fn: testAPI },
     { name: '数据库连接', fn: testDatabase },
     { name: 'Redis 缓存', fn: testRedis },
-    { name: 'WebSocket 通信', fn: testWebSocket },
     { name: 'JWT 认证', fn: testAuth },
   ];
 
@@ -176,11 +162,6 @@ async function testRedis(): Promise<{passed: boolean; detail?: string}> {
     apiStatus.redis = false;
     return { passed: false, detail: e?.message || 'Redis 连接失败' };
   }
-}
-
-async function testWebSocket(): Promise<{passed: boolean; detail?: string}> {
-  apiStatus.ws = wsStatus.value === 'connected';
-  return { passed: apiStatus.ws, detail: `当前连接状态: ${wsStatus.value}` };
 }
 
 async function testAuth(): Promise<{passed: boolean; detail?: string}> {

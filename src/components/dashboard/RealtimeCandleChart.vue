@@ -1,273 +1,155 @@
+<template>
+  <el-card class="realtime-candle-chart" shadow="never">
+    <template #header>
+      <div class="card-header">
+        <span class="title"><el-icon><TrendCharts /></el-icon> 实时 K 线</span>
+        <span v-if="candles.length" class="symbol">{{ symbol }}</span>
+      </div>
+    </template>
+
+    <div ref="chartRef" class="chart-container" v-show="candles.length" />
+    <EmptyState v-if="!candles.length" title="暂无 K 线" description="等待实时 K 线数据…" />
+  </el-card>
+</template>
+
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue'
-// NOTE: chartInstance uses shallowRef (no deep proxy needed for ECharts instance)
+import { ref, shallowRef, watch, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
-import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event'
-import type { WsCandle } from '@/services/types'
+import { TrendCharts } from '@element-plus/icons-vue'
+import type { BinanceWsKline } from '@/services/types'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
 const props = defineProps<{
+  candles: BinanceWsKline[]
   symbol: string
 }>()
 
 const chartRef = ref<HTMLDivElement>()
 const chartInstance = shallowRef<echarts.ECharts | null>(null)
-const candleData = ref<WsCandle[]>([])
-const MAX_CANDLES = 500
 
-const period = ref<'1m' | '5m' | '15m' | '1H'>('1m')
-const periods: { label: string; value: '1m' | '5m' | '15m' | '1H' }[] = [
-  { label: '1m', value: '1m' },
-  { label: '5m', value: '5m' },
-  { label: '15m', value: '15m' },
-  { label: '1H', value: '1H' },
-]
-
-let unlistenCandle: UnlistenFn | null = null
-
-function formatTime(ts: string): string {
-  const d = new Date(Number(ts))
-  const h = String(d.getHours()).padStart(2, '0')
-  const m = String(d.getMinutes()).padStart(2, '0')
-  const s = String(d.getSeconds()).padStart(2, '0')
-  return `${h}:${m}:${s}`
+function formatTimestamp(ms: number): string {
+  const d = new Date(ms)
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hours}:${minutes}`
 }
 
-function buildBaseOption(): echarts.EChartsOption {
+function buildOption(): echarts.EChartsOption {
+  const theme = useChartTheme().palette.value
+  const chartColors = getChartSeriesColors()
+  const sorted = [...props.candles].sort((a, b) => a.open_time - b.open_time)
+  const times = sorted.map((c) => formatTimestamp(c.open_time))
+  const values = sorted.map((c) => [c.open, c.close, c.low, c.high])
   return {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
-      formatter: (params: unknown) => {
-        const pArr = Array.isArray(params) ? params : [params]
-        const p = pArr[0]
-        if (
-          p === null ||
-          p === undefined ||
-          typeof p !== 'object' ||
-          !('data' in p)
-        ) {
-          return ''
-        }
-        const v = (p as { data?: number[] }).data
-        if (!v || v.length < 4) return ''
-        const name = (p as { name?: string }).name ?? ''
-        return [
-          `Time: ${name}`,
-          `Open: ${v[0]}`,
-          `Close: ${v[1]}`,
-          `Low: ${v[2]}`,
-          `High: ${v[3]}`,
-        ].join('<br>')
-      },
-    },
-    grid: {
-      left: '3%',
-      right: '3%',
-      bottom: '10%',
-      top: '10%',
-      containLabel: true,
+      backgroundColor: theme.tooltipBg,
+      borderColor: theme.tooltipBorder,
+      textStyle: { color: theme.tooltipText },
     },
     xAxis: {
       type: 'category',
-      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
-      axisLabel: { color: 'var(--color-text-regular)' },
+      data: times,
+      axisLabel: { rotate: 45, color: theme.axisLabel },
+      axisLine: { lineStyle: { color: theme.splitLine } },
+      axisTick: { lineStyle: { color: theme.splitLine } },
     },
     yAxis: {
       type: 'value',
       scale: true,
-      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
-      axisLabel: { color: 'var(--color-text-regular)' },
-      splitLine: { lineStyle: { color: '#eee' } },
+      axisLabel: { color: theme.axisLabel },
+      splitLine: { lineStyle: { color: theme.splitLine } },
     },
-    dataZoom: [
-      { type: 'inside', start: 50, end: 100 },
-      {
-        type: 'slider',
-        start: 50,
-        end: 100,
-        bottom: 10,
-        height: 20,
-        handleSize: '80%',
-      },
-    ],
     series: [
       {
         type: 'candlestick',
-        data: [],
+        data: values,
         itemStyle: {
-          color: '#f56c6c',
-          color0: '#67c23a',
-          borderColor: '#f56c6c',
-          borderColor0: '#67c23a',
+          color: chartColors.green,
+          color0: chartColors.red,
+          borderColor: chartColors.green,
+          borderColor0: chartColors.red,
         },
       },
     ],
+    grid: {
+      left: '5%',
+      right: '5%',
+      bottom: '8%',
+      top: '6%',
+    },
   }
 }
 
-function initChart() {
+function renderChart(): void {
+  const instance = chartInstance.value
+  if (!instance) return
+  if (!props.candles.length) return
+  instance.setOption(buildOption(), { notMerge: true })
+}
+
+function initChart(): void {
   if (!chartRef.value) return
   if (chartInstance.value) {
     chartInstance.value.dispose()
     chartInstance.value = null
   }
   chartInstance.value = echarts.init(chartRef.value)
-  chartInstance.value.setOption(buildBaseOption())
-}
-
-function updateIncremental(data: WsCandle[]) {
-  if (!chartInstance.value || data.length === 0) return
-
-  const times = data.map((d) => formatTime(d.ts))
-  const values = data.map((d) => [
-    parseFloat(d.o),
-    parseFloat(d.c),
-    parseFloat(d.l),
-    parseFloat(d.h),
-  ])
-
-  chartInstance.value.setOption(
-    {
-      xAxis: { data: times },
-      series: [
-        {
-          type: 'candlestick',
-          data: values,
-        },
-      ],
-    },
-    { notMerge: false }
-  )
-}
-
-function onCandleEvent(event: Event<WsCandle>) {
-  const payload = event.payload
-  if (payload.inst_id !== props.symbol) return
-
-  const existingIndex = candleData.value.findIndex((d) => d.ts === payload.ts)
-  if (existingIndex >= 0) {
-    candleData.value[existingIndex] = payload
-  } else {
-    candleData.value.push(payload)
-    if (candleData.value.length > MAX_CANDLES) {
-      candleData.value.shift()
-    }
-  }
-  updateIncremental(candleData.value)
-}
-
-async function startListening() {
-  if (unlistenCandle) {
-    unlistenCandle()
-    unlistenCandle = null
-  }
-  unlistenCandle = await listen<WsCandle>('ws:candle', onCandleEvent)
-}
-
-function stopListening() {
-  if (unlistenCandle) {
-    unlistenCandle()
-    unlistenCandle = null
-  }
-}
-
-function resetData() {
-  candleData.value = []
-  if (chartInstance.value) {
-    chartInstance.value.setOption(
-      {
-        xAxis: { data: [] },
-        series: [{ type: 'candlestick', data: [] }],
-      },
-      { notMerge: false }
-    )
-  }
+  renderChart()
 }
 
 watch(
-  () => props.symbol,
+  () => props.candles,
   () => {
-    resetData()
-  }
+    if (!chartInstance.value) {
+      initChart()
+    } else {
+      renderChart()
+    }
+  },
+  { immediate: true, deep: false },
 )
 
-watch(period, () => {
-  resetData()
-})
-
 onMounted(() => {
-  nextTick(() => {
-    initChart()
-    startListening()
-  })
+  initChart()
 })
 
 onUnmounted(() => {
-  stopListening()
   chartInstance.value?.dispose()
   chartInstance.value = null
 })
 </script>
 
-<template>
-  <div class="chart-card">
-    <div class="chart-header">
-      <span class="chart-title">{{ symbol }} — Realtime Candle</span>
-      <el-radio-group v-model="period" size="small">
-        <el-radio-button
-          v-for="p in periods"
-          :key="p.value"
-          :label="p.value"
-        >
-          {{ p.label }}
-        </el-radio-button>
-      </el-radio-group>
-    </div>
-    <div
-      v-if="candleData.length === 0"
-      class="chart-empty"
-    >
-      Waiting for data...
-    </div>
-    <div
-      v-show="candleData.length > 0"
-      ref="chartRef"
-      class="chart-container"
-    />
-  </div>
-</template>
-
 <style scoped>
-.chart-card {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  padding: 16px;
+.realtime-candle-chart :deep(.el-card__header) {
+  padding: 12px 16px;
 }
 
-.chart-header {
+.card-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.chart-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.chart-empty {
-  height: 400px;
-  display: flex;
   align-items: center;
-  justify-content: center;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.symbol {
+  font-size: 12px;
   color: var(--color-text-secondary);
-  font-size: 14px;
 }
 
 .chart-container {
-  height: 400px;
+  height: 300px;
+  width: 100%;
 }
 </style>

@@ -13,18 +13,18 @@ Vue3 前端 (src/)
         ▼
 Tauri 后端 (src-tauri/)
   ├── main.rs         启动、依赖装配、命令注册
-  ├── commands.rs     业务命令（配置/账户/策略/风控/OKX）
+  ├── commands/       业务命令分文件（配置/账户/策略/风控/Binance/审计/2FA/优化器）
   └── ws_commands.rs  实时行情 WebSocket 命令
         │
         ▼
 服务层 (crates/services)
-  AppServices 装配 Auth/Account/Market/Strategy/Risk/Okx/Config
+  AppServices 装配 Auth/Account/Market/Strategy/Risk/Binance/Config
         │
         ├───────────────────────────────────┐
         ▼                                   ▼
 领域/策略/交易/风控                     基础设施
 strategy-layer                         data-layer / repository / clients
-trading-layer                          PostgreSQL / Redis / OKX REST / WS
+trading-layer                          PostgreSQL / Redis / Binance REST / WS
 risk-layer
 monitor-layer
 ```
@@ -34,10 +34,10 @@ monitor-layer
 1. `src-tauri/src/main.rs` 加载 `.env` 与 `AppConfig::default()`。
 2. `monitor_layer::logging::init_logging` 初始化结构化日志。
 3. 初始化 `AlertManager` 与 `LogBuffer`。
-4. 尝试初始化 OKX `Client`；成功时创建 `OkxExecutor`、`OkxDataSource`，失败则降级为 `None`。
+4. 尝试初始化 Binance `Client`；成功时创建 `BinanceExecutor`、`BinanceDataSource`，失败则降级为 `None`。
 5. 尝试初始化 `data_layer::PostgresClient` 并运行 migration；失败则无数据库降级运行。
 6. 初始化 Redis、`DataPuller`、`OrderManager`。
-7. `AppServices` 装配业务服务，注入共享配置、数据库、OKX 与策略调度器。
+7. `AppServices` 装配业务服务，注入共享配置、数据库、Binance 与策略调度器。
 8. 注册 Tauri 命令并启动窗口。
 
 ## 3. 六大业务链路
@@ -45,9 +45,9 @@ monitor-layer
 ### 3.1 行情链路
 
 ```text
-OKX REST / WebSocket
-  → exchange-okx Client / OkxWebSocket
-  → OkxDataSource / data-puller DataPuller
+Binance REST / WebSocket
+  → exchange-binance Client / BinanceWebSocket
+  → BinanceDataSource / data-puller DataPuller
   → data-layer MarketDataRepository (PostgreSQL / Redis)
   → MarketService
   → Tauri 命令 get_market_data / ws:ticker
@@ -80,11 +80,11 @@ OKX REST / WebSocket
 
 ```text
 前端 Trading.vue
-  → services/order.ts / services/okx.ts
-  → submit_order / place_okx_order / cancel_okx_order / execute_okx_order
-  → OrderManager + ExecutionEngine + OkxExecutor
+  → services/order.ts / services/binance.ts
+  → submit_order / place_binance_order / cancel_binance_order / execute_binance_order
+  → OrderManager + ExecutionEngine + BinanceExecutor
   → risk-layer PreTradeRiskChecker（可选）
-  → OKX REST + AccountService.persist_order
+  → Binance REST + AccountService.persist_order
   → order:submitted 事件回流前端
 ```
 
@@ -111,8 +111,8 @@ OKX REST / WebSocket
 ## 4. 前后端命名约定
 
 - Tauri 命令统一 `snake_case`。
-- Rust 序列化字段使用 `camelCase` 的 OKX 类型以 `camelCase` 透传，例如
-  `OkxBalance.availEq`、`OkxOrder.ordId`、`OkxInstrument.instId`。
+- Rust 序列化字段按交易所 API 的 `camelCase` 透传（如 Binance 的
+  `orderId`、`clientOrderId`、`symbol`）。
 - 系统业务类型（账户、订单、策略、回测）保持 `snake_case`。
 
 ## 5. 已知关键优化点

@@ -37,7 +37,7 @@ defineProps<{
 const { formatCurrency } = useFormatting()
 
 function pnlColor(value: number): string {
-  return value >= 0 ? '#67c23a' : '#f56c6c'
+  return value >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
 }
 </script>
 
@@ -71,13 +71,13 @@ function pnlColor(value: number): string {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #67c23a;
+  background-color: var(--color-success);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
 .realtime-text {
   font-size: 12px;
-  color: #67c23a;
+  color: var(--color-success);
   font-weight: 500;
 }
 

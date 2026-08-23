@@ -82,6 +82,6 @@ const equityCurveData = computed(() =>
 .stat-item { text-align: center; padding: 8px 0; }
 .stat-label { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 8px; }
 .stat-value { font-size: 24px; font-weight: bold; color: var(--color-text-primary); }
-.stat-value.positive { color: #67c23a; }
-.stat-value.negative { color: #f56c6c; }
+.stat-value.positive { color: var(--color-success); }
+.stat-value.negative { color: var(--color-danger); }
 </style>

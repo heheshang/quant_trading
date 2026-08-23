@@ -77,7 +77,7 @@ colima start --cpu 4 --memory 8
 | `DATABASE_NAME` | `quant_trading` | 数据库名 |
 | `REDIS_HOST` | `redis` | Redis 服务名 |
 | `REDIS_PASSWORD` | 空 | Redis 密码 |
-| `OKX_ENABLE` | `false` | 关闭外部交易所依赖，便于离线测试 |
+| `BINANCE_ENABLE` | `false` | 默认关闭外部交易所依赖，便于离线测试 |
 | `JWT_SECRET` | `docker_test_change_me` | 生产环境必须覆盖 |
 
 ## 手动验证

@@ -27,6 +27,7 @@ pub async fn save_strategy(
     state: State<'_, AppState>,
     strategy: StrategyParams,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -44,6 +45,7 @@ pub async fn delete_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<bool, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -62,6 +64,7 @@ pub async fn toggle_strategy(
     strategy_id: String,
     enabled: bool,
 ) -> Result<bool, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -79,6 +82,7 @@ pub async fn deploy_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -97,6 +101,7 @@ pub async fn start_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -115,6 +120,7 @@ pub async fn stop_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -133,6 +139,7 @@ pub async fn pause_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -151,6 +158,7 @@ pub async fn resume_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -169,6 +177,7 @@ pub async fn archive_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -229,6 +238,7 @@ pub async fn create_strategy(
     symbols: Vec<String>,
     user_id: i64,
 ) -> Result<String, String> {
+    state.require_role("admin").await?;
     let services = state
         .app_services
         .as_ref()
@@ -344,6 +354,7 @@ pub async fn update_risk_config(
     state: State<'_, AppState>,
     config: quant_common::config::RiskConfig,
 ) -> Result<bool, String> {
+    state.require_role("admin").await?;
     match state.app_services.as_ref() {
         Some(services) => {
             let mut new_config = services.config_service.get_config().await;

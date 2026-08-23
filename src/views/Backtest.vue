@@ -86,10 +86,32 @@ const configRef = ref<InstanceType<typeof BacktestConfig>>()
 const chartRef = ref<InstanceType<typeof BacktestChart>>()
 const { formatCurrency, formatPercentage, formatNumber } = useFormatting()
 // ------ Template management ------
+const TEMPLATES_STORAGE_KEY = 'backtest_templates'
+
+function loadTemplates(): ConfigTemplate[] {
+  try {
+    const raw = localStorage.getItem(TEMPLATES_STORAGE_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as ConfigTemplate[]) : []
+  } catch {
+    return []
+  }
+}
+
+function persistTemplates() {
+  try {
+    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates.value))
+  } catch {
+    // Ignore storage errors (e.g. private mode / quota)
+  }
+}
+
 function handleSaveTemplate(config: BacktestConfigData) {
   const name = prompt('输入模板名称：')
   if (!name) return
   templates.value.push({ name, config })
+  persistTemplates()
   ElMessage.success(`模板「${name}」已保存`)
 }
 
@@ -198,6 +220,7 @@ function exportResult() {
 
 // ------ Lifecycle ------
 onMounted(() => {
+  templates.value = loadTemplates()
   fetchStrategies()
   fetchHistory()
 })

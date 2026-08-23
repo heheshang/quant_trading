@@ -14,7 +14,7 @@
 - **Node.js**: 18+
 - **PostgreSQL**: 14+
 - **Redis**: 6+
-- **InfluxDB**: 2.x (可选)
+- **历史行情**: PostgreSQL 分区表（不使用 InfluxDB）
 
 ### 安装步骤
 
@@ -59,7 +59,7 @@ quant-trading-system/
 ### 1. 数据管理层
 - PostgreSQL 关系型数据存储
 - Redis 缓存热点数据
-- InfluxDB 时序数据存储
+- 历史行情存 PostgreSQL 分区表（不使用 InfluxDB）
 - 数据质量检查机制
 
 ### 2. 策略开发层
@@ -88,7 +88,7 @@ quant-trading-system/
 
 - **后端**: Rust + Tauri 2.0
 - **前端**: Vue 3 + TypeScript + Element Plus + ECharts
-- **数据库**: PostgreSQL + Redis + InfluxDB
+- **数据库**: PostgreSQL (含历史行情分区表) + Redis
 - **构建工具**: Cargo + Vite + vue-tsc
 - **异步运行时**: Tokio
 - **序列化**: serde + bincode + JSON

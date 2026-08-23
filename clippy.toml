@@ -1,6 +1,11 @@
 # Clippy configuration for the quant trading workspace.
 # These thresholds relax pedantic lints that conflict with the existing codebase style.
 
+# === MSRV ===
+# Honor the workspace `rust-version = "1.77"` so clippy stops suggesting APIs
+# newer than the minimum supported Rust (e.g. Option::is_none_or, stable since 1.82).
+msrv = "1.77"
+
 # Allow up to 8 arguments (Tauri commands legitimately need many params).
 too-many-arguments-threshold = 8
 

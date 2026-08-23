@@ -9,6 +9,7 @@ import { ref, watch, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import type { BacktestResult } from '@/services/types'
 import { useFormatting } from '@/composables/useFormatting'
+import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
 const props = defineProps<{
   result: BacktestResult | null
@@ -27,6 +28,8 @@ function initChart() {
     chartInstance = echarts.getInstanceByDom(chartContainer.value) || echarts.init(chartContainer.value)
   }
 
+  const theme = useChartTheme().palette.value
+  const lineColor = getChartSeriesColors().blue
   const curves = props.result.equity_curve
   const dates = curves.map(([date]) => new Date(date).toLocaleDateString('zh-CN'))
   const values = curves.map(([, value]) => value)
@@ -43,12 +46,16 @@ function initChart() {
     xAxis: {
       type: 'category',
       data: dates,
+      axisLabel: { color: theme.axisLabel },
+      axisLine: { lineStyle: { color: theme.axisLabel } },
     },
     yAxis: {
       type: 'value',
       axisLabel: {
+        color: theme.axisLabel,
         formatter: (value: number) => '¥' + (value / 10000).toFixed(0) + '万',
       },
+      splitLine: { lineStyle: { color: theme.splitLine } },
     },
     series: [
       {
@@ -57,7 +64,7 @@ function initChart() {
         smooth: true,
         areaStyle: {},
         lineStyle: { width: 2 },
-        itemStyle: { color: '#409EFF' },
+        itemStyle: { color: lineColor },
       },
     ],
   }

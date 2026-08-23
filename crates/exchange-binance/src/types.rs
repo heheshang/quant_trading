@@ -1,6 +1,6 @@
 //! Binance-specific data types and symbol helpers.
 //!
-//! Mirrors `exchange-okx::types`: defines the DTOs parsed from Binance REST
+//! Independent Binance implementation: defines the DTOs parsed from Binance REST
 //! responses plus a small symbol conversion utility (Binance uses `BTCUSDT`
 //! while the app's domain uses `BTC-USDT`).
 
@@ -69,6 +69,22 @@ pub struct BinanceOrderBook {
     pub asks: Vec<(Decimal, Decimal)>,
 }
 
+/// Binance 24h ticker (`/api/v3/ticker/24hr`).
+///
+/// Used by `DataSource::get_realtime_data` to build a real price snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinanceTicker24h {
+    pub symbol: String,
+    pub last_price: Decimal,
+    pub price_change: Decimal,
+    pub price_change_percent: Decimal,
+    pub high: Decimal,
+    pub low: Decimal,
+    pub open: Decimal,
+    pub volume: Decimal,
+    pub quote_volume: Decimal,
+}
+
 /// Request to place a Binance order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinancePlaceOrderRequest {
@@ -105,6 +121,34 @@ pub struct BinanceOrder {
     pub executed_qty: Decimal,
     pub cummulative_quote_qty: Decimal,
     pub price: Decimal,
+    #[serde(default)]
+    pub side: String,
+    #[serde(default)]
+    pub order_type: String,
+    #[serde(default)]
+    pub orig_qty: Decimal,
+    #[serde(default)]
+    pub time: i64,
+    #[serde(default)]
+    pub update_time: i64,
+}
+
+/// Binance futures position (`/fapi/v2/positionRisk`).
+///
+/// Spot accounts have no derivative positions; the client returns an empty
+/// vec for the spot environment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinancePosition {
+    pub symbol: String,
+    pub position_amt: Decimal,
+    pub entry_price: Decimal,
+    pub mark_price: Decimal,
+    pub un_realized_profit: Decimal,
+    pub liquidation_price: Decimal,
+    pub leverage: String,
+    pub margin_type: String,
+    pub notional: Decimal,
+    pub position_side: String,
 }
 
 /// Convert app-style `BTC-USDT` to Binance `BTCUSDT`.
@@ -146,12 +190,18 @@ mod tests {
 
     #[test]
     fn environment_base_url() {
-        assert_eq!(BinanceEnvironment::Spot.base_url(), "https://api.binance.com");
+        assert_eq!(
+            BinanceEnvironment::Spot.base_url(),
+            "https://api.binance.com"
+        );
         assert_eq!(
             BinanceEnvironment::Futures.base_url(),
             "https://fapi.binance.com"
         );
-        assert_eq!(BinanceEnvironment::parse("futures"), BinanceEnvironment::Futures);
+        assert_eq!(
+            BinanceEnvironment::parse("futures"),
+            BinanceEnvironment::Futures
+        );
         assert_eq!(BinanceEnvironment::parse("spot"), BinanceEnvironment::Spot);
     }
 }

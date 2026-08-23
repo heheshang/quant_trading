@@ -1,8 +1,8 @@
 //! Binance WebSocket client.
 //!
-//! Mirrors `exchange-okx::websocket::OkxWebSocket`'s public surface: track
-//! subscriptions, connect to the combined stream, reconnect on failure, and
-//! forward parsed messages through an `mpsc` receiver.
+//! Independent Binance implementation: track subscriptions, connect to the
+//! combined stream, reconnect on failure, and forward parsed messages through
+//! an `mpsc` receiver.
 //!
 //! Protocol notes (spot):
 //! - Connect: `wss://stream.binance.com:9443/stream?streams=btcusdt@kline_1h`
@@ -18,7 +18,7 @@ use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 
-use crate::types::{BinanceEnvironment, from_binance_symbol};
+use crate::types::{from_binance_symbol, BinanceEnvironment};
 
 /// Message surfaced by the Binance WebSocket.
 #[derive(Debug, Clone)]
@@ -26,13 +26,17 @@ pub enum BinanceWsMessage {
     ConnectionStatus(String),
     Kline(BinanceWsKline),
     Depth(BinanceWsDepth),
+    /// Partial book depth (top-N snapshot) from `@depth20@100ms`.
+    OrderBook(BinanceWsDepth),
+    Ticker(BinanceWsTicker),
+    Trade(BinanceWsTrade),
     Error(String),
 }
 
 /// A parsed kline from the stream.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BinanceWsKline {
-    pub symbol: String,     // domain symbol, e.g. BTC-USDT
+    pub symbol: String, // domain symbol, e.g. BTC-USDT
     pub interval: String,
     pub open_time: i64,
     pub open: rust_decimal::Decimal,
@@ -49,6 +53,32 @@ pub struct BinanceWsDepth {
     pub symbol: String,
     pub bids: Vec<(rust_decimal::Decimal, rust_decimal::Decimal)>,
     pub asks: Vec<(rust_decimal::Decimal, rust_decimal::Decimal)>,
+}
+
+/// A parsed 24h ticker (`@ticker`).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BinanceWsTicker {
+    pub symbol: String, // domain symbol, e.g. BTC-USDT
+    pub last_price: rust_decimal::Decimal,
+    pub price_change: rust_decimal::Decimal,
+    pub price_change_percent: rust_decimal::Decimal,
+    pub high: rust_decimal::Decimal,
+    pub low: rust_decimal::Decimal,
+    pub open: rust_decimal::Decimal,
+    pub volume: rust_decimal::Decimal,
+    pub quote_volume: rust_decimal::Decimal,
+    pub event_time: i64,
+}
+
+/// A parsed trade (`@trade`).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BinanceWsTrade {
+    pub symbol: String, // domain symbol, e.g. BTC-USDT
+    pub price: rust_decimal::Decimal,
+    pub quantity: rust_decimal::Decimal,
+    pub trade_time: i64,
+    /// `m` — true when the buyer is the maker (aggressor was a sell).
+    pub is_buyer_maker: bool,
 }
 
 /// Binance WebSocket client.
@@ -78,9 +108,7 @@ impl BinanceWebSocket {
 
     fn ws_url(&self) -> String {
         match self.environment {
-            BinanceEnvironment::Spot => {
-                "wss://stream.binance.com:9443/stream".to_string()
-            }
+            BinanceEnvironment::Spot => "wss://stream.binance.com:9443/stream".to_string(),
             BinanceEnvironment::Futures => "wss://fstream.binance.com/stream".to_string(),
         }
     }
@@ -111,10 +139,32 @@ impl BinanceWebSocket {
             .await
     }
 
-    /// Subscribe to depth stream: `BTC-USDT` -> `btcusdt@depth`.
+    /// Subscribe to diff-depth stream: `BTC-USDT` -> `btcusdt@depth`.
     pub async fn subscribe_depth(&self, symbol: &str) -> Result<()> {
         let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
         self.subscribe_stream(&format!("{}@depth", binance)).await
+    }
+
+    /// Subscribe to partial order-book snapshot: `BTC-USDT` -> `btcusdt@depth20@100ms`.
+    ///
+    /// The partial-book stream pushes a top-20 snapshot on every update, so the
+    /// consumer can render a full ladder without maintaining incremental deltas.
+    pub async fn subscribe_orderbook(&self, symbol: &str) -> Result<()> {
+        let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
+        self.subscribe_stream(&format!("{}@depth20@100ms", binance))
+            .await
+    }
+
+    /// Subscribe to 24h ticker stream: `BTC-USDT` -> `btcusdt@ticker`.
+    pub async fn subscribe_ticker(&self, symbol: &str) -> Result<()> {
+        let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
+        self.subscribe_stream(&format!("{}@ticker", binance)).await
+    }
+
+    /// Subscribe to trades stream: `BTC-USDT` -> `btcusdt@trade`.
+    pub async fn subscribe_trades(&self, symbol: &str) -> Result<()> {
+        let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
+        self.subscribe_stream(&format!("{}@trade", binance)).await
     }
 
     pub async fn subscriptions(&self) -> Vec<String> {
@@ -155,7 +205,8 @@ impl BinanceWebSocket {
                     info!("Binance WebSocket shutdown requested");
                     break;
                 }
-                let _ = message_tx.send(BinanceWsMessage::ConnectionStatus("connecting".to_string()));
+                let _ =
+                    message_tx.send(BinanceWsMessage::ConnectionStatus("connecting".to_string()));
                 let stream_query: Vec<String> = streams.read().await.clone();
                 let conn_url = if stream_query.is_empty() {
                     url.clone()
@@ -229,10 +280,8 @@ impl BinanceWebSocket {
                     }
                     Err(e) => {
                         warn!("Binance WebSocket connect failed: {}", e);
-                        let _ = message_tx.send(BinanceWsMessage::Error(format!(
-                            "connect failed: {}",
-                            e
-                        )));
+                        let _ = message_tx
+                            .send(BinanceWsMessage::Error(format!("connect failed: {}", e)));
                     }
                 }
 
@@ -260,6 +309,8 @@ fn parse_ws_text(text: &str) -> Option<BinanceWsMessage> {
             return match stream.as_str() {
                 "kline" => parse_kline(v["data"].clone()),
                 "depthupdate" => parse_depth(v["data"].clone()),
+                "24hrticker" => parse_ticker(v["data"].clone()),
+                "trade" => parse_trade(v["data"].clone()),
                 _ => None,
             };
         }
@@ -274,6 +325,12 @@ fn parse_ws_text(text: &str) -> Option<BinanceWsMessage> {
 fn parse_data(stream: &str, data: &serde_json::Value) -> Option<BinanceWsMessage> {
     if stream.contains("@kline") {
         parse_kline(data.clone())
+    } else if stream.contains("@ticker") {
+        parse_ticker(data.clone())
+    } else if stream.contains("@trade") {
+        parse_trade(data.clone())
+    } else if stream.contains("@depth20") {
+        parse_depth20(stream, data.clone())
     } else if stream.contains("@depth") {
         parse_depth(data.clone())
     } else {
@@ -309,14 +366,62 @@ fn parse_depth(data: serde_json::Value) -> Option<BinanceWsMessage> {
     }))
 }
 
+/// Parse a partial-book depth snapshot (`@depth20@100ms`). The payload has no
+/// symbol field, so it is derived from the combined-stream name.
+fn parse_depth20(stream: &str, data: serde_json::Value) -> Option<BinanceWsMessage> {
+    let symbol = stream.split("@depth").next()?;
+    let bids = parse_levels(data.get("bids")?);
+    let asks = parse_levels(data.get("asks")?);
+    Some(BinanceWsMessage::OrderBook(BinanceWsDepth {
+        symbol: from_binance_symbol(&symbol.to_uppercase()),
+        bids,
+        asks,
+    }))
+}
+
+/// Parse a 24h ticker (`@ticker`).
+fn parse_ticker(data: serde_json::Value) -> Option<BinanceWsMessage> {
+    let symbol = data.get("s")?.as_str()?;
+    Some(BinanceWsMessage::Ticker(BinanceWsTicker {
+        symbol: from_binance_symbol(symbol),
+        last_price: parse_decimal_str(data.get("c")?.as_str()?),
+        price_change: parse_decimal_str(data.get("p")?.as_str()?),
+        price_change_percent: parse_decimal_str(data.get("P")?.as_str()?),
+        high: parse_decimal_str(data.get("h")?.as_str()?),
+        low: parse_decimal_str(data.get("l")?.as_str()?),
+        open: parse_decimal_str(data.get("o")?.as_str()?),
+        volume: parse_decimal_str(data.get("v")?.as_str()?),
+        quote_volume: parse_decimal_str(data.get("q")?.as_str()?),
+        event_time: data.get("E")?.as_i64().unwrap_or(0),
+    }))
+}
+
+/// Parse a trade (`@trade`).
+fn parse_trade(data: serde_json::Value) -> Option<BinanceWsMessage> {
+    let symbol = data.get("s")?.as_str()?;
+    Some(BinanceWsMessage::Trade(BinanceWsTrade {
+        symbol: from_binance_symbol(symbol),
+        price: parse_decimal_str(data.get("p")?.as_str()?),
+        quantity: parse_decimal_str(data.get("q")?.as_str()?),
+        trade_time: data.get("T")?.as_i64()?,
+        is_buyer_maker: data.get("m")?.as_bool().unwrap_or(false),
+    }))
+}
+
 fn parse_levels(arr: &serde_json::Value) -> Vec<(rust_decimal::Decimal, rust_decimal::Decimal)> {
     arr.as_array()
         .map(|a| {
             a.iter()
                 .filter_map(|r| {
-                    let price = r.get(0)?.as_str()?.parse::<rust_decimal::Decimal>()
+                    let price = r
+                        .get(0)?
+                        .as_str()?
+                        .parse::<rust_decimal::Decimal>()
                         .unwrap_or(rust_decimal::Decimal::ZERO);
-                    let qty = r.get(1)?.as_str()?.parse::<rust_decimal::Decimal>()
+                    let qty = r
+                        .get(1)?
+                        .as_str()?
+                        .parse::<rust_decimal::Decimal>()
                         .unwrap_or(rust_decimal::Decimal::ZERO);
                     Some((price, qty))
                 })
@@ -326,7 +431,8 @@ fn parse_levels(arr: &serde_json::Value) -> Vec<(rust_decimal::Decimal, rust_dec
 }
 
 fn parse_decimal_str(s: &str) -> rust_decimal::Decimal {
-    s.parse::<rust_decimal::Decimal>().unwrap_or(rust_decimal::Decimal::ZERO)
+    s.parse::<rust_decimal::Decimal>()
+        .unwrap_or(rust_decimal::Decimal::ZERO)
 }
 
 #[cfg(test)]
@@ -364,6 +470,69 @@ mod tests {
     #[test]
     fn ignores_subscribe_ack() {
         assert!(parse_ws_text(r#"{"result":null,"id":1}"#).is_none());
+    }
+
+    #[test]
+    fn parses_ticker_payload() {
+        let msg = r#"{"stream":"btcusdt@ticker","data":{"e":"24hrTicker","E":1700000000000,"s":"BTCUSDT","p":"10.00","P":"1.20","h":"900","l":"800","o":"830","c":"840","v":"1000","q":"840000"}}"#;
+        let parsed = parse_ws_text(msg).expect("parse");
+        match parsed {
+            BinanceWsMessage::Ticker(t) => {
+                assert_eq!(t.symbol, "BTC-USDT");
+                assert_eq!(t.last_price, rust_decimal::Decimal::new(840, 0));
+                assert_eq!(t.price_change, rust_decimal::Decimal::new(10, 0));
+                assert_eq!(t.price_change_percent, rust_decimal::Decimal::new(120, 2));
+                assert_eq!(t.high, rust_decimal::Decimal::new(900, 0));
+                assert_eq!(t.low, rust_decimal::Decimal::new(800, 0));
+                assert_eq!(t.volume, rust_decimal::Decimal::new(1000, 0));
+                assert_eq!(t.event_time, 1_700_000_000_000);
+            }
+            _ => panic!("expected ticker"),
+        }
+    }
+
+    #[test]
+    fn parses_trade_payload() {
+        let msg = r#"{"stream":"btcusdt@trade","data":{"e":"trade","E":1700000000000,"s":"BTCUSDT","t":42,"p":"840.10","q":"0.5","T":1700000000100,"m":true,"M":true}}"#;
+        let parsed = parse_ws_text(msg).expect("parse");
+        match parsed {
+            BinanceWsMessage::Trade(t) => {
+                assert_eq!(t.symbol, "BTC-USDT");
+                assert_eq!(t.price, rust_decimal::Decimal::new(84010, 2));
+                assert_eq!(t.quantity, rust_decimal::Decimal::new(5, 1));
+                assert_eq!(t.trade_time, 1_700_000_000_100);
+                assert!(t.is_buyer_maker);
+            }
+            _ => panic!("expected trade"),
+        }
+    }
+
+    #[test]
+    fn parses_partial_book_depth_payload() {
+        let msg = r#"{"stream":"btcusdt@depth20@100ms","data":{"lastUpdateId":160,"bids":[["100.00","1.5"]],"asks":[["101.00","2.5"]]}}"#;
+        let parsed = parse_ws_text(msg).expect("parse");
+        match parsed {
+            BinanceWsMessage::OrderBook(d) => {
+                assert_eq!(d.symbol, "BTC-USDT");
+                assert_eq!(d.bids.len(), 1);
+                assert_eq!(
+                    d.bids[0],
+                    (
+                        rust_decimal::Decimal::new(10000, 2),
+                        rust_decimal::Decimal::new(15, 1)
+                    )
+                );
+                assert_eq!(d.asks.len(), 1);
+                assert_eq!(
+                    d.asks[0],
+                    (
+                        rust_decimal::Decimal::new(10100, 2),
+                        rust_decimal::Decimal::new(25, 1)
+                    )
+                );
+            }
+            _ => panic!("expected orderbook"),
+        }
     }
 
     #[test]

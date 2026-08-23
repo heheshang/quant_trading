@@ -115,10 +115,10 @@ function signClass(value: number): string {
 }
 
 .stat-value.positive {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .stat-value.negative {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 </style>

@@ -36,16 +36,24 @@ impl ConfigService {
 
     #[instrument(skip(self, new_config))]
     pub async fn update_config(&self, new_config: AppConfig) -> String {
+        // Preserve existing secret values when the incoming config has them
+        // blanked (e.g. a redacted config round-tripped from the UI), so the
+        // running database / exchange / JWT secrets are not clobbered.
+        let restored = {
+            let cfg = self.config.read().await;
+            new_config.with_secrets_from(&cfg)
+        };
+
         // Update in-memory state
         {
             let mut cfg = self.config.write().await;
-            *cfg = new_config.clone();
+            *cfg = restored.clone();
         }
         info!("Config updated in memory");
 
         // Persist to file if a config path is configured
         if let Some(ref path) = self.config_path {
-            let toml_str = toml::to_string(&new_config).unwrap_or_else(|e| {
+            let toml_str = toml::to_string(&restored).unwrap_or_else(|e| {
                 warn!("Failed to serialize config: {}", e);
                 String::new()
             });

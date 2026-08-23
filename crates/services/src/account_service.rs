@@ -178,6 +178,42 @@ impl AccountService {
         Ok(())
     }
 
+    /// Cancel an order persisted in the database (sets status to 'Cancelled').
+    ///
+    /// Only transitions orders that are still active (not already filled,
+    /// cancelled, rejected or expired). Returns `NotFound` when the order is
+    /// absent or already in a terminal state.
+    #[instrument(skip(self), fields(order_id = %order_id))]
+    pub async fn cancel_order(&self, order_id: i64) -> ServiceResult<()> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+
+        let result = sqlx::query(
+            r#"
+            UPDATE orders
+            SET status = 'Cancelled', updated_at = NOW()
+            WHERE order_id = $1
+              AND status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
+            "#,
+        )
+        .bind(order_id)
+        .execute(pool)
+        .await
+        .map_err(ServiceError::Database)?;
+
+        if result.rows_affected() == 0 {
+            return Err(ServiceError::NotFound(format!(
+                "Active order not found: {}",
+                order_id
+            )));
+        }
+
+        Ok(())
+    }
+
     #[instrument(skip_all)]
     pub async fn get_positions(&self) -> ServiceResult<Vec<Position>> {
         let client = self
@@ -266,6 +302,17 @@ mod tests {
             slippage: rust_decimal::Decimal::ZERO,
         };
         let result = svc.persist_order(&order, &0).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ServiceError::DatabaseNotConnected
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_cancel_order_no_db() {
+        let svc = AccountService::new(None);
+        let result = svc.cancel_order(123).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),

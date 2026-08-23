@@ -35,6 +35,18 @@
           />
         </el-form-item>
         
+        <el-form-item v-if="needs2FA" prop="code">
+          <el-input
+            v-model="loginForm.code"
+            placeholder="请输入 2FA 动态验证码"
+            prefix-icon="Key"
+            size="large"
+            maxlength="6"
+            @keyup.enter="handleLogin"
+          />
+          <div class="twofa-hint">该账户已启用二次验证，请输入验证码完成登录</div>
+        </el-form-item>
+        
         <el-form-item>
           <el-checkbox v-model="loginForm.remember">记住我</el-checkbox>
         </el-form-item>
@@ -72,8 +84,11 @@ const loginFormRef = ref<FormInstance>();
 const loginForm = reactive({
   username: '',
   password: '',
-  remember: false
+  remember: false,
+  code: ''
 });
+
+const needs2FA = ref(false);
 
 const loginRules = {
   username: [
@@ -83,11 +98,20 @@ const loginRules = {
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, max: 30, message: '密码长度应在6-30个字符之间', trigger: 'blur' }
+  ],
+  code: [
+    { required: true, message: '请输入 2FA 验证码', trigger: 'blur' }
   ]
 };
 
 async function handleLogin() {
   if (!loginFormRef.value) return;
+
+  // When 2FA is required the code field is mandatory before resubmitting.
+  if (needs2FA.value && !loginForm.code.trim()) {
+    ElMessage.warning('请输入 2FA 动态验证码');
+    return;
+  }
 
   await loginFormRef.value.validate(async (valid) => {
     if (!valid) return;
@@ -97,11 +121,20 @@ async function handleLogin() {
         loginForm.username,
         loginForm.password,
         loginForm.remember,
+        needs2FA.value ? loginForm.code : undefined,
       );
+      needs2FA.value = false;
+      loginForm.code = '';
       ElMessage.success('登录成功');
       router.push(redirectPath);
     } catch (error) {
-      ElMessage.error('登录失败: ' + (error as Error).message);
+      const message = (error as Error).message || '';
+      // A "2FA code required" error flips the form into its second factor
+      // step, revealing the code input for resubmission.
+      if (message.includes('2FA')) {
+        needs2FA.value = true;
+      }
+      ElMessage.error('登录失败: ' + message);
     }
   });
 }
@@ -161,6 +194,12 @@ onMounted(async () => {
 
 .login-button {
   width: 100%;
+}
+.twofa-hint {
+  font-size: 12px;
+  color: var(--el-color-warning, #e6a23c);
+  margin-top: 6px;
+  line-height: 1.4;
 }
 
 .login-footer {

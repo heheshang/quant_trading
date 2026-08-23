@@ -197,6 +197,17 @@ impl StrategyService {
             .on_start()
             .await
             .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        // Fail-closed: refuse to mark the strategy Running when the scheduler is
+        // not wired for live trading, so the UI never shows "Running" while the
+        // strategy is actually idling.
+        if let Some(ref scheduler) = self.scheduler {
+            if !scheduler.trading_ready() {
+                return Err(ServiceError::Scheduler(
+                    "Scheduler not configured for live trading (missing pipeline or market data provider)"
+                        .to_string(),
+                ));
+            }
+        }
         self.cas_status(strategy_id, target, current_status).await?;
 
         // Register with scheduler AFTER successful DB update
@@ -333,6 +344,16 @@ impl StrategyService {
             .on_resume()
             .await
             .map_err(|e| ServiceError::Strategy(e.to_string()))?;
+        // Fail-closed: refuse to mark the strategy Running when the scheduler is
+        // not wired for live trading (see `start_strategy`).
+        if let Some(ref scheduler) = self.scheduler {
+            if !scheduler.trading_ready() {
+                return Err(ServiceError::Scheduler(
+                    "Scheduler not configured for live trading (missing pipeline or market data provider)"
+                        .to_string(),
+                ));
+            }
+        }
         self.cas_status(strategy_id, target, current_status).await?;
 
         // Re-register with scheduler AFTER successful DB update

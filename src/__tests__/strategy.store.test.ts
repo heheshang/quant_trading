@@ -27,11 +27,11 @@ function createMockStrategy(overrides: Partial<Record<string, unknown>> = {}): S
 const mockStrategies = [
   createMockStrategy({ strategy_id: 's1', strategy_name: 'Running Strategy', strategy_type: 'TrendFollowing', enabled: true, status: 'Running' }),
   createMockStrategy({ strategy_id: 's2', strategy_name: 'Draft Strategy', strategy_type: 'MeanReversion', enabled: false, status: 'Draft' }),
-  createMockStrategy({ strategy_id: 's3', strategy_name: 'Paused Strategy', strategy_type: 'Arbitrage', enabled: true, status: 'Paused' }),
-  createMockStrategy({ strategy_id: 's4', strategy_name: 'No Status Strategy', strategy_type: 'Custom', enabled: false }), // status undefined
-  createMockStrategy({ strategy_id: 's5', strategy_name: 'Archived Strategy', strategy_type: 'MarketMaking', enabled: false, status: 'Archived' }),
-  createMockStrategy({ strategy_id: 's6', strategy_name: 'Deployed Strategy', strategy_type: 'Statistical', enabled: true, status: 'Deployed' }),
-  createMockStrategy({ strategy_id: 's7', strategy_name: 'Backtesting Strategy', strategy_type: 'MachineLearning', enabled: true, status: 'Backtesting' }),
+  createMockStrategy({ strategy_id: 's3', strategy_name: 'Paused Strategy', strategy_type: 'TrendFollowing', enabled: true, status: 'Paused' }),
+  createMockStrategy({ strategy_id: 's4', strategy_name: 'No Status Strategy', strategy_type: 'MeanReversion', enabled: false }), // status undefined
+  createMockStrategy({ strategy_id: 's5', strategy_name: 'Archived Strategy', strategy_type: 'TrendFollowing', enabled: false, status: 'Archived' }),
+  createMockStrategy({ strategy_id: 's6', strategy_name: 'Deployed Strategy', strategy_type: 'MeanReversion', enabled: true, status: 'Deployed' }),
+  createMockStrategy({ strategy_id: 's7', strategy_name: 'Backtesting Strategy', strategy_type: 'TrendFollowing', enabled: true, status: 'Backtesting' }),
 ]
 
 const mockStrategyTypes: StrategyTypeInfo[] = [

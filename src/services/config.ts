@@ -4,7 +4,7 @@ import type { AppConfig } from './types'
 /**
  * Application configuration service.
  *
- * Read/update the global `AppConfig` that controls database/Redis/trading/risk/OKX/security settings.
+ * Read/update the global `AppConfig` that controls database/Redis/trading/risk/security settings.
  */
 
 export function getConfig(): Promise<AppConfig> {

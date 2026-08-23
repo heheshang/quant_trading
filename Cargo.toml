@@ -8,7 +8,6 @@ members = [
     "crates/monitor-layer",
     "crates/common",
     "crates/security",
-    "crates/exchange-okx",
     "crates/exchange-binance",
     "crates/domain",
     "crates/repository",
@@ -100,4 +99,3 @@ lazy_static = "1.4"
 # Mathematical computations
 ndarray = "0.15"
 statrs = "0.16"
-okx = "0.1.9"

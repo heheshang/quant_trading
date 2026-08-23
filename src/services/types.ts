@@ -235,11 +235,6 @@ export interface StrategyTypeInfo {
 export type StrategyType =
   | 'TrendFollowing'
   | 'MeanReversion'
-  | 'Arbitrage'
-  | 'MarketMaking'
-  | 'Statistical'
-  | 'MachineLearning'
-  | 'Custom'
 
 export interface BacktestResult {
   id?: number
@@ -312,7 +307,6 @@ export interface AppConfig {
   risk: RiskConfig
   monitoring: MonitoringConfig
   security: SecurityConfig
-  okx: OkxConfig
   binance?: BinanceConfig
 }
 
@@ -368,78 +362,11 @@ export interface SecurityConfig {
   allowed_ips: string[]
 }
 
-export interface OkxConfig {
-  api_key: string
-  api_secret: string
-  passphrase: string
-  environment: string
-  enable: boolean
-}
-
 export interface BinanceConfig {
   api_key: string
   api_secret: string
   environment: string
   enable: boolean
-}
-
-// ── OKX View Types (匹配 Rust serde camelCase 输出) ──
-
-export interface OkxBalance {
-  ccy: string
-  eq: number
-  cashBal: number
-  availEq: number
-  frozenBal: number
-}
-
-export interface OkxPosition {
-  instId: string
-  pos: number
-  availPos: number
-  avgPx: number
-  upl: number
-  uplRatio: number
-}
-
-export interface OkxPlaceOrderRequest {
-  instId: string
-  tdMode: string
-  side: string
-  ordType: string
-  sz: string
-  px?: string
-  clOrdId?: string
-  tag?: string
-  posSide?: string
-  ccy?: string
-  pxUsd?: string
-  pxVol?: string
-  reduceOnly?: boolean
-  tgtCcy?: string
-}
-
-export interface OkxOrder {
-  ordId: string
-  clOrdId: string
-  instId: string
-  side: string
-  ordType: string
-  px: number
-  sz: number
-  state: string
-  avgPx: number
-  accFillSz: number
-  uTime: string
-}
-
-export interface OkxCandle {
-  ts: string
-  o: number
-  h: number
-  l: number
-  c: number
-  vol: number
 }
 
 // ── Binance ──
@@ -475,7 +402,6 @@ export interface BinancePlaceOrderRequest {
   price?: number
   quantity: number
 }
-
 export interface BinanceOrder {
   symbol: string
   order_id: number
@@ -484,10 +410,34 @@ export interface BinanceOrder {
   executed_qty: number
   cummulative_quote_qty: number
   price: number
+  side?: string
+  order_type?: string
+  orig_qty?: number
+  time?: number
+  update_time?: number
+}
+
+export interface BinancePosition {
+  symbol: string
+  position_amt: number
+  entry_price: number
+  mark_price: number
+  un_realized_profit: number
+  liquidation_price: number
+  leverage: string
+  margin_type: string
+  notional: number
+  position_side: string
 }
 
 export interface BinanceStatus {
   connected: boolean
+}
+
+export interface BinanceWsDepth {
+  symbol: string
+  bids: [number, number][]
+  asks: [number, number][]
 }
 
 export interface BinanceWsKline {
@@ -502,91 +452,23 @@ export interface BinanceWsKline {
   is_closed: boolean
 }
 
-export interface BinanceWsDepth {
+export interface BinanceWsTicker {
   symbol: string
-  bids: [number, number][]
-  asks: [number, number][]
+  last_price: number
+  price_change: number
+  price_change_percent: number
+  high: number
+  low: number
+  open: number
+  volume: number
+  quote_volume: number
+  event_time: number
 }
 
-export interface OkxInstrument {
-  instId: string
-  instType: string
-  uly: string
-  baseCcy: string
-  quoteCcy: string
-  ctVal: number
-  tickSz: string
-  lotSz: number
-  minSz: number
-}
-
-export interface OkxAnnouncementDetail {
-  ann_type?: string
-  p_time?: string
-  title?: string
-  url?: string
-  [key: string]: unknown
-}
-
-export interface OkxAnnouncementPage {
-  details?: OkxAnnouncementDetail[]
-  total_page?: string
-  [key: string]: unknown
-}
-
-export interface OkxConnectionStatus {
-  connected: boolean
-  demo_trading: boolean
-  environment?: string
-  has_credentials?: boolean
-  exchange_time?: string | null
-  message?: string | null
-  [key: string]: unknown
-}
-
-export interface WsTicker {
-  inst_id: string
-  last: string
-  last_sz: string
-  ask_px: string
-  ask_sz: string
-  bid_px: string
-  bid_sz: string
-  open24h: string
-  high24h: string
-  low24h: string
-  vol24h: string
-  ts: string
-}
-
-export interface WsTrade {
-  inst_id: string
-  px: string
-  sz: string
-  side: string
-  ts: string
-}
-
-export interface WsOrderBook {
-  inst_id: string
-  asks: [string, string][]
-  bids: [string, string][]
-  ts: string
-}
-
-export interface WsCandle {
-  inst_id: string
-  o: string
-  h: string
-  l: string
-  c: string
-  vol: string
-  ts: string
-}
-
-export type WsConnectionStatus = 'connected' | 'reconnecting' | 'disconnected'
-
-export interface ConnectionStatusEvent {
-  status: WsConnectionStatus
-  retry_in?: number
+export interface BinanceWsTrade {
+  symbol: string
+  price: number
+  quantity: number
+  trade_time: number
+  is_buyer_maker: boolean
 }

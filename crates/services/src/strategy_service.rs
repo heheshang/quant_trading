@@ -1,7 +1,7 @@
 use crate::error::{ServiceError, ServiceResult};
 use crate::market_data_provider::MarketDataProvider;
 use quant_common::types::{
-    ParamType, ParameterSchema, StrategyParams, StrategyStatus, StrategyType,
+    MarketData, ParamType, ParameterSchema, StrategyParams, StrategyStatus, StrategyType,
 };
 use quant_repository::StrategyRepository as StRepo;
 use quant_repository::{BacktestRepository, PostgresClient};
@@ -446,6 +446,37 @@ impl StrategyService {
         };
 
         Ok((type_str, strategy, params))
+    }
+
+    /// 为参数优化准备输入：返回策略类型字符串与回测所需的市场数据。
+    #[instrument(skip(self), fields(strategy_id = %strategy_id))]
+    pub async fn prepare_optimization_input(
+        &self,
+        strategy_id: &str,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+    ) -> ServiceResult<(String, Vec<MarketData>)> {
+        let repo = self
+            .strategy_repo
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let params = repo.find_by_id(strategy_id).await?.ok_or_else(|| {
+            error!("Strategy '{}' not found", strategy_id);
+            ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
+        })?;
+
+        let type_str = format!("{:?}", params.strategy_type);
+        let symbol = Self::resolve_backtest_symbol(&params.symbols, &params);
+
+        let provider = self.market_data_provider.as_ref().ok_or_else(|| {
+            error!("Market data provider not initialized for optimization");
+            ServiceError::DataSource("Market data provider not initialized".to_string())
+        })?;
+        let market_data = provider
+            .get_historical_data(&symbol, start, end)
+            .await
+            .map_err(ServiceError::DataSource)?;
+        Ok((type_str, market_data))
     }
 }
 

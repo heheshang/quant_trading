@@ -137,4 +137,61 @@ describe('Login.vue - 按钮测试', () => {
     await new Promise(r => setTimeout(r, 100))
     expect(mockRouterPush).toHaveBeenCalledWith('/dashboard')
   })
+  it('登录需要 2FA 时显示验证码输入框', async () => {
+    mockInvoke.mockRejectedValue(new Error('Two-factor authentication (2FA) code required'))
+
+    const wrapper = await mountLogin()
+    wrapper.vm.loginForm.username = 'admin'
+    wrapper.vm.loginForm.password = 'admin123'
+
+    await wrapper.vm.handleLogin()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.needs2FA).toBe(true)
+    expect(wrapper.find('.twofa-hint').exists()).toBe(true)
+  })
+
+  it('登录需要 2FA 时携带 code 重新提交', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('Two-factor authentication (2FA) code required'))
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'login') return 'test-token-123'
+      if (cmd === 'verify_token') return true
+      return {}
+    })
+
+    const wrapper = await mountLogin()
+    wrapper.vm.loginForm.username = 'admin'
+    wrapper.vm.loginForm.password = 'admin123'
+
+    await wrapper.vm.handleLogin()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.needs2FA).toBe(true)
+
+    wrapper.vm.loginForm.code = '123456'
+    await wrapper.vm.handleLogin()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    const loginCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'login')
+    expect((loginCalls[1][1] as Record<string, unknown>).code).toBe('123456')
+    expect(wrapper.vm.needs2FA).toBe(false)
+  })
+
+  it('登录失败但非 2FA 时不显示验证码输入框', async () => {
+    mockInvoke.mockRejectedValue(new Error('用户名或密码错误'))
+
+    const wrapper = await mountLogin()
+    wrapper.vm.loginForm.username = 'admin'
+    wrapper.vm.loginForm.password = 'admin123'
+
+    await wrapper.vm.handleLogin()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.needs2FA).toBe(false)
+    expect(wrapper.find('.twofa-hint').exists()).toBe(false)
+  })
 })

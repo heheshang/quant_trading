@@ -240,10 +240,10 @@ function signClass(value: number | null | undefined): string {
 }
 
 :deep(.positive) {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 :deep(.negative) {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 </style>

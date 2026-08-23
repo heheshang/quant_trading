@@ -5,7 +5,7 @@ use sqlx::PgPool;
 use tracing::instrument;
 
 /// A single K-line record as stored in the market_data partitioned table
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
 pub struct MarketDataRecord {
     pub id: i64,
     pub instrument_id: String,
@@ -16,6 +16,66 @@ pub struct MarketDataRecord {
     pub low: Decimal,
     pub close: Decimal,
     pub volume: Decimal,
+    pub created_at: Option<DateTime<Utc>>,
+}
+/// A single ticker snapshot row — maps 1:1 to `ticker_snapshots`.
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct TickerSnapshotRecord {
+    pub instrument_id: String,
+    pub ts: DateTime<Utc>,
+    pub last_px: Option<Decimal>,
+    pub open_24h: Option<Decimal>,
+    pub high_24h: Option<Decimal>,
+    pub low_24h: Option<Decimal>,
+    pub vol_24h: Option<Decimal>,
+    pub vol_ccy_24h: Option<Decimal>,
+    pub change_24h: Option<Decimal>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// A single account snapshot row — maps 1:1 to `account_snapshots`.
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct AccountSnapshotRecord {
+    pub ccy: String,
+    pub ts: DateTime<Utc>,
+    pub eq: Option<Decimal>,
+    pub cash_bal: Option<Decimal>,
+    pub avail_eq: Option<Decimal>,
+    pub frozen_bal: Option<Decimal>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// A single position snapshot row — maps 1:1 to `position_snapshots`.
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct PositionSnapshotRecord {
+    pub inst_id: String,
+    pub ts: DateTime<Utc>,
+    pub pos: Option<Decimal>,
+    pub avg_px: Option<Decimal>,
+    pub upl: Option<Decimal>,
+    pub upl_ratio: Option<Decimal>,
+    pub mark_px: Option<Decimal>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// A single funding rate row — maps 1:1 to `funding_rates`.
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct FundingRateRecord {
+    pub inst_id: String,
+    pub ts: DateTime<Utc>,
+    pub funding_rate: Option<Decimal>,
+    pub next_funding_rate: Option<Decimal>,
+    pub funding_time: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// A single mark price row — maps 1:1 to `mark_prices`.
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct MarkPriceRecord {
+    pub inst_id: String,
+    pub ts: DateTime<Utc>,
+    pub mark_px: Option<Decimal>,
+    pub idx_px: Option<Decimal>,
     pub created_at: Option<DateTime<Utc>>,
 }
 
@@ -225,6 +285,161 @@ impl MarketDataRepository {
 
         Ok(rows_affected.rows_affected() as u64)
     }
+    /// Query ticker snapshots by instrument, optional time range, newest first.
+    #[instrument(skip(self), fields(instrument_id = %instrument_id, from = ?from, to = ?to))]
+    pub async fn query_ticker_snapshots(
+        &self,
+        instrument_id: &str,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+        limit: Option<i64>,
+    ) -> Result<Vec<TickerSnapshotRecord>> {
+        let max_rows = limit.unwrap_or(1000);
+        let records = sqlx::query_as::<_, TickerSnapshotRecord>(
+            r#"
+            SELECT instrument_id, ts, last_px, open_24h, high_24h, low_24h,
+                   vol_24h, vol_ccy_24h, change_24h, created_at
+            FROM ticker_snapshots
+            WHERE instrument_id = $1
+              AND ($2::timestamptz IS NULL OR ts >= $2)
+              AND ($3::timestamptz IS NULL OR ts <= $3)
+            ORDER BY ts DESC
+            LIMIT $4
+            "#,
+        )
+        .bind(instrument_id)
+        .bind(from)
+        .bind(to)
+        .bind(max_rows)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query ticker_snapshots: {}", e)))?;
+        Ok(records)
+    }
+
+    /// Query account snapshots by currency, optional time range, newest first.
+    #[instrument(skip(self), fields(ccy = %ccy, from = ?from, to = ?to))]
+    pub async fn query_account_snapshots(
+        &self,
+        ccy: &str,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+        limit: Option<i64>,
+    ) -> Result<Vec<AccountSnapshotRecord>> {
+        let max_rows = limit.unwrap_or(1000);
+        let records = sqlx::query_as::<_, AccountSnapshotRecord>(
+            r#"
+            SELECT ccy, ts, eq, cash_bal, avail_eq, frozen_bal, created_at
+            FROM account_snapshots
+            WHERE ccy = $1
+              AND ($2::timestamptz IS NULL OR ts >= $2)
+              AND ($3::timestamptz IS NULL OR ts <= $3)
+            ORDER BY ts DESC
+            LIMIT $4
+            "#,
+        )
+        .bind(ccy)
+        .bind(from)
+        .bind(to)
+        .bind(max_rows)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query account_snapshots: {}", e)))?;
+        Ok(records)
+    }
+
+    /// Query position snapshots by instrument, optional time range, newest first.
+    #[instrument(skip(self), fields(inst_id = %inst_id, from = ?from, to = ?to))]
+    pub async fn query_position_snapshots(
+        &self,
+        inst_id: &str,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+        limit: Option<i64>,
+    ) -> Result<Vec<PositionSnapshotRecord>> {
+        let max_rows = limit.unwrap_or(1000);
+        let records = sqlx::query_as::<_, PositionSnapshotRecord>(
+            r#"
+            SELECT inst_id, ts, pos, avg_px, upl, upl_ratio, mark_px, created_at
+            FROM position_snapshots
+            WHERE inst_id = $1
+              AND ($2::timestamptz IS NULL OR ts >= $2)
+              AND ($3::timestamptz IS NULL OR ts <= $3)
+            ORDER BY ts DESC
+            LIMIT $4
+            "#,
+        )
+        .bind(inst_id)
+        .bind(from)
+        .bind(to)
+        .bind(max_rows)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query position_snapshots: {}", e)))?;
+        Ok(records)
+    }
+
+    /// Query funding rates by instrument, optional time range, newest first.
+    #[instrument(skip(self), fields(inst_id = %inst_id, from = ?from, to = ?to))]
+    pub async fn query_funding_rates(
+        &self,
+        inst_id: &str,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+        limit: Option<i64>,
+    ) -> Result<Vec<FundingRateRecord>> {
+        let max_rows = limit.unwrap_or(1000);
+        let records = sqlx::query_as::<_, FundingRateRecord>(
+            r#"
+            SELECT inst_id, ts, funding_rate, next_funding_rate, funding_time, created_at
+            FROM funding_rates
+            WHERE inst_id = $1
+              AND ($2::timestamptz IS NULL OR ts >= $2)
+              AND ($3::timestamptz IS NULL OR ts <= $3)
+            ORDER BY ts DESC
+            LIMIT $4
+            "#,
+        )
+        .bind(inst_id)
+        .bind(from)
+        .bind(to)
+        .bind(max_rows)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query funding_rates: {}", e)))?;
+        Ok(records)
+    }
+
+    /// Query mark prices by instrument, optional time range, newest first.
+    #[instrument(skip(self), fields(inst_id = %inst_id, from = ?from, to = ?to))]
+    pub async fn query_mark_prices(
+        &self,
+        inst_id: &str,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+        limit: Option<i64>,
+    ) -> Result<Vec<MarkPriceRecord>> {
+        let max_rows = limit.unwrap_or(1000);
+        let records = sqlx::query_as::<_, MarkPriceRecord>(
+            r#"
+            SELECT inst_id, ts, mark_px, idx_px, created_at
+            FROM mark_prices
+            WHERE inst_id = $1
+              AND ($2::timestamptz IS NULL OR ts >= $2)
+              AND ($3::timestamptz IS NULL OR ts <= $3)
+            ORDER BY ts DESC
+            LIMIT $4
+            "#,
+        )
+        .bind(inst_id)
+        .bind(from)
+        .bind(to)
+        .bind(max_rows)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query mark_prices: {}", e)))?;
+        Ok(records)
+    }
 }
 
 /// Input struct for inserting new K-line data
@@ -342,5 +557,85 @@ mod tests {
 
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].instrument_id, records[1].instrument_id);
+    }
+    #[test]
+    fn test_ticker_snapshot_record_fields() {
+        let now = Utc::now();
+        let rec = TickerSnapshotRecord {
+            instrument_id: "BTC-USDT".to_string(),
+            ts: now,
+            last_px: Some(Decimal::new(50000, 2)),
+            open_24h: Some(Decimal::new(49900, 2)),
+            high_24h: Some(Decimal::new(51000, 2)),
+            low_24h: Some(Decimal::new(49000, 2)),
+            vol_24h: Some(Decimal::new(1000, 0)),
+            vol_ccy_24h: Some(Decimal::new(50, 0)),
+            change_24h: Some(Decimal::new(2, 2)),
+            created_at: Some(now),
+        };
+        assert_eq!(rec.instrument_id, "BTC-USDT");
+        assert_eq!(rec.last_px, Some(Decimal::new(50000, 2)));
+        assert!(rec.created_at.is_some());
+    }
+
+    #[test]
+    fn test_funding_rate_record_fields() {
+        let now = Utc::now();
+        let rec = FundingRateRecord {
+            inst_id: "BTC-USDT-SWAP".to_string(),
+            ts: now,
+            funding_rate: Some(Decimal::new(1, 4)),
+            next_funding_rate: Some(Decimal::new(2, 4)),
+            funding_time: Some(now),
+            created_at: Some(now),
+        };
+        assert_eq!(rec.inst_id, "BTC-USDT-SWAP");
+        assert!(rec.funding_rate.is_some());
+    }
+
+    #[test]
+    fn test_mark_price_record_fields() {
+        let now = Utc::now();
+        let rec = MarkPriceRecord {
+            inst_id: "ETH-USDT".to_string(),
+            ts: now,
+            mark_px: Some(Decimal::new(3050, 2)),
+            idx_px: Some(Decimal::new(3049, 2)),
+            created_at: Some(now),
+        };
+        assert_eq!(rec.mark_px, Some(Decimal::new(3050, 2)));
+    }
+
+    #[test]
+    fn test_account_snapshot_record_fields() {
+        let now = Utc::now();
+        let rec = AccountSnapshotRecord {
+            ccy: "USDT".to_string(),
+            ts: now,
+            eq: Some(Decimal::new(100000, 0)),
+            cash_bal: Some(Decimal::new(90000, 0)),
+            avail_eq: Some(Decimal::new(85000, 0)),
+            frozen_bal: Some(Decimal::new(5000, 0)),
+            created_at: Some(now),
+        };
+        assert_eq!(rec.ccy, "USDT");
+        assert_eq!(rec.eq, Some(Decimal::new(100000, 0)));
+    }
+
+    #[test]
+    fn test_position_snapshot_record_fields() {
+        let now = Utc::now();
+        let rec = PositionSnapshotRecord {
+            inst_id: "BTC-USDT-SWAP".to_string(),
+            ts: now,
+            pos: Some(Decimal::new(2, 0)),
+            avg_px: Some(Decimal::new(50000, 2)),
+            upl: Some(Decimal::new(1000, 0)),
+            upl_ratio: Some(Decimal::new(1, 2)),
+            mark_px: Some(Decimal::new(50500, 2)),
+            created_at: Some(now),
+        };
+        assert_eq!(rec.inst_id, "BTC-USDT-SWAP");
+        assert_eq!(rec.pos, Some(Decimal::new(2, 0)));
     }
 }

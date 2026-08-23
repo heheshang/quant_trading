@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 const mockVerifyToken = vi.fn()
+const mockLogin = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  login: vi.fn(),
+  login: mockLogin,
   verifyToken: mockVerifyToken,
 }))
 
@@ -14,6 +15,7 @@ describe('auth store session restore', () => {
     localStorage.clear()
     setActivePinia(createPinia())
     mockVerifyToken.mockReset()
+    mockLogin.mockReset()
   })
 
   it('clears the persisted session when the token is invalid', async () => {
@@ -49,5 +51,29 @@ describe('auth store session restore', () => {
     expect(authStore.isAuthenticated).toBe(true)
     expect(authStore.token).toBe('persisted-token')
     expect(localStorage.getItem('authToken')).toBe('persisted-token')
+  })
+
+  it('passes a provided 2FA code through to the login API', async () => {
+    mockLogin.mockResolvedValue('token-123')
+    mockVerifyToken.mockResolvedValue(true)
+
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+
+    await authStore.login('admin', 'password123', true, '123456')
+
+    expect(mockLogin).toHaveBeenCalledWith('admin', 'password123', '123456')
+  })
+
+  it('omits the 2FA code when it is not provided', async () => {
+    mockLogin.mockResolvedValue('token-123')
+    mockVerifyToken.mockResolvedValue(true)
+
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+
+    await authStore.login('admin', 'password123', false)
+
+    expect(mockLogin).toHaveBeenCalledWith('admin', 'password123', undefined)
   })
 })

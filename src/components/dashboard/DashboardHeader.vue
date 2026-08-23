@@ -12,7 +12,7 @@
             end-placeholder="结束日期"
             size="small"
             @update:model-value="emit('update:dateRange', $event)"
-            style="width: 240px; margin-right: 8px"
+            class="date-range"
           />
           <el-button type="primary" @click="emit('refresh')" :loading="loading">
             刷新数据
@@ -41,10 +41,49 @@ const emit = defineEmits<{
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
 .header-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.date-range {
+  width: 240px;
+  margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-header h2 {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .header-controls {
+    width: 100%;
+  }
+
+  .date-range {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .header-controls :deep(.el-button) {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .header-controls :deep(.el-date-editor) {
+    width: 100% !important;
+  }
 }
 </style>

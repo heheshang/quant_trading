@@ -57,12 +57,7 @@ GRANT ALL PRIVILEGES ON DATABASE quant_trading TO quant;
 docker run -d -p 6379:6379 redis:latest
 ```
 
-#### InfluxDB（可选）
-```bash
-# Docker 安装
-docker run -d -p 8086:8086 influxdb:2.7
-# 访问 http://localhost:8086 初始化
-```
+> 历史行情不使用 InfluxDB，直接存储在 PostgreSQL 分区表中。
 
 ### 3. 配置环境变量
 

@@ -11,6 +11,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { useFormatting } from '@/composables/useFormatting'
+import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
 const props = defineProps<{
   equityHistory?: [string, number][]
@@ -33,7 +34,10 @@ function initChart() {
   if (!chartRef.value) return
   chart = echarts.init(chartRef.value)
 
+  const theme = useChartTheme().palette.value
+
   if (props.equityHistory && props.equityHistory.length > 0) {
+    const lineColor = getChartSeriesColors().blue
     const dates = props.equityHistory.map(([d]) =>
       new Date(d).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
     )
@@ -46,10 +50,19 @@ function initChart() {
           return `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`
         },
       },
-      xAxis: { type: 'category', data: dates },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: { color: theme.axisLabel },
+        axisLine: { lineStyle: { color: theme.axisLabel } },
+      },
       yAxis: {
         type: 'value',
-        axisLabel: { formatter: (v: number) => '¥' + (v / 10000).toFixed(0) + '万' },
+        axisLabel: {
+          color: theme.axisLabel,
+          formatter: (v: number) => '¥' + (v / 10000).toFixed(0) + '万',
+        },
+        splitLine: { lineStyle: { color: theme.splitLine } },
       },
       series: [
         {
@@ -58,7 +71,7 @@ function initChart() {
           smooth: true,
           areaStyle: {},
           lineStyle: { width: 3 },
-          itemStyle: { color: '#409EFF' },
+          itemStyle: { color: lineColor },
         },
       ],
     })
@@ -68,7 +81,7 @@ function initChart() {
         elements: [{
           type: 'text',
           key: 'no-data',
-          style: { text: '暂无资产历史', fontSize: 16, textAlign: 'center', fill: 'var(--color-text-secondary)' },
+          style: { text: '暂无资产历史', fontSize: 16, textAlign: 'center', fill: theme.axisLabel },
           position: ['50%', '50%'],
         }],
       },

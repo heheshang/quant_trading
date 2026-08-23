@@ -12,6 +12,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { useFormatting } from '@/composables/useFormatting'
 import type { Position } from '@/services/types'
+import { useChartTheme } from '@/composables/useChartTheme'
 
 const props = defineProps<{
   positions: Position[]
@@ -63,7 +64,7 @@ function initChart() {
         elements: [{
           type: 'text',
           key: 'no-data',
-          style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: 'var(--color-text-secondary)' },
+          style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: useChartTheme().palette.value.axisLabel },
           position: ['50%', '50%'],
         }],
       },

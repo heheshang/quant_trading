@@ -91,6 +91,8 @@ impl AppConfig {
             env_parse("TOKEN_EXPIRY_HOURS", config.security.token_expiry_hours);
         config.security.enable_2fa = env_parse("ENABLE_2FA", config.security.enable_2fa);
         config.security.allowed_ips = env_csv("ALLOWED_IPS", &config.security.allowed_ips);
+        config.security.encryption_key =
+            env_string("ENCRYPTION_KEY", &config.security.encryption_key);
 
         config.data_puller.enabled = env_parse("DATA_PULLER_ENABLED", config.data_puller.enabled);
         config.data_puller.symbols = env_csv("DATA_PULLER_SYMBOLS", &config.data_puller.symbols);
@@ -185,16 +187,9 @@ impl AppConfig {
         );
 
         // Exchange credentials / toggles (dotenv-injected at startup).
-        config.okx.api_key = env_string("OKX_API_KEY", &config.okx.api_key);
-        config.okx.api_secret = env_string("OKX_API_SECRET", &config.okx.api_secret);
-        config.okx.passphrase = env_string("OKX_PASSPHRASE", &config.okx.passphrase);
-        config.okx.environment = env_string("OKX_ENVIRONMENT", &config.okx.environment);
-        config.okx.enable = env_parse("OKX_ENABLE", config.okx.enable);
-
         config.binance.api_key = env_string("BINANCE_API_KEY", &config.binance.api_key);
         config.binance.api_secret = env_string("BINANCE_API_SECRET", &config.binance.api_secret);
-        config.binance.environment =
-            env_string("BINANCE_ENVIRONMENT", &config.binance.environment);
+        config.binance.environment = env_string("BINANCE_ENVIRONMENT", &config.binance.environment);
         config.binance.enable = env_parse("BINANCE_ENABLE", config.binance.enable);
 
         config

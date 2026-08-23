@@ -10,12 +10,12 @@ VALUES (
 
 -- 插入常用交易标的
 INSERT INTO instruments (symbol, exchange, instrument_type, tick_size) VALUES
-    ('BTC-USDT', 'OKX', 'Spot', 0.01),
-    ('ETH-USDT', 'OKX', 'Spot', 0.01),
-    ('BNB-USDT', 'OKX', 'Spot', 0.001),
-    ('SOL-USDT', 'OKX', 'Spot', 0.001),
-    ('BTC-USDT-SWAP', 'OKX', 'Future', 0.1),
-    ('ETH-USDT-SWAP', 'OKX', 'Future', 0.01)
+    ('BTC-USDT', 'BINANCE', 'Spot', 0.01),
+    ('ETH-USDT', 'BINANCE', 'Spot', 0.01),
+    ('BNB-USDT', 'BINANCE', 'Spot', 0.001),
+    ('SOL-USDT', 'BINANCE', 'Spot', 0.001),
+    ('BTC-USDT-SWAP', 'BINANCE', 'Future', 0.1),
+    ('ETH-USDT-SWAP', 'BINANCE', 'Future', 0.01)
 ON CONFLICT (symbol) DO NOTHING;
 
 -- 为 admin 用户创建模拟账户

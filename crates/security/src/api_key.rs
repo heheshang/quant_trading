@@ -71,7 +71,7 @@ impl ApiKeyManager {
 pub struct ApiCredentials {
     pub api_key: String,
     pub encrypted_secret: String,
-    pub passphrase: Option<String>, // OKX 需要
+    pub passphrase: Option<String>,
     pub exchange: String,
     pub created_at: chrono::DateTime<Utc>,
 }

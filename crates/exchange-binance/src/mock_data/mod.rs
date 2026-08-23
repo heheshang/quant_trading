@@ -1,6 +1,6 @@
 //! Test / demo data for Binance (feature = `test-utils`).
 
-use crate::types::{BinanceBalance, BinanceKline, BinanceOrderBook};
+use crate::types::{BinanceBalance, BinanceKline, BinanceOrder, BinanceOrderBook, BinancePosition};
 use rust_decimal::Decimal;
 
 /// Build a representative kline row (the raw array response shape).
@@ -54,5 +54,37 @@ pub fn sample_order_book() -> BinanceOrderBook {
         symbol: "BTCUSDT".to_string(),
         bids: vec![(Decimal::new(10000, 0), Decimal::new(1, 0))],
         asks: vec![(Decimal::new(10001, 0), Decimal::new(2, 0))],
+    }
+}
+
+pub fn sample_order() -> BinanceOrder {
+    BinanceOrder {
+        symbol: "BTCUSDT".to_string(),
+        order_id: 123,
+        client_order_id: "ord-x".to_string(),
+        status: "NEW".to_string(),
+        executed_qty: Decimal::new(5, 3),
+        cummulative_quote_qty: Decimal::new(250, 0),
+        price: Decimal::new(50_000, 0),
+        side: "BUY".to_string(),
+        order_type: "LIMIT".to_string(),
+        orig_qty: Decimal::new(1, 2),
+        time: 1_700_000_000_000,
+        update_time: 1_700_000_001_000,
+    }
+}
+
+pub fn sample_position() -> BinancePosition {
+    BinancePosition {
+        symbol: "BTCUSDT".to_string(),
+        position_amt: Decimal::new(10, 4),
+        entry_price: Decimal::new(50_000, 0),
+        mark_price: Decimal::new(51_000, 0),
+        un_realized_profit: Decimal::new(1, 0),
+        liquidation_price: Decimal::ZERO,
+        leverage: "10".to_string(),
+        margin_type: "crossed".to_string(),
+        notional: Decimal::new(50, 0),
+        position_side: "BOTH".to_string(),
     }
 }

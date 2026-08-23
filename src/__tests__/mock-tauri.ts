@@ -11,7 +11,7 @@ const mockInvoke = vi.mocked(invoke)
  * to mock several commands at once.
  *
  * @example
- * mockTauriInvoke('get_okx_balance', [{ ccy: 'BTC', avail_bal: 1.5, frozen_bal: 0.5, eq: 2.0 }])
+ * mockTauriInvoke('get_binance_balance', [{ asset: 'BTC', free: 1.5, locked: 0.5 }])
  */
 export function mockTauriInvoke<T>(command: string, returnValue: T): void {
   mockInvoke.mockImplementation(
@@ -26,7 +26,7 @@ export function mockTauriInvoke<T>(command: string, returnValue: T): void {
  * Set up a mock that throws for a specific Tauri command.
  *
  * @example
- * mockTauriInvokeError('get_okx_balance', 'Network error')
+ * mockTauriInvokeError('get_binance_balance', 'Network error')
  */
 export function mockTauriInvokeError(
   command: string,
@@ -46,8 +46,8 @@ export function mockTauriInvokeError(
  *
  * @example
  * mockTauriInvokeMap({
- *   get_okx_balance: [{ ccy: 'BTC', avail_bal: 1.5, frozen_bal: 0.5, eq: 2.0 }],
- *   check_okx_status: { connected: true, demo_trading: true },
+ *   get_binance_balance: [{ asset: 'BTC', free: 1.5, locked: 0.5 }],
+ *   check_binance_status: { connected: true, testnet: true },
  * })
  */
 export function mockTauriInvokeMap(

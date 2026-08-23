@@ -10,11 +10,17 @@
 //!
 //! Migration management is owned by `data_layer::PostgresClient`, not here.
 
+pub mod alerts;
+pub mod api_key;
+pub mod audit;
 pub mod backtest;
 pub mod error;
 pub mod postgres;
 pub mod strategy_repository;
 
+pub use alerts::{AlertRepository, PgAlertRepository};
+pub use api_key::{ApiKeyRecord, ApiKeyRepository, NewApiKey, PgApiKeyRepository};
+pub use audit::{AuditFilter, AuditLogRecord, AuditRepository, NewAuditLog, PgAuditRepository};
 pub use backtest::{BacktestRepository, BacktestResultSummaryRow, PgBacktestRepository};
 pub use error::RepoError;
 pub use postgres::PostgresClient;

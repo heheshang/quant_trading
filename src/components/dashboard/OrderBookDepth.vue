@@ -1,215 +1,131 @@
+<template>
+  <el-card class="order-book-depth" shadow="never">
+    <template #header>
+      <div class="card-header">
+        <span class="title"><el-icon><Files /></el-icon> 订单簿</span>
+        <span v-if="orderBook" class="symbol">{{ orderBook.symbol }}</span>
+      </div>
+    </template>
+
+    <template v-if="orderBook && hasLevels">
+      <div class="depth-columns">
+        <span class="depth-col-h">价格</span>
+        <span class="depth-col-h">数量</span>
+      </div>
+
+      <!-- Asks: lowest ask first (top of the ladder) -->
+      <div class="depth-side asks">
+        <div v-for="row in asksRows" :key="row.price" class="depth-row">
+          <span class="depth-bar ask-bar" :style="{ width: `${row.pct}%` }" />
+          <span class="depth-price ask">{{ row.price }}</span>
+          <span class="depth-qty">{{ row.qty }}</span>
+        </div>
+      </div>
+
+      <div class="depth-spread">
+        <span class="spread-text">价差 {{ spread }}</span>
+      </div>
+
+      <!-- Bids: highest bid first -->
+      <div class="depth-side bids">
+        <div v-for="row in bidsRows" :key="row.price" class="depth-row">
+          <span class="depth-bar bid-bar" :style="{ width: `${row.pct}%` }" />
+          <span class="depth-price bid">{{ row.price }}</span>
+          <span class="depth-qty">{{ row.qty }}</span>
+        </div>
+      </div>
+    </template>
+
+    <EmptyState v-else title="暂无订单簿" description="等待深度数据…" />
+  </el-card>
+</template>
+
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import type { WsOrderBook } from '@/services/types'
+import { computed } from 'vue'
+import { Files } from '@element-plus/icons-vue'
+import type { BinanceWsDepth } from '@/services/types'
+import EmptyState from '@/components/common/EmptyState.vue'
+
+interface DepthRow {
+  price: string
+  qty: string
+  pct: number
+}
 
 const props = defineProps<{
-  symbol: string
+  orderBook: BinanceWsDepth | null
 }>()
 
-const chartRef = ref<HTMLDivElement | null>(null)
-const chartInstance = shallowRef<echarts.ECharts | null>(null)
-const rawOrderbook = shallowRef<WsOrderBook | null>(null)
-const lastUpdateTime = ref<number>(0)
+const MAX_LEVELS = 10
 
-let unlistenFn: UnlistenFn | null = null
-
-interface TooltipParam {
-  marker?: string
-  seriesName?: string
-  data?: [number, number]
-}
-
-function isTooltipParam(p: unknown): p is TooltipParam {
-  return typeof p === 'object' && p !== null
-}
-
-function processAsks(asks: [string, string][]): [number, number][] {
-  const sorted = [...asks].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
-  let cum = 0
-  return sorted.map(([price, size]) => {
-    cum += parseFloat(size)
-    return [parseFloat(price), cum]
+function fmt(value: number): string {
+  const n = Number(value ?? 0)
+  const abs = Math.abs(n)
+  const digits = abs >= 1000 ? 2 : abs >= 1 ? 4 : 8
+  return n.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: digits,
   })
 }
 
-function processBids(bids: [string, string][]): [number, number][] {
-  const sorted = [...bids].sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]))
-  let cum = 0
-  return sorted.map(([price, size]) => {
-    cum += parseFloat(size)
-    return [parseFloat(price), cum]
-  })
+const hasLevels = computed(
+  () => (props.orderBook?.bids?.length ?? 0) > 0 || (props.orderBook?.asks?.length ?? 0) > 0,
+)
+
+function maxQty(): number {
+  const book = props.orderBook
+  if (!book) return 1
+  const all = [...book.bids, ...book.asks].map(([, q]) => Number(q ?? 0))
+  return Math.max(1, ...all)
 }
 
-function buildOption(
-  asksData: [number, number][],
-  bidsData: [number, number][],
-): echarts.EChartsOption {
-  return {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross',
-        crossStyle: {
-          color: 'var(--color-text-secondary)',
-        },
-      },
-      formatter: (params: unknown) => {
-        const lines: string[] = []
-        const items = Array.isArray(params) ? params : []
-        for (const p of items) {
-          if (!isTooltipParam(p)) continue
-          const price = p.data?.[0]
-          const cum = p.data?.[1]
-          if (price != null && cum != null) {
-            lines.push(
-              `${p.marker ?? ''} ${p.seriesName ?? ''}: Price ${price.toFixed(4)}, Cum ${cum.toFixed(4)}`,
-            )
-          }
-        }
-        return lines.join('<br>')
-      },
-    },
-    grid: {
-      left: '3%',
-      right: '3%',
-      bottom: '10%',
-      top: '10%',
-      containLabel: true,
-    },
-    xAxis: {
-      type: 'value',
-      name: 'Price',
-      nameLocation: 'middle',
-      nameGap: 25,
-      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
-      axisLabel: { color: 'var(--color-text-regular)' },
-      splitLine: { lineStyle: { color: '#eee' } },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'Cumulative Quantity',
-      nameLocation: 'middle',
-      nameGap: 45,
-      axisLine: { lineStyle: { color: 'var(--color-text-secondary)' } },
-      axisLabel: { color: 'var(--color-text-regular)' },
-      splitLine: { lineStyle: { color: '#eee' } },
-    },
-    series: [
-      {
-        name: 'Asks',
-        type: 'line',
-        data: asksData,
-        step: 'middle',
-        lineStyle: { color: '#f56c6c', width: 1 },
-        itemStyle: { color: '#f56c6c' },
-        areaStyle: { color: 'rgba(245, 108, 108, 0.15)' },
-        symbol: 'none',
-      },
-      {
-        name: 'Bids',
-        type: 'line',
-        data: bidsData,
-        step: 'middle',
-        lineStyle: { color: '#67c23a', width: 1 },
-        itemStyle: { color: '#67c23a' },
-        areaStyle: { color: 'rgba(103, 194, 58, 0.15)' },
-        symbol: 'none',
-      },
-    ],
-  }
+function toRows(levels: [number, number][]): DepthRow[] {
+  const max = maxQty()
+  return levels.slice(0, MAX_LEVELS).map(([price, qty]) => ({
+    price: fmt(price),
+    qty: fmt(qty),
+    pct: Math.min(100, (Number(qty ?? 0) / max) * 100),
+  }))
 }
 
-function updateChart() {
-  const instance = chartInstance.value
-  const book = rawOrderbook.value
-  if (!instance || !book) return
-
-  const asksData = processAsks(book.asks)
-  const bidsData = processBids(book.bids)
-
-  if (asksData.length === 0 && bidsData.length === 0) return
-
-  instance.setOption(buildOption(asksData, bidsData), { notMerge: true })
-}
-
-function handleOrderbookUpdate(book: WsOrderBook) {
-  const now = Date.now()
-  if (now - lastUpdateTime.value < 500) {
-    return
-  }
-  lastUpdateTime.value = now
-  rawOrderbook.value = book
-  updateChart()
-}
-
-async function setupListener() {
-  unlistenFn = await listen<WsOrderBook>('ws:orderbook', (event) => {
-    const data = event.payload
-    if (data.inst_id !== props.symbol) return
-    handleOrderbookUpdate(data)
-  })
-}
-
-function initChart() {
-  if (!chartRef.value) return
-  if (chartInstance.value) {
-    chartInstance.value.dispose()
-    chartInstance.value = null
-  }
-  chartInstance.value = echarts.init(chartRef.value)
-  const book = rawOrderbook.value
-  if (book && (book.asks.length > 0 || book.bids.length > 0)) {
-    const asksData = processAsks(book.asks)
-    const bidsData = processBids(book.bids)
-    chartInstance.value.setOption(buildOption(asksData, bidsData))
-  }
-}
-
-onMounted(() => {
-  initChart()
-  setupListener()
+const bidsRows = computed(() => {
+  const bids = props.orderBook?.bids ?? []
+  const sortedDesc = [...bids].sort((a, b) => b[0] - a[0])
+  return toRows(sortedDesc)
 })
 
-onUnmounted(() => {
-  if (unlistenFn) {
-    unlistenFn()
-    unlistenFn = null
-  }
-  chartInstance.value?.dispose()
-  chartInstance.value = null
+const asksRows = computed(() => {
+  const asks = props.orderBook?.asks ?? []
+  const sortedAsc = [...asks].sort((a, b) => a[0] - b[0])
+  return toRows(sortedAsc)
+})
+
+const spread = computed(() => {
+  const book = props.orderBook
+  if (!book || !book.bids.length || !book.asks.length) return '-'
+  const bestBid = book.bids[0][0]
+  const bestAsk = book.asks[0][0]
+  return fmt(Math.abs(bestAsk - bestBid))
 })
 </script>
 
-<template>
-  <div class="order-book-depth">
-    <div class="chart-header">
-      <span class="title">Order Book Depth</span>
-      <span class="symbol">{{ symbol }}</span>
-    </div>
-    <div ref="chartRef" class="chart-container"></div>
-  </div>
-</template>
-
 <style scoped>
-.order-book-depth {
-  width: 100%;
+.order-book-depth :deep(.el-card__header) {
+  padding: 12px 16px;
 }
 
-.chart-header {
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #ebeef5;
 }
 
 .title {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary);
 }
 
 .symbol {
@@ -217,8 +133,79 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
 }
 
-.chart-container {
-  height: 400px;
-  width: 100%;
+.depth-columns {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.depth-col-h:first-child {
+  width: 50%;
+  text-align: left;
+}
+
+.depth-col-h:last-child {
+  width: 50%;
+  text-align: right;
+}
+
+.depth-side {
+  position: relative;
+}
+
+.depth-row {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.depth-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  opacity: 0.18;
+}
+
+.ask-bar {
+  background: var(--color-danger);
+}
+
+.bid-bar {
+  background: var(--color-success);
+}
+
+.depth-price,
+.depth-qty {
+  position: relative;
+  z-index: 1;
+}
+
+.depth-price.ask {
+  color: var(--color-danger);
+}
+
+.depth-price.bid {
+  color: var(--color-success);
+}
+
+.depth-qty {
+  color: var(--color-text-secondary);
+}
+
+.depth-spread {
+  text-align: center;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
 }
 </style>

@@ -83,10 +83,10 @@ const buttonType = computed(() => {
 /* 4xx — red */
 .inline-error--4xx {
   background: #fef0f0;
-  border-color: #f56c6c;
+  border-color: var(--color-danger);
 }
 .inline-error--4xx .inline-error-icon {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 .inline-error--4xx .inline-error-text {
   color: #b33a3a;
@@ -95,10 +95,10 @@ const buttonType = computed(() => {
 /* 5xx — orange */
 .inline-error--5xx {
   background: #fdf6ec;
-  border-color: #e6a23c;
+  border-color: var(--color-warning);
 }
 .inline-error--5xx .inline-error-icon {
-  color: #e6a23c;
+  color: var(--color-warning);
 }
 .inline-error--5xx .inline-error-text {
   color: #996b1a;
@@ -107,10 +107,10 @@ const buttonType = computed(() => {
 /* network — orange */
 .inline-error--network {
   background: #fdf6ec;
-  border-color: #e6a23c;
+  border-color: var(--color-warning);
 }
 .inline-error--network .inline-error-icon {
-  color: #e6a23c;
+  color: var(--color-warning);
 }
 .inline-error--network .inline-error-text {
   color: #996b1a;

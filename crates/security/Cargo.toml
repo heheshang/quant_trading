@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 quant-common = { path = "../common" }
+quant-repository = { path = "../repository" }
 
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -25,6 +26,11 @@ jsonwebtoken = { workspace = true }
 base64 = "0.21"
 sha2 = "0.10"
 hmac = "0.12"
+sha1 = "0.10"
+
+[dev-dependencies]
+async-trait = "0.1"
+parking_lot = "0.12"
 
 [lints]
 workspace = true

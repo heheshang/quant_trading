@@ -2,12 +2,10 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use data_layer::market_data_repo::MarketDataRepository;
-use exchange_okx::ClientInterface;
+use exchange_binance::ClientInterface;
 use quant_common::config::DataPullerConfig;
 use quant_common::error::Result;
-use rust_decimal::Decimal;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
@@ -54,7 +52,7 @@ where
     }))
 }
 
-/// Background task that periodically pulls market data from OKX and persists it.
+/// Background task that periodically pulls market data from Binance and persists it.
 pub struct DataPuller {
     config: DataPullerConfig,
     client: Arc<RwLock<dyn ClientInterface + Send + Sync>>,
@@ -111,46 +109,6 @@ impl DataPuller {
             }
         }
 
-        // Ticker pull tasks
-        if self.config.ticker.enabled {
-            for symbol in &symbols {
-                let handle = tokio::spawn(Self::run_ticker_pull(
-                    Arc::clone(&self.client),
-                    Arc::clone(&self.repo),
-                    symbol.clone(),
-                    self.config.ticker.clone(),
-                ));
-                handles.push(handle);
-            }
-        }
-
-        // Funding rate pull tasks (perpetual swaps only — append -SWAP suffix)
-        if self.config.funding_rate.enabled {
-            for symbol in &symbols {
-                let swap_symbol = format!("{}-SWAP", symbol);
-                let handle = tokio::spawn(Self::run_funding_rate_pull(
-                    Arc::clone(&self.client),
-                    Arc::clone(&self.repo),
-                    swap_symbol,
-                    self.config.funding_rate.clone(),
-                ));
-                handles.push(handle);
-            }
-        }
-
-        // Mark price pull tasks
-        if self.config.mark_price.enabled {
-            for symbol in &symbols {
-                let handle = tokio::spawn(Self::run_mark_price_pull(
-                    Arc::clone(&self.client),
-                    Arc::clone(&self.repo),
-                    symbol.clone(),
-                    self.config.mark_price.clone(),
-                ));
-                handles.push(handle);
-            }
-        }
-
         // Account balance pull tasks
         if self.config.account_balance.enabled {
             let handle = tokio::spawn(Self::run_account_pull(
@@ -184,20 +142,6 @@ impl DataPuller {
     }
 }
 
-/// Parse a string timestamp (milliseconds since epoch) into DateTime<Utc>.
-fn parse_timestamp(ts: &str) -> Option<DateTime<Utc>> {
-    let millis: i64 = ts.parse().ok()?;
-    DateTime::from_timestamp_millis(millis)
-}
-
-/// Parse a string decimal value into Decimal. Returns None for empty/invalid strings.
-fn parse_decimal(s: &str) -> Option<Decimal> {
-    if s.is_empty() {
-        return None;
-    }
-    s.parse::<Decimal>().ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,7 +170,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            matches!(err, Error::Network(ref msg) if msg == "always fail"),
+            matches!(&err, Error::Network(msg) if msg == "always fail"),
             "expected Network error, got: {err}"
         );
     }

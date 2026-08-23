@@ -35,9 +35,9 @@ pub struct StrategyScheduler {
     /// 调度配置
     config: SchedulerConfig,
     /// 信号流水线执行器
-    pipeline: Option<Arc<PipelineExecutor>>,
+    pipeline: std::sync::RwLock<Option<Arc<PipelineExecutor>>>,
     /// 市场数据提供者
-    market_data_provider: Option<Arc<dyn MarketDataProvider>>,
+    market_data_provider: std::sync::RwLock<Option<Arc<dyn MarketDataProvider>>>,
 }
 
 impl StrategyScheduler {
@@ -50,19 +50,43 @@ impl StrategyScheduler {
             shutdown_tx,
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
             config,
-            pipeline: None,
-            market_data_provider: None,
+            pipeline: std::sync::RwLock::new(None),
+            market_data_provider: std::sync::RwLock::new(None),
         }
     }
 
-    /// 设置信号流水线执行器
-    pub fn set_pipeline(&mut self, pipeline: Arc<PipelineExecutor>) {
-        self.pipeline = Some(pipeline);
+    pub fn set_pipeline(&self, pipeline: Arc<PipelineExecutor>) {
+        if let Ok(mut guard) = self.pipeline.write() {
+            *guard = Some(pipeline);
+        }
     }
 
     /// 设置市场数据提供者
-    pub fn set_market_data_provider(&mut self, provider: Arc<dyn MarketDataProvider>) {
-        self.market_data_provider = Some(provider);
+    pub fn set_market_data_provider(&self, provider: Arc<dyn MarketDataProvider>) {
+        if let Ok(mut guard) = self.market_data_provider.write() {
+            *guard = Some(provider);
+        }
+    }
+
+    /// 判断调度器是否已具备真实交易能力（调度器启用 + 流水线 + 行情源均已注入）。
+    ///
+    /// 用于在启动策略前 fail-closed：若未配置，启动应拒绝以消除
+    /// 「状态显示 Running 却空转」的误导。
+    ///
+    /// 安全语义：仅当 `SchedulerConfig::enabled` 为真（调度器显式启用）且
+    /// 流水线与行情提供者都已注入时才允许进入 Running；否则一律拒绝。
+    #[must_use]
+    pub fn trading_ready(&self) -> bool {
+        if !self.config.enabled {
+            return false;
+        }
+        let pipeline_ready = self.pipeline.read().map(|g| g.is_some()).unwrap_or(false);
+        let provider_ready = self
+            .market_data_provider
+            .read()
+            .map(|g| g.is_some())
+            .unwrap_or(false);
+        pipeline_ready && provider_ready
     }
 
     /// 获取调度配置
@@ -96,11 +120,23 @@ impl StrategyScheduler {
             }
         }
 
+        // fail-closed: 缺少流水线或行情源时拒绝启动，避免「Running 却空转」。
+        if !self.trading_ready() {
+            return Err(SchedulerError::NotConfigured(
+                "signal pipeline and/or market data provider are not wired; refusing to start an idling strategy"
+                    .to_string(),
+            ));
+        }
+
         let shutdown_rx = self.shutdown_tx.subscribe();
         let tasks = Arc::clone(&self.tasks);
         let cbs = Arc::clone(&self.circuit_breakers);
-        let pipeline = self.pipeline.clone();
-        let market_data_provider = self.market_data_provider.clone();
+        let pipeline = self.pipeline.read().ok().and_then(|g| (*g).clone());
+        let market_data_provider = self
+            .market_data_provider
+            .read()
+            .ok()
+            .and_then(|g| (*g).clone());
         let strategy_symbols = strategy.params().symbols.clone();
 
         // Shared metadata updated by the task loop.

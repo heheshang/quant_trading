@@ -148,12 +148,6 @@ boolean
     password: string,
     db: number
   },
-  influxdb: {
-    url: string,
-    token: string,
-    org: string,
-    bucket: string
-  },
   trading: {
     enable_paper_trading: boolean,
     max_orders_per_second: number,

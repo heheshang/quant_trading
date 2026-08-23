@@ -56,11 +56,6 @@ services:
       ENABLE_JSON_LOGGING: "false"
       ENABLE_FILE_LOGGING: "true"
       ENABLE_STDOUT_LOGGING: "true"
-      OKX_ENABLE: ${OKX_ENABLE:-false}
-      OKX_ENVIRONMENT: ${OKX_ENVIRONMENT:-demo}
-      OKX_API_KEY: ${OKX_API_KEY:-}
-      OKX_API_SECRET: ${OKX_API_SECRET:-}
-      OKX_PASSPHRASE: ${OKX_PASSPHRASE:-}
       JWT_SECRET: ${JWT_SECRET:-docker_test_change_me}
       ENABLE_ENCRYPTION: ${ENABLE_ENCRYPTION:-true}
     depends_on:

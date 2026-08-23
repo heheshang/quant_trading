@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 quant-common = { path = "../common", features = ["db"] }
-exchange-okx = { path = "../exchange-okx" }
+exchange-binance = { path = "../exchange-binance" }
 
 # Workspace dependencies
 tokio = { workspace = true }

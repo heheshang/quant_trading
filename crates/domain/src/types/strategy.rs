@@ -183,11 +183,6 @@ pub struct StrategyParams {
 pub enum StrategyType {
     TrendFollowing,
     MeanReversion,
-    Arbitrage,
-    MarketMaking,
-    Statistical,
-    MachineLearning,
-    Custom,
 }
 
 impl StrategyType {
@@ -198,11 +193,6 @@ impl StrategyType {
         match name {
             "TrendFollowing" => Some(TrendFollowing),
             "MeanReversion" => Some(MeanReversion),
-            "Arbitrage" => Some(Arbitrage),
-            "MarketMaking" => Some(MarketMaking),
-            "Statistical" => Some(Statistical),
-            "MachineLearning" => Some(MachineLearning),
-            "Custom" => Some(Custom),
             _ => None,
         }
     }

@@ -28,18 +28,47 @@
           @refresh="fetchLogs"
         />
       </el-tab-pane>
+      <el-tab-pane label="审计日志" name="audit">
+        <AuditLogs />
+      </el-tab-pane>
+      <el-tab-pane label="实时行情" name="realtime">
+        <el-row :gutter="20">
+          <el-col :xs="24" :md="8">
+            <SubscriptionManager
+              :running="marketRunning"
+              :status="marketStatus"
+              :symbols="marketSymbols"
+              @start="marketStore.start()"
+              @stop="marketStore.stop()"
+            />
+          </el-col>
+          <el-col :xs="24" :md="16">
+            <RealtimeTickerPanel :tickers="marketTickers" />
+          </el-col>
+        </el-row>
+        <el-row :gutter="20" style="margin-top: 20px">
+          <el-col :xs="24" :lg="12">
+            <TradeStream :trades="marketTrades" />
+          </el-col>
+          <el-col :xs="24" :lg="12">
+            <OrderBookDepth :order-book="marketOrderBook" />
+          </el-col>
+        </el-row>
+        <el-row :gutter="20" style="margin-top: 20px">
+          <el-col :xs="24">
+            <RealtimeCandleChart :candles="marketCandles" :symbol="marketActiveSymbol" />
+          </el-col>
+        </el-row>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, onActivated, watch } from 'vue'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { getMetrics, getAlerts, getLogs, acknowledgeAlert as apiAcknowledgeAlert } from '@/services/monitor'
-import { useWebSocketStatus } from '@/composables/useWebSocketStatus'
-import { useMarketData } from '@/composables/useMarketData'
+import { computed, ref, shallowRef, onMounted, onUnmounted, onActivated, watch } from 'vue'
+import { getMetrics, getAlerts, getLogs, acknowledgeAlert as apiAcknowledgeAlert, getThresholds, saveThresholds as persistThresholds } from '@/services/monitor'
 import { ElMessage } from 'element-plus'
-import type { Alert, AlertLevel, LogEntry } from '@/services/types'
+import type { Alert, LogEntry } from '@/services/types'
 import type { ThresholdConfig as ThresholdConfigType } from '@/components/monitor/types'
 import MonitorHeader from '@/components/monitor/MonitorHeader.vue'
 import MetricsCards from '@/components/monitor/MetricsCards.vue'
@@ -47,16 +76,17 @@ import MetricsChart from '@/components/monitor/MetricsChart.vue'
 import AlertPanel from '@/components/monitor/AlertPanel.vue'
 import ThresholdConfig from '@/components/monitor/ThresholdConfig.vue'
 import SystemLogs from '@/components/monitor/SystemLogs.vue'
-
-interface WsAlertPayload { alert_id: number; level: AlertLevel; source: string; message: string; timestamp: string }
-interface WsLogPayload { timestamp: string; level: string; message: string; module: string | null }
-
-const { status: wsStatus, startListening: startWsStatusListening } = useWebSocketStatus()
-const { startListening: startMarketListening } = useMarketData()
+import AuditLogs from '@/components/monitor/AuditLogs.vue'
+import { useMarketDataStore } from '@/stores/marketData'
+import RealtimeTickerPanel from '@/components/dashboard/RealtimeTickerPanel.vue'
+import TradeStream from '@/components/dashboard/TradeStream.vue'
+import OrderBookDepth from '@/components/dashboard/OrderBookDepth.vue'
+import RealtimeCandleChart from '@/components/dashboard/RealtimeCandleChart.vue'
+import SubscriptionManager from '@/components/dashboard/SubscriptionManager.vue'
 
 const activeTab = ref('metrics')
 const loading = ref(false)
-const isPollingFallback = ref(false)
+const isPollingFallback = ref(true)
 const selectedMetrics = ref<string[]>(['orders_total', 'orders_filled', 'account_balance', 'daily_pnl'])
 const metrics = ref<Record<string, number>>({})
 const metricsHistory = ref<Array<{ time: string; metrics: Record<string, number> }>>([])
@@ -64,20 +94,24 @@ const alerts = shallowRef<Alert[]>([])
 const logs = shallowRef<LogEntry[]>([])
 const logLevel = ref('')
 const thresholdConfig = ref<ThresholdConfigType>({ maxDrawdown: 20, dailyLoss: 10, concentration: 50, leverage: 3, orderLatency: 1000, varWarning: 5 })
-
-const saved = localStorage.getItem('monitor_thresholds')
-if (saved) {
-  try { Object.assign(thresholdConfig.value, JSON.parse(saved)) } catch { /* ignore */ }
-}
+thresholdConfig.value = getThresholds()
+const marketStore = useMarketDataStore()
+const marketTickers = computed(() => marketStore.tickerList)
+const marketTrades = computed(() => marketStore.tradesForActive)
+const marketOrderBook = computed(() => marketStore.orderBookForActive)
+const marketCandles = computed(() => marketStore.candlesForActive)
+const marketActiveSymbol = computed(() => marketStore.activeSymbol)
+const marketRunning = computed(() => marketStore.running)
+const marketStatus = computed(() => marketStore.status)
+const marketSymbols = computed(() => marketStore.symbols)
 
 function saveThresholds(cfg: ThresholdConfigType) {
   thresholdConfig.value = cfg
-  localStorage.setItem('monitor_thresholds', JSON.stringify(cfg))
+  persistThresholds(cfg)
   ElMessage.success('阈值配置已保存')
 }
 
-let disconnectTimerId: ReturnType<typeof setTimeout> | null = null
-let pollTimeoutId: ReturnType<typeof setTimeout> | null = null
+let pollIntervalId: ReturnType<typeof setInterval> | undefined
 
 async function fetchMetrics() {
   try {
@@ -116,53 +150,10 @@ async function refreshData() {
   finally { loading.value = false }
 }
 
-async function pollData() {
-  await Promise.all([fetchMetrics(), fetchAlerts(), fetchLogs()])
-}
-
-function schedulePoll() {
-  if (!isPollingFallback.value) return
-  pollTimeoutId = setTimeout(async () => { await pollData(); schedulePoll() }, 5000)
-}
-
-function startPollingFallback() { isPollingFallback.value = true; schedulePoll() }
-function stopPollingFallback() {
-  isPollingFallback.value = false
-  if (pollTimeoutId !== null) { clearTimeout(pollTimeoutId); pollTimeoutId = null }
-}
-
-watch(wsStatus, (newStatus) => {
-  if (newStatus === 'disconnected') {
-    disconnectTimerId = setTimeout(() => { startPollingFallback() }, 60000)
-  } else if (newStatus === 'connected') {
-    if (disconnectTimerId !== null) { clearTimeout(disconnectTimerId); disconnectTimerId = null }
-    stopPollingFallback()
-  }
-})
-
-const unlisteners: UnlistenFn[] = []
-
-async function startWsListeners() {
-  let lastMetricsFetch = 0
-  unlisteners.push(await listen<unknown>('ws:ticker', () => {
-    const now = Date.now()
-    if (now - lastMetricsFetch >= 5000) { lastMetricsFetch = now; fetchMetrics() }
-  }))
-  unlisteners.push(await listen<WsAlertPayload>('ws:alerts', (event) => {
-    const p = event.payload
-    alerts.value = [{ alert_id: p.alert_id, level: p.level, source: p.source, message: p.message, timestamp: p.timestamp, acknowledged: false }, ...alerts.value]
-  }))
-  unlisteners.push(await listen<WsLogPayload>('ws:logs', (event) => {
-    const p = event.payload
-    logs.value = [{ timestamp: p.timestamp, level: p.level, message: p.message, module: p.module }, ...logs.value]
-  }))
-}
-
 onMounted(async () => {
-  await startWsStatusListening()
   await refreshData()
-  await startWsListeners()
-  startMarketListening()
+  pollIntervalId = setInterval(() => { refreshData() }, 5000)
+  void marketStore.start()
 })
 
 // Cache-friendly: refresh latest data when the page is re-activated.
@@ -171,10 +162,7 @@ onActivated(() => {
 })
 
 onUnmounted(() => {
-  for (const unlisten of unlisteners) { unlisten() }
-  unlisteners.length = 0
-  if (disconnectTimerId !== null) { clearTimeout(disconnectTimerId); disconnectTimerId = null }
-  stopPollingFallback()
+  if (pollIntervalId !== undefined) { clearInterval(pollIntervalId); pollIntervalId = undefined }
 })
 
 watch(logLevel, () => { fetchLogs() })

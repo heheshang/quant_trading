@@ -91,15 +91,15 @@ function onCancel() {
 }
 
 .confirm-dialog-icon--warning {
-  color: #e6a23c;
+  color: var(--color-warning);
 }
 
 .confirm-dialog-icon--danger {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 
 .confirm-dialog-icon--info {
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .confirm-dialog-message {

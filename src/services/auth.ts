@@ -6,8 +6,8 @@ import { call } from './transport'
  * Login, token verification, password change, and user profile retrieval/update.
  */
 
-export function login(username: string, password: string): Promise<string> {
-  return call<string>('login', { username, password })
+export function login(username: string, password: string, code?: string): Promise<string> {
+  return call<string>('login', { username, password, ...(code ? { code } : {}) })
 }
 
 export function verifyToken(token: string): Promise<boolean> {
