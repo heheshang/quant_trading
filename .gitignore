@@ -1,6 +1,7 @@
 # Rust
 target/
-Cargo.lock
+# Cargo.lock 应提交（二进制/应用需可复现构建），不再 gitignore。
+# Cargo.lock
 **/*.rs.bk
 *.pdb
 

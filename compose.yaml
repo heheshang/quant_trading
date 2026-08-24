@@ -56,7 +56,8 @@ services:
       ENABLE_JSON_LOGGING: "false"
       ENABLE_FILE_LOGGING: "true"
       ENABLE_STDOUT_LOGGING: "true"
-      JWT_SECRET: ${JWT_SECRET:-docker_test_change_me}
+      JWT_SECRET: ${JWT_SECRET:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       ENABLE_ENCRYPTION: ${ENABLE_ENCRYPTION:-true}
     depends_on:
       postgres:
@@ -69,7 +70,11 @@ services:
       context: .
       dockerfile: Dockerfile
     command: ["app"]
-    environment: *app_environment
+    environment:
+      <<: *app_environment
+      # app 启动 require_auth/validate_secrets fail-fast，必须显式提供强随机密钥。
+      JWT_SECRET: ${JWT_SECRET:?必须设置 JWT_SECRET(>=32字节,openssl rand -hex 32)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?必须设置 ENCRYPTION_KEY(>=32字节,openssl rand -hex 32)}
     volumes:
       - app-logs:/app/logs
     depends_on:

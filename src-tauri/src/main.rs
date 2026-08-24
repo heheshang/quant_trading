@@ -103,13 +103,33 @@ async fn main() {
         let migration_client = client.clone();
         let migration_log = log_buffer.clone();
         tokio::spawn(async move {
-            loop {
+            // 上限重试，避免无限后台循环；达到上限后升级为 error 并停止（不静默 fail-open）。
+            let max_attempts = 60;
+            for attempt in 1..=max_attempts {
                 match migration_client.run_migrations().await {
                     Ok(()) => {
                         info!("Database migrations completed successfully");
                         break;
                     }
                     Err(e) => {
+                        if attempt >= max_attempts {
+                            tracing::error!(
+                                "Database migrations failed after {max_attempts} attempts; services may be degraded: {}",
+                                e
+                            );
+                            migration_log
+                                .add_entry(quant_common::types::LogEntry {
+                                    timestamp: Utc::now(),
+                                    level: "error".to_string(),
+                                    message: format!(
+                                        "数据库迁移连续失败({max_attempts}次)，服务可能降级：{}",
+                                        e
+                                    ),
+                                    module: Some("database".to_string()),
+                                })
+                                .await;
+                            break;
+                        }
                         warn!(
                             "Database connection/migration failed, will retry in 5s: {}",
                             e
