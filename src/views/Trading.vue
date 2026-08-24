@@ -49,7 +49,7 @@ import { ElMessage } from 'element-plus'
 import { getAccountInfo, getPositions } from '@/services/account'
 import { cancelOrder as cancelOrderById, getActiveOrders } from '@/services/order'
 import { getStrategies } from '@/services/strategy'
-import { getBinanceBalance, getBinanceOrders, getBinancePositions, getBinanceTickerPrices, getLiveTrades } from '@/services/binance'
+import { getBinanceBalance, getBinancePositions, getBinanceTickerPrices, getLiveTrades } from '@/services/binance'
 import { cancelBinanceOrder, placeBinanceOrder } from '@/services/binanceOrder'
 import { useOrderStore } from '@/stores/order'
 import { usePaperAccountOverview } from '@/composables/usePaperAccountOverview'
@@ -58,7 +58,6 @@ import type { UnlistenFn } from '@tauri-apps/api/event'
 import type {
   AccountInfo,
   BinanceBalance,
-  BinanceOrder,
   BinancePosition,
   BinanceWsOrderUpdate,
   LiveTrade,
@@ -110,29 +109,6 @@ function isRateLimitError(e: unknown): boolean {
   return /限流|Rate limited|rate limit|429|418/i.test(String((e as Error)?.message ?? e))
 }
 
-/** 降级：把本地 `live_trades` 记录映射为订单行（Binance 限流时展示）。 */
-function liveTradeToOrder(t: LiveTrade): Order {
-  return {
-    order_id: t.order_id,
-    strategy_id: t.strategy_id,
-    strategy_name: strategyName(t.strategy_id),
-    symbol: t.symbol,
-    order_type: 'Limit',
-    side: t.side === 'BUY' ? 'Buy' : 'Sell',
-    price: t.price,
-    quantity: t.quantity,
-    filled_quantity: t.filled_quantity,
-    status: (t.status === 'FILLED' ? 'Filled'
-      : t.status === 'CANCELED' ? 'Cancelled'
-      : t.status === 'NEW' ? 'Submitted'
-      : 'Submitted') as OrderStatus,
-    created_at: t.created_at,
-    updated_at: t.updated_at,
-    commission: 0,
-    slippage: 0,
-    exchange: 'live',
-  }
-}
 /** live 单关联的策略（Binance 不返回 strategy_id，按 order_id 本地记录本会话内的）。 */
 const liveOrderStrategy = new Map<number, string>()
 
@@ -159,42 +135,6 @@ function binanceStatusToOrderStatus(status: string): OrderStatus {
     PENDING_CANCEL: 'Submitted',
   }
   return map[status] || 'Submitted'
-}
-/** Binance 侧 → App 侧（BUY→Buy, SELL→Sell）。 */
-function normalizeSide(s: string): OrderSide {
-  if (s === 'SELL' || s === 'Sell') return 'Sell'
-  if (s === 'BUY' || s === 'Buy') return 'Buy'
-  return (s as OrderSide) || 'Buy'
-}
-
-/** Binance 类型 → App 类型（MARKET→Market, LIMIT→Limit）。 */
-function normalizeOrderType(t: string): OrderType {
-  if (t === 'MARKET' || t === 'Market') return 'Market'
-  if (t === 'LIMIT' || t === 'Limit') return 'Limit'
-  return (t as OrderType) || 'Limit'
-}
-
-function binanceOrderToOrder(o: BinanceOrder): Order {
-  // 优先取本地持久化记录（跨会话），其次本会话内存映射。
-  const lt = liveTradesMap.value.get(o.order_id)
-  const strategyId = lt?.strategy_id || liveOrderStrategy.get(o.order_id) || ''
-  return {
-    order_id: o.order_id,
-    strategy_id: strategyId,
-    strategy_name: strategyName(strategyId),
-    symbol: toDomainSymbol(o.symbol),
-    order_type: normalizeOrderType(o.order_type ?? ''),
-    side: normalizeSide(o.side ?? ''),
-    price: o.price ?? null,
-    quantity: o.orig_qty ?? o.executed_qty ?? 0,
-    filled_quantity: o.executed_qty ?? 0,
-    status: binanceStatusToOrderStatus(o.status),
-    created_at: new Date(o.time ?? Date.now()).toISOString(),
-    updated_at: new Date(o.update_time ?? Date.now()).toISOString(),
-    commission: 0,
-    slippage: 0,
-    exchange: 'live',
-  }
 }
 
 function binancePositionToPosition(p: BinancePosition): Position {
@@ -360,47 +300,13 @@ async function fetchPositions() {
 }
 async function fetchActiveOrders() {
   try {
-    if (tradeMode.value === 'live') {
-      // 确保全市场价格已加载，否则订单盈亏列无实时价可比对。
-      if (Object.keys(tickerPrices.value).length === 0) await fetchTickerPrices()
-      // 加载本地持久化的 live 单记录（跨会话策略关联）。
-      await fetchLiveTrades()
-      // 实盘活跃单从 DB 读（exchange='live'，由 place_binance_order 镜像 + 后台状态同步），
-      // 与纸面单分离。DB 无实盘单时降级到 Binance 实时订单。
-      const dbLive = await getActiveOrders('live')
-      if (dbLive.length > 0) {
-        activeOrders.value = dbLive.map((o) => ({ ...o, strategy_name: strategyName(o.strategy_id) }))
-        return
-      }
-      const sym = orderForm.value?.symbol?.trim() || 'BTC-USDT'
-      try {
-        activeOrders.value = (await getBinanceOrders(sym, true, 50))
-          .map(binanceOrderToOrder)
-      } catch (e) {
-        if (isRateLimitError(e)) {
-          // 降级：Binance 限流时用本地 live_trades 展示订单，避免视图为空。
-          activeOrders.value = Array.from(liveTradesMap.value.values())
-            .sort((a, b) => b.created_at.localeCompare(a.created_at))
-            .slice(0, 50)
-            .map(liveTradeToOrder)
-          ElMessage.warning('Binance 限流，已降级展示本地成交记录')
-          return
-        }
-        throw e
-      }
-    } else if (tradeMode.value === 'algorithm') {
-      // 算法单（TWAP/VWAP/Iceberg）独立展示。
-      activeOrders.value = (await getActiveOrders('algorithm')).map((o) => ({
-        ...o,
-        strategy_name: strategyName(o.strategy_id),
-      }))
-    } else {
-      // 纸面页只展示纸面单。
-      activeOrders.value = (await getActiveOrders('paper')).map((o) => ({
-        ...o,
-        strategy_name: strategyName(o.strategy_id),
-      }))
-    }
+    // 活跃订单展示**全部**（纸面/实盘/算法），由 ActiveOrdersTable 的「种类」下拉筛选。
+    if (Object.keys(tickerPrices.value).length === 0) await fetchTickerPrices()
+    await fetchLiveTrades()
+    activeOrders.value = (await getActiveOrders()).map((o) => ({
+      ...o,
+      strategy_name: strategyName(o.strategy_id),
+    }))
   } catch (e) {
     if (isRateLimitError(e)) {
       ElMessage.warning('Binance 限流，订单数据可能非最新')

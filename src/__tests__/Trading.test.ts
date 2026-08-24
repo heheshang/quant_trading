@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Trading from '@/views/Trading.vue'
 import { invoke } from '@tauri-apps/api/core'
@@ -76,11 +76,11 @@ describe('Trading.vue - 按钮测试', () => {
     const wrapper = await mountComponent()
     mockInvoke.mockClear()
 
-    wrapper.vm.refreshOrders()
-    await wrapper.vm.$nextTick()
+    await wrapper.vm.refreshOrders()
+    await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_active_orders', { exchange: 'paper' })
+    expect(mockInvoke).toHaveBeenCalledWith('get_active_orders', { exchange: null })
   }, 30000)
 
   it('导出 CSV - 触发浏览器下载', async () => {
