@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::RwLock;
-use tracing::instrument;
+use tracing::{error, instrument};
 use trading_engine::algorithms::{AlgorithmicOrderSlicer, TWAPParams, VWAPParams};
 use trading_engine::{BinanceExecutor, ExecutionEngine, OrderManager};
 
@@ -259,8 +259,9 @@ impl OrderProcessor {
         // 4. Log submission.
         self.log_order(&order).await;
 
-        // 5. Persist to PostgreSQL (graceful degradation when DB unavailable).
-        self.persist_order(&order).await;
+        // 5. Persist to PostgreSQL。活跃订单以数据库为准：落库失败则下单失败（fail-closed），
+        //    避免订单只在内存、重启/活跃列表丢失。
+        self.persist_order(&order).await?;
 
         // 6. Build the UI event descriptor.
         // Clone event fields so the order can still be moved into execution.
@@ -316,34 +317,26 @@ impl OrderProcessor {
             .await;
     }
 
-    async fn persist_order(&self, order: &Order) {
+    async fn persist_order(&self, order: &Order) -> ServiceResult<()> {
         match self.account_service.get_account_info().await {
             Ok(account) => {
-                if let Err(e) = self
-                    .account_service
+                self.account_service
                     .persist_order(order, &account.account_id)
                     .await
-                {
-                    self.log_buffer
-                        .add_entry(LogEntry {
-                            timestamp: chrono::Utc::now(),
-                            level: "warn".to_string(),
-                            message: format!("Order persisted to DB failed: {}", e),
-                            module: Some("commands".to_string()),
-                        })
-                        .await;
-                }
+                    .map_err(|e| {
+                        error!("Order persisted to DB failed: {}", e);
+                        ServiceError::Other(format!("无法下单：订单写入数据库失败（{}）", e))
+                    })?;
+                Ok(())
             }
-            Err(_) => {
-                self.log_buffer
-                    .add_entry(LogEntry {
-                        timestamp: chrono::Utc::now(),
-                        level: "warn".to_string(),
-                        message: "Account not available for order persistence".to_string(),
-                        module: Some("commands".to_string()),
-                    })
-                    .await;
+            Err(ServiceError::DatabaseNotConnected) => {
+                // 无数据库（测试/离线降级）→ 尽力而为，不阻塞内存下单。
+                Ok(())
             }
+            Err(e) => Err(ServiceError::Other(format!(
+                "无法下单：账户信息不可用（未落库）：{}",
+                e
+            ))),
         }
     }
 
