@@ -180,3 +180,95 @@ fn aggregate_portfolio(
         trades,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn mini_result(
+        initial: Decimal,
+        final_capital: Decimal,
+        equity: Vec<(chrono::DateTime<Utc>, Decimal)>,
+        winning: i32,
+        losing: i32,
+        total_trades: i32,
+    ) -> BacktestResult {
+        BacktestResult {
+            id: None,
+            strategy_id: "strat".into(),
+            strategy_name: Some("Strat".into()),
+            start_date: Utc::now(),
+            end_date: Utc::now(),
+            initial_capital: initial,
+            final_capital,
+            total_return: Decimal::ZERO,
+            annual_return: Decimal::ZERO,
+            sharpe_ratio: Decimal::ZERO,
+            max_drawdown: Decimal::ZERO,
+            win_rate: Decimal::ZERO,
+            profit_loss_ratio: Decimal::ZERO,
+            total_trades,
+            winning_trades: winning,
+            losing_trades: losing,
+            equity_curve: equity,
+            trades: vec![BacktestTrade {
+                date: Utc::now(),
+                symbol: "X".into(),
+                r#type: "buy".into(),
+                price: Decimal::ZERO,
+                quantity: Decimal::ZERO,
+                amount: Decimal::ZERO,
+                commission: Decimal::ZERO,
+            }],
+        }
+    }
+
+    #[test]
+    fn single_symbol_returns_result_as_is() {
+        let r = mini_result(Decimal::from(10000), Decimal::from(11000), vec![], 1, 0, 1);
+        let agg = aggregate_portfolio(vec![r], Decimal::from(10000), 1).unwrap();
+        assert_eq!(agg.final_capital, Decimal::from(11000));
+        assert_eq!(agg.winning_trades, 1);
+        assert_eq!(agg.trades.len(), 1);
+    }
+
+    #[test]
+    fn two_symbols_sums_equity_and_capital() {
+        let t0 = Utc::now();
+        let t1 = t0 + chrono::Duration::seconds(60);
+        let a = mini_result(
+            Decimal::from(5000),
+            Decimal::from(5500),
+            vec![(t0, Decimal::from(5000)), (t1, Decimal::from(5500))],
+            1,
+            0,
+            1,
+        );
+        let b = mini_result(
+            Decimal::from(5000),
+            Decimal::from(4800),
+            vec![(t0, Decimal::from(5000)), (t1, Decimal::from(4800))],
+            0,
+            1,
+            1,
+        );
+        let agg = aggregate_portfolio(vec![a, b], Decimal::from(10000), 2).unwrap();
+        // 最终资本 = 5500 + 4800 = 10300；t1 组合权益 = 5500 + 4800。
+        assert_eq!(agg.final_capital, Decimal::from(10300));
+        assert_eq!(agg.equity_curve.len(), 2);
+        assert_eq!(agg.equity_curve[0].1, Decimal::from(10000));
+        assert_eq!(agg.equity_curve[1].1, Decimal::from(10300));
+        assert_eq!(agg.winning_trades, 1);
+        assert_eq!(agg.losing_trades, 1);
+        assert_eq!(agg.total_trades, 2);
+        assert_eq!(agg.trades.len(), 2);
+        // 全量初资本为基准的 total_return = (10300-10000)/10000。
+        assert_eq!(agg.total_return, Decimal::new(300, 4));
+    }
+
+    #[test]
+    fn empty_symbol_results_is_error() {
+        assert!(aggregate_portfolio(vec![], Decimal::from(10000), 2).is_err());
+    }
+}

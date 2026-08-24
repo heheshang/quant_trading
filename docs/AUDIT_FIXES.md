@@ -38,6 +38,13 @@
 | 20 | 前端 `restoreSession` fail-open 留失效 token | 改 fail-closed：无法确认有效即清除会话 |
 | 21 | WS 启停 TOCTOU / 订阅洪泛 | `compare_exchange` 原子抢锁 + 失败释放锁；概览只订阅 ticker，重流仅活跃标的 |
 
+## 深挖补充（回测/多标的）
+
+| # | 问题 | 修复 |
+|---|---|---|
+| C1 | **跨标的污染（critical）**：回测/调度器把多标的 bar 交错拼进单一 buffer，策略对整个混合序列算指标却只交易 `market_data[0].symbol` → 指标完全错误 | `BacktestEngine` signal history 只喂目标标的；调度器**逐标的**生成信号（每标的各自历史） |
+| C2 | 多标的组合回测 | `run_backtest_multi` **按标的拆分**：每个 `(策略,标的)` 独立回测（各自历史避免污染），初始资本均分，`aggregate_portfolio` 一次聚合（权益按时间戳求和、成交合并、以全量初资本重算指标）；单标的零变化 |
+
 ## 审计结论
 - **未发现** SQL 注入（全 `sqlx::query().bind()` 参数化）与 DB N+1。
 - crypto 内核（AES-256-GCM 随机 nonce、Argon2、HS256+exp）本身健壮。
