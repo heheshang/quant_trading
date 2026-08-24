@@ -46,13 +46,19 @@ const paginatedPositions = computed(() => {
   const start = (positionsPage.value - 1) * positionsPageSize.value
   return positions.value.slice(start, start + positionsPageSize.value)
 })
-const paginatedOrders = computed(() => {
-  const start = (ordersPage.value - 1) * ordersPageSize.value
-  return orders.value.slice(start, start + ordersPageSize.value)
-})
 const ordersHistory = ref(false)
 const ordersSymbol = ref('BTC-USDT')
 const symbols = ref<string[]>([])
+/** 订单按所选标的过滤（「全部」= 不过滤），仅客户端过滤已加载列表。 */
+const filteredOrders = computed(() => {
+  if (!ordersSymbol.value || ordersSymbol.value === 'ALL') return orders.value
+  const sym = ordersSymbol.value
+  return orders.value.filter((o) => o.symbol === sym)
+})
+const paginatedOrders = computed(() => {
+  const start = (ordersPage.value - 1) * ordersPageSize.value
+  return filteredOrders.value.slice(start, start + ordersPageSize.value)
+})
 
 const form = ref({
   symbol: 'BTC-USDT',
@@ -73,7 +79,6 @@ const wsRunning = ref(false)
 const streamSymbol = ref('BTC-USDT')
 const liveKlines = ref<BinanceWsKline[]>([])
 const liveDepth = ref<BinanceWsDepth | null>(null)
-const unlisten: Array<() => void> = []
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 /** DB 行情映射：remote WS 已导入 DB，前端读 DB（removed 依赖 binance:* WS 事件）。 */
@@ -242,14 +247,12 @@ onMounted(async () => {
   } catch {
     symbols.value = []
   }
-  await loadBalance()
-  await loadPositions()
-  await loadOrders()
+  // 三路并行加载，缩短首屏等待。
+  await Promise.all([loadBalance(), loadPositions(), loadOrders()])
   // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
 })
 
 onUnmounted(() => {
-  unlisten.forEach((u) => u())
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
@@ -284,12 +287,20 @@ onUnmounted(() => {
 
       <el-table v-if="liveKlines.length" :data="liveKlines" size="small" max-height="240" class="mt">
         <el-table-column prop="open_time" label="时间" :formatter="fmtKlineTime" />
-        <el-table-column prop="open" label="开" />
-        <el-table-column prop="high" label="高" />
-        <el-table-column prop="low" label="低" />
-        <el-table-column prop="close" label="收" />
+        <el-table-column prop="open" label="开">
+          <template #default="{ row }">{{ fmtNumber(row.open) }}</template>
+        </el-table-column>
+        <el-table-column prop="high" label="高">
+          <template #default="{ row }">{{ fmtNumber(row.high) }}</template>
+        </el-table-column>
+        <el-table-column prop="low" label="低">
+          <template #default="{ row }">{{ fmtNumber(row.low) }}</template>
+        </el-table-column>
+        <el-table-column prop="close" label="收">
+          <template #default="{ row }">{{ fmtNumber(row.close) }}</template>
+        </el-table-column>
       </el-table>
-      <div v-else-if="wsRunning" class="hint">等待 K 线流…</div>
+      <div v-else-if="wsRunning" class="hint">等待 K 线流…</div><div v-else class="hint">点击「开始」订阅该标的实时行情</div>
     </el-card>
 
     <BinanceKlineChart />
@@ -329,9 +340,10 @@ onUnmounted(() => {
     <el-card class="section">
       <template #header>
         <div class="orders-header">
-          <span>订单（{{ orders.length }}）</span>
+          <span>订单（{{ filteredOrders.length }}）</span>
           <div class="orders-controls">
             <el-select v-model="ordersSymbol" filterable size="small" style="width: 160px">
+              <el-option label="全部" value="ALL" />
               <el-option v-for="s in symbols" :key="s" :label="s" :value="s" />
             </el-select>
             <el-radio-group v-model="ordersHistory" size="small" @change="toggleHistory">
@@ -365,10 +377,10 @@ onUnmounted(() => {
           </template>
         </el-table-column>
       </el-table>
-      <EmptyState v-if="!ordersLoading && orders.length === 0" title="暂无订单" description="当前没有匹配的订单" />
+      <EmptyState v-if="!ordersLoading && filteredOrders.length === 0" title="暂无订单" description="当前没有匹配的订单" />
       <Paginator
-        v-if="orders.length > 0"
-        :total="orders.length"
+        v-if="filteredOrders.length > 0"
+        :total="filteredOrders.length"
         :page="ordersPage"
         :page-size="ordersPageSize"
         @update:page="ordersPage = $event"
