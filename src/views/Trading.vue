@@ -12,7 +12,7 @@
 
     <el-tabs v-model="activeTradeTab" class="trade-tabs">
       <el-tab-pane label="模拟交易" name="paper">
-        <PaperAccountCard v-if="tradeMode === 'paper'" :account="accountInfo" />
+        <PaperAccountCard v-if="tradeMode === 'paper'" :account="paperAccount" />
         <el-card v-else class="binance-balance-card">
           <template #header>
             <div class="balance-card-header">
@@ -72,6 +72,7 @@ import { getStrategies } from '@/services/strategy'
 import { getBinanceBalance, getBinanceOrders, getBinancePositions, getBinanceTickerPrices, getLiveTrades } from '@/services/binance'
 import { cancelBinanceOrder, placeBinanceOrder } from '@/services/binanceOrder'
 import { useOrderStore } from '@/stores/order'
+import { usePaperAccountOverview } from '@/composables/usePaperAccountOverview'
 import { listenToBinanceEvents, startUserDataStream, stopUserDataStream } from '@/services/binanceWS'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import type {
@@ -284,6 +285,25 @@ const strategies = ref<StrategyParams[]>([])
 const orderStore = useOrderStore()
 const submitting = ref(false)
 
+// 纸面账户动态统计（按已成交订单 + 当前价格重放）。
+const INITIAL_PAPER_CASH = 100_000
+const paperOverview = usePaperAccountOverview(INITIAL_PAPER_CASH)
+const paperAccount = computed(() => {
+  const a = paperOverview.account.value
+  return {
+    account_id: 0,
+    total_assets: a.totalAssets,
+    available_cash: a.cash,
+    frozen_cash: 0,
+    market_value: a.marketValue,
+    total_pnl: a.totalAssets - INITIAL_PAPER_CASH,
+    daily_pnl: a.dailyPnl,
+    margin: 0,
+    margin_ratio: 0,
+    updated_at: new Date().toISOString(),
+  }
+})
+
 const paperOrderFormRef = ref<InstanceType<typeof PaperOrderForm>>()
 const activeOrdersTableRef = ref<InstanceType<typeof ActiveOrdersTable>>()
 
@@ -299,6 +319,7 @@ async function fetchAccountInfo() {
       binanceBalances.value = await getBinanceBalance()
     } else {
       accountInfo.value = await getAccountInfo()
+      await paperOverview.refresh(true)
     }
   } catch (e) {
     if (isRateLimitError(e)) {
