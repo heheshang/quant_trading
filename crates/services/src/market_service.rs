@@ -1,8 +1,8 @@
 use crate::error::{ServiceError, ServiceResult};
 use data_layer::market_data::DataSource;
 use data_layer::{
-    AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, MarketDataRepository,
-    PositionSnapshotRecord, TickerSnapshotRecord,
+    AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, MarketDataRecord,
+    MarketDataRepository, PositionSnapshotRecord, TickerSnapshotRecord,
 };
 use quant_common::types::MarketData;
 use std::sync::Arc;
@@ -77,6 +77,26 @@ impl MarketService {
             error!("Failed to list symbols: {}", e);
             ServiceError::Other(e.to_string())
         })
+    }
+
+    /// Latest N klines for an instrument/timeframe, read from DB (`market_data`).
+    ///
+    /// Remote WS import path: the DB is the read source; the live stream only
+    /// feeds the importer. Returns newest-first.
+    #[instrument(skip(self), fields(symbol = %symbol, timeframe = %timeframe))]
+    pub async fn get_klines_from_db(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        limit: i64,
+    ) -> ServiceResult<Vec<MarketDataRecord>> {
+        let repo = self.repo_or_err("klines not available (no database)")?;
+        repo.query_latest_klines(symbol, timeframe, limit)
+            .await
+            .map_err(|e| {
+                error!("Failed to read klines from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })
     }
 
     /// Read persisted ticker snapshots for an instrument.

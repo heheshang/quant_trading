@@ -3,20 +3,93 @@
 //! Manages the [`BinanceWebSocket`] lifecycle and forwards parsed
 //! kline/depth/orderbook/ticker/trade messages to the UI via Tauri events.
 
-use chrono::Utc;
-use data_layer::LiveTrade;
+use chrono::{DateTime, Utc};
+use data_layer::{
+    LiveTrade, MarketDataRepository, NewMarketDataRecord, NewTickerSnapshot,
+};
 use exchange_binance::types::{BinanceBalance, BinanceEnvironment};
-use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient};
+use exchange_binance::{
+    websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient,
+};
 use quant_common::types::Position;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::mpsc;
 
 use crate::state::AppState;
 use quant_common::api::{ok_result, ApiFailure};
 use tracing::debug;
+
+/// 后台导入管线的消息：WS 数据 → DB。
+enum MarketImport {
+    Kline(NewMarketDataRecord),
+    Ticker(NewTickerSnapshot),
+}
+
+/// 把 `@kline` WS 消息转换为 `market_data` 行（domain symbol 即 instrument_id）。
+fn kline_to_record(k: &exchange_binance::websocket::BinanceWsKline) -> NewMarketDataRecord {
+    NewMarketDataRecord {
+        instrument_id: k.symbol.clone(),
+        timeframe: k.interval.clone(),
+        timestamp: DateTime::from_timestamp_millis(k.open_time).unwrap_or_else(Utc::now),
+        open: k.open,
+        high: k.high,
+        low: k.low,
+        close: k.close,
+        volume: k.volume,
+    }
+}
+
+/// 把 `@ticker` WS 消息转换为 `ticker_snapshots` 行。
+///
+/// `ts` 对齐到分钟（每分钟每标的至多一行），避免高频 ticker 流无限膨胀。
+fn ticker_to_record(t: &exchange_binance::websocket::BinanceWsTicker) -> NewTickerSnapshot {
+    let ts = DateTime::from_timestamp_millis(t.event_time)
+        .map(floor_minute)
+        .unwrap_or_else(Utc::now);
+    NewTickerSnapshot {
+        instrument_id: t.symbol.clone(),
+        ts,
+        last_px: Some(t.last_price),
+        open_24h: Some(t.open),
+        high_24h: Some(t.high),
+        low_24h: Some(t.low),
+        vol_24h: Some(t.volume),
+        vol_ccy_24h: Some(t.quote_volume),
+        change_24h: Some(t.price_change),
+    }
+}
+
+/// 截断到分钟整点（秒/纳秒清零）。
+fn floor_minute(dt: DateTime<Utc>) -> DateTime<Utc> {
+    let secs = dt.timestamp();
+    DateTime::from_timestamp(secs - (secs % 60), 0).unwrap_or(dt)
+}
+
+/// 后台导入写入任务：串行消费消息并 upsert 到 DB，避免阻塞 WS 收流。
+async fn market_import_writer(
+    repo: Arc<MarketDataRepository>,
+    mut rx: mpsc::Receiver<MarketImport>,
+) {
+    while let Some(msg) = rx.recv().await {
+        match msg {
+            MarketImport::Kline(k) => {
+                if let Err(e) = repo.upsert_kline(&k).await {
+                    debug!(error = %e, "kline import failed");
+                }
+            }
+            MarketImport::Ticker(t) => {
+                if let Err(e) = repo.upsert_ticker_snapshot(&t).await {
+                    debug!(error = %e, "ticker import failed");
+                }
+            }
+        }
+    }
+}
 
 #[tauri::command]
 pub async fn start_binance_market_data(
@@ -59,6 +132,14 @@ pub async fn start_binance_market_data(
     let app_clone = app.clone();
     let running = state.binance_ws_state.running.clone();
 
+    // 导入管线：remote WS 数据 → DB（K线/ticker）。无 repo（未连接 DB）时跳过。
+    let market_repo = state.app_services.as_ref().and_then(|s| s.market_data.clone());
+    let (import_tx, import_rx) = mpsc::channel::<MarketImport>(256);
+    if let Some(repo) = market_repo.clone() {
+        tokio::spawn(market_import_writer(repo, import_rx));
+    }
+    let import_enabled = market_repo.is_some();
+
     let _ = app_clone.emit(
         "binance:status",
         serde_json::json!({ "status": "connected" }),
@@ -70,6 +151,9 @@ pub async fn start_binance_market_data(
                 BinanceWsMessage::Kline(k) => {
                     debug!(symbol = %k.symbol, interval = %k.interval, "Binance WS kline");
                     let _ = app_clone.emit("binance:kline", &k);
+                    if import_enabled {
+                        let _ = import_tx.send(MarketImport::Kline(kline_to_record(&k))).await;
+                    }
                 }
                 BinanceWsMessage::Depth(d) => {
                     let _ = app_clone.emit("binance:depth", &d);
@@ -79,6 +163,9 @@ pub async fn start_binance_market_data(
                 }
                 BinanceWsMessage::Ticker(t) => {
                     let _ = app_clone.emit("binance:ticker", &t);
+                    if import_enabled {
+                        let _ = import_tx.send(MarketImport::Ticker(ticker_to_record(&t))).await;
+                    }
                 }
                 BinanceWsMessage::Trade(t) => {
                     let _ = app_clone.emit("binance:trade", &t);
@@ -566,35 +653,45 @@ mod tests {
             "1h".to_string(),
         )
         .await;
-        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, quant_common::api::code::NOT_INITIALIZED);
+        assert_eq!(err.message, "Binance WebSocket not started");
     }
 
     #[tokio::test]
     async fn subscribe_depth_requires_running_ws() {
         let state = make_test_state();
         let result = subscribe_binance_depth(state_guard(&state), "BTC-USDT".to_string()).await;
-        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, quant_common::api::code::NOT_INITIALIZED);
+        assert_eq!(err.message, "Binance WebSocket not started");
     }
 
     #[tokio::test]
     async fn subscribe_ticker_requires_running_ws() {
         let state = make_test_state();
         let result = subscribe_binance_ticker(state_guard(&state), "BTC-USDT".to_string()).await;
-        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, quant_common::api::code::NOT_INITIALIZED);
+        assert_eq!(err.message, "Binance WebSocket not started");
     }
 
     #[tokio::test]
     async fn subscribe_trades_requires_running_ws() {
         let state = make_test_state();
         let result = subscribe_binance_trades(state_guard(&state), "BTC-USDT".to_string()).await;
-        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, quant_common::api::code::NOT_INITIALIZED);
+        assert_eq!(err.message, "Binance WebSocket not started");
     }
 
     #[tokio::test]
     async fn subscribe_orderbook_requires_running_ws() {
         let state = make_test_state();
         let result = subscribe_binance_orderbook(state_guard(&state), "BTC-USDT".to_string()).await;
-        assert_eq!(result.unwrap_err(), "Binance WebSocket not started");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, quant_common::api::code::NOT_INITIALIZED);
+        assert_eq!(err.message, "Binance WebSocket not started");
     }
 
     #[tokio::test]

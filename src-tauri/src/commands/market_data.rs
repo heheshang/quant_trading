@@ -1,8 +1,10 @@
 use crate::state::AppState;
 use data_layer::{
-    AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, PositionSnapshotRecord,
-    TickerSnapshotRecord,
+    AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, MarketDataRecord,
+    PositionSnapshotRecord, TickerSnapshotRecord,
 };
+use quant_common::api::code;
+use quant_common::api::{err_result, ok_result};
 use tauri::State;
 
 /// Parse an ISO-8601 RFC3339 timestamp string into an optional `DateTime<Utc>`.
@@ -30,6 +32,27 @@ pub async fn get_symbols(
         .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let syms = services.market_service.list_symbols().await?;
     ok_result(syms)
+}
+
+/// 从数据库读取某标的/周期的最新 K 线（remote WS 导入后再由前端从 DB 读）。
+#[tauri::command]
+pub async fn get_klines(
+    state: State<'_, AppState>,
+    symbol: String,
+    timeframe: String,
+    limit: Option<i64>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<MarketDataRecord>>> {
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "行情服务未初始化（无数据库连接）");
+    };
+    let data = services
+        .market_service
+        .get_klines_from_db(&symbol, &timeframe, limit.unwrap_or(100))
+        .await?;
+    ok_result(data)
 }
 
 /// 查询行情快照（按标的 + 可选时间范围）。

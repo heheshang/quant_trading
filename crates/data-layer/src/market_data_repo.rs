@@ -134,6 +134,75 @@ impl MarketDataRepository {
         Ok(total)
     }
 
+    /// Upsert a single kline (live bar updates in place; closed bars finalize).
+    ///
+    /// Remote WS import path: the same bar (instrument_id+timeframe+timestamp)
+    /// is emitted repeatedly while it forms, so `DO UPDATE` keeps the latest
+    /// OHLC. Requires the row in a partition covering `timestamp`.
+    #[instrument(skip(self))]
+    pub async fn upsert_kline(&self, item: &NewMarketDataRecord) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO market_data (instrument_id, timeframe, timestamp, open, high, low, close, volume)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (instrument_id, timeframe, timestamp) DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                volume = EXCLUDED.volume
+            "#,
+        )
+        .bind(&item.instrument_id)
+        .bind(&item.timeframe)
+        .bind(item.timestamp)
+        .bind(item.open)
+        .bind(item.high)
+        .bind(item.low)
+        .bind(item.close)
+        .bind(item.volume)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to upsert market_data kline: {}", e)))?;
+        Ok(rows_affected.rows_affected() as u64)
+    }
+
+    /// Upsert the latest ticker snapshot (`ON CONFLICT (instrument_id, ts)`).
+    ///
+    /// Remote WS import path: ts is snapped to the minute by the caller so each
+    /// instrument has at most one row per minute that is updated in place,
+    /// avoiding unbounded row growth from the high-frequency ticker stream.
+    #[instrument(skip(self))]
+    pub async fn upsert_ticker_snapshot(&self, item: &NewTickerSnapshot) -> Result<u64> {
+        let rows_affected = sqlx::query(
+            r#"
+            INSERT INTO ticker_snapshots (instrument_id, ts, last_px, open_24h, high_24h, low_24h, vol_24h, vol_ccy_24h, change_24h)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (instrument_id, ts) DO UPDATE SET
+                last_px = EXCLUDED.last_px,
+                open_24h = EXCLUDED.open_24h,
+                high_24h = EXCLUDED.high_24h,
+                low_24h = EXCLUDED.low_24h,
+                vol_24h = EXCLUDED.vol_24h,
+                vol_ccy_24h = EXCLUDED.vol_ccy_24h,
+                change_24h = EXCLUDED.change_24h
+            "#,
+        )
+        .bind(&item.instrument_id)
+        .bind(item.ts)
+        .bind(item.last_px)
+        .bind(item.open_24h)
+        .bind(item.high_24h)
+        .bind(item.low_24h)
+        .bind(item.vol_24h)
+        .bind(item.vol_ccy_24h)
+        .bind(item.change_24h)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to upsert ticker_snapshot: {}", e)))?;
+        Ok(rows_affected.rows_affected() as u64)
+    }
+
     /// Query market data by instrument, timeframe, and time range
     #[instrument(skip(self), fields(instrument_id = %instrument_id, timeframe = %timeframe, %from, %to))]
     pub async fn query_by_range(
@@ -167,6 +236,35 @@ impl MarketDataRepository {
         .await
         .map_err(|e| Error::Database(format!("Failed to query market_data: {}", e)))?;
 
+        Ok(records)
+    }
+
+    /// Latest N klines for an instrument/timeframe (newest first), read from DB.
+    ///
+    /// Remote WS import path complements: the frontend reads persisted klines
+    /// from here instead of the live stream.
+    #[instrument(skip(self), fields(instrument_id = %instrument_id, timeframe = %timeframe))]
+    pub async fn query_latest_klines(
+        &self,
+        instrument_id: &str,
+        timeframe: &str,
+        limit: i64,
+    ) -> Result<Vec<MarketDataRecord>> {
+        let records = sqlx::query_as::<_, MarketDataRecord>(
+            r#"
+            SELECT id, instrument_id, timeframe, timestamp, open, high, low, close, volume, created_at
+            FROM market_data
+            WHERE instrument_id = $1 AND timeframe = $2
+            ORDER BY timestamp DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(instrument_id)
+        .bind(timeframe)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query latest klines: {}", e)))?;
         Ok(records)
     }
 

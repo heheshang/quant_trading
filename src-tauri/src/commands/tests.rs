@@ -42,9 +42,10 @@ async fn test_get_market_data_without_service_returns_error() {
     let result = get_market_data(state_guard, "BTC-USDT".to_string()).await;
     assert!(result.is_err());
     // Layered: with no services wired the market service reports not initialized.
-    assert!(result
-        .unwrap_err()
-        .contains("Market service not initialized"));
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -55,8 +56,8 @@ async fn test_binance_positions_uninitialized_returns_error() {
     let result = get_binance_positions(state_guard, None).await;
     assert!(result.is_err());
     assert_eq!(
-        result.unwrap_err(),
-        "Binance service not initialized (no exchange client)"
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
     );
 }
 
@@ -67,10 +68,7 @@ async fn test_binance_orders_uninitialized_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_binance_orders(state_guard, "BTC-USDT".to_string(), None, None).await;
     assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        "Binance service not initialized (no exchange client)"
-    );
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -86,7 +84,7 @@ async fn test_get_config_redacts_sensitive_fields() {
 
     let state_guard: tauri::State<'_, AppState> =
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
-    let cfg_out = get_config(state_guard).await.unwrap();
+    let cfg_out = get_config(state_guard).await.unwrap().data.unwrap();
 
     // Sensitive values must not leak.
     assert_eq!(cfg_out.database.password, "");
@@ -108,10 +106,7 @@ async fn test_get_account_info_without_db_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_account_info(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        "Account service not initialized (no database connection)"
-    );
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -121,10 +116,7 @@ async fn test_get_positions_without_db_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_positions(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        "Account service not initialized (no database connection)"
-    );
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -150,7 +142,7 @@ async fn test_get_active_orders_returns_submitted() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_active_orders(state_guard, None).await;
     assert!(result.is_ok());
-    let orders = result.unwrap();
+    let orders = result.unwrap().data.unwrap();
     assert_eq!(orders.len(), 1);
     assert_eq!(
         orders[0].status,
@@ -232,7 +224,7 @@ async fn test_check_redis_status_without_redis_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = check_redis_status(state_guard).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Redis client not initialized"));
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -242,7 +234,7 @@ async fn test_get_strategies_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_strategies(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -262,7 +254,7 @@ async fn test_save_strategy_requires_services() {
     .build();
     let result = save_strategy(state_guard, strategy).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -272,7 +264,7 @@ async fn test_delete_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = delete_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -282,7 +274,7 @@ async fn test_toggle_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = toggle_strategy(state_guard, "test_001".to_string(), false).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -292,7 +284,7 @@ async fn test_get_risk_metrics_contains_var() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_risk_metrics(state_guard).await;
     assert!(result.is_ok());
-    let metrics = result.unwrap();
+    let metrics = result.unwrap().data.unwrap();
     assert!(metrics.contains_key("var_95"));
     assert!(metrics.contains_key("var_99"));
     assert!(metrics.contains_key("max_position_size"));
@@ -305,7 +297,7 @@ async fn test_get_risk_config_returns_defaults() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_risk_config(state_guard).await;
     assert!(result.is_ok());
-    let config = result.unwrap();
+    let config = result.unwrap().data.unwrap();
     assert_eq!(config.max_position_size, 0.2);
     assert_eq!(config.max_daily_loss, 0.05);
     assert!(config.enable_pre_trade_check);
@@ -327,7 +319,7 @@ async fn test_update_risk_config_returns_true() {
     };
     let result = update_risk_config(state_guard, new_config).await;
     assert!(result.is_ok());
-    assert!(result.unwrap());
+    assert!(result.unwrap().data.unwrap());
 }
 
 #[tokio::test]
@@ -343,10 +335,7 @@ async fn test_login_without_db_returns_error() {
     )
     .await;
     assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        "Authentication unavailable: no database connection"
-    );
+    assert_eq!(result.unwrap_err().message, "Authentication unavailable: no database connection");
 }
 
 #[tokio::test]
@@ -356,7 +345,7 @@ async fn test_verify_invalid_token_without_db_returns_false() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = verify_token(state_guard, "invalid.token.here".to_string()).await;
     assert!(result.is_ok());
-    assert!(!result.unwrap());
+    assert!(!result.unwrap().data.unwrap());
 }
 
 #[tokio::test]
@@ -366,7 +355,7 @@ async fn test_verify_empty_token_without_db_returns_false() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = verify_token(state_guard, String::new()).await;
     assert!(result.is_ok());
-    assert!(!result.unwrap());
+    assert!(!result.unwrap().data.unwrap());
 }
 
 #[tokio::test]
@@ -387,7 +376,7 @@ async fn test_deploy_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = deploy_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -397,7 +386,7 @@ async fn test_start_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = start_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -407,7 +396,7 @@ async fn test_stop_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = stop_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -417,7 +406,7 @@ async fn test_pause_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = pause_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -427,7 +416,7 @@ async fn test_resume_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = resume_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 
 #[tokio::test]
@@ -437,7 +426,7 @@ async fn test_archive_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = archive_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Application services not initialized");
+    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
 }
 // ── RBAC / Auth Session Tests ──
 
@@ -449,10 +438,7 @@ async fn test_unauthenticated_access_to_protected_command_rejected() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_config(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        "Authentication required: not logged in"
-    );
+    assert_eq!(result.unwrap_err().message, "Authentication required: not logged in");
 }
 
 #[tokio::test]
@@ -467,7 +453,7 @@ async fn test_low_role_rejected_from_admin_command() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = update_config(state_guard, AppConfig::default()).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Permission denied"));
+    assert!(result.unwrap_err().message.contains("Permission denied"));
 }
 
 #[tokio::test]
@@ -477,7 +463,7 @@ async fn test_admin_session_can_run_admin_command() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = update_config(state_guard, AppConfig::default()).await;
     assert!(result.is_ok());
-    assert!(result.unwrap());
+    assert!(result.unwrap().data.unwrap());
 }
 
 #[tokio::test]
@@ -499,7 +485,7 @@ async fn test_verify_token_restores_session_and_enforces_rbac() {
     // verify_token validates the token and re-establishes the session.
     let state_guard: tauri::State<'_, AppState> =
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
-    let valid = verify_token(state_guard, token.clone()).await.unwrap();
+    let valid = verify_token(state_guard, token.clone()).await.unwrap().data.unwrap();
     assert!(valid);
     let session = state.auth_session.read().await.clone().unwrap();
     assert_eq!(session.role, "trader");
@@ -511,5 +497,5 @@ async fn test_verify_token_restores_session_and_enforces_rbac() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = update_config(state_guard2, AppConfig::default()).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Permission denied"));
+    assert!(result.unwrap_err().message.contains("Permission denied"));
 }
