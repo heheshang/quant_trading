@@ -20,7 +20,9 @@
 
     <el-table :data="logs" v-loading="loading" style="width: 100%">
       <el-table-column prop="timestamp" label="时间" width="190" />
-      <el-table-column prop="user_id" label="用户ID" width="110" />
+      <el-table-column label="用户ID" width="110">
+        <template #default="{ row }">{{ row.user_id || '—' }}</template>
+      </el-table-column>
       <el-table-column prop="username" label="用户名" width="130" />
       <el-table-column prop="action" label="动作" width="150">
         <template #default="scope">

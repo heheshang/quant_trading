@@ -83,7 +83,7 @@ pub async fn submit_order(
     state: State<'_, AppState>,
     order: Order,
 ) -> Result<String, String> {
-    state.require_auth().await?;
+    let user = state.require_auth().await?;
     // The order-placement pipeline (market data → risk check → submit →
     //   persist → emit → async execution) lives in `OrderProcessor` so the
     //   command stays a *thin adapter* (SRP) and never reaches into the
@@ -106,8 +106,8 @@ pub async fn submit_order(
     let _ = state
         .audit_logger
         .log_order_submit(
-            "0",
-            "admin",
+            &user.user_id.to_string(),
+            &user.username,
             &placement.order_id.to_string(),
             &symbol,
             &side,
@@ -248,14 +248,15 @@ pub async fn cancel_order(
     state: State<'_, AppState>,
     order_id: i64,
 ) -> Result<bool, String> {
+    let user = state.require_auth().await?;
     let cancelled = cancel_order_core(state.inner(), order_id).await?;
     if cancelled {
         let _ = app.emit("order:cancelled", order_id);
         let _ = state
             .audit_logger
             .log(
-                "0",
-                "admin",
+                &user.user_id.to_string(),
+                &user.username,
                 security::audit::AuditAction::OrderCancel,
                 &order_id.to_string(),
                 serde_json::json!({}),

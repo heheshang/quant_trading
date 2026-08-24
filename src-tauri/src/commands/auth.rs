@@ -124,10 +124,20 @@ pub async fn update_profile(
         .await
         .map_err(|e| e.to_string());
     let success = result.is_ok();
+    let audit_user_id = match state.app_services.as_ref() {
+        Some(s) => s
+            .auth_service
+            .resolve_user_id(username)
+            .await
+            .unwrap_or(None)
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "1".to_string()),
+        None => "1".to_string(),
+    };
     let _ = state
         .audit_logger
         .log(
-            "0",
+            &audit_user_id,
             username,
             security::audit::AuditAction::ConfigChange,
             "user_profile",
@@ -165,10 +175,20 @@ pub async fn change_password(
         .await
         .map_err(|e| e.to_string());
     let success = result.is_ok();
+    let audit_user_id = match state.app_services.as_ref() {
+        Some(s) => s
+            .auth_service
+            .resolve_user_id(&username)
+            .await
+            .unwrap_or(None)
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "1".to_string()),
+        None => "1".to_string(),
+    };
     let _ = state
         .audit_logger
         .log(
-            "0",
+            &audit_user_id,
             &username,
             security::audit::AuditAction::ConfigChange,
             "password",
