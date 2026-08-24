@@ -255,37 +255,41 @@ async function fetchAccountInfo() {
 async function fetchPositions() {
   try {
     if (tradeMode.value === 'live') {
-      const live = (await getBinancePositions()).map(binancePositionToPosition)
-      if (live.length > 0) {
-        positions.value = live
+      // 先读数据库（remote WS 导入的持仓），符合"先读取数据库数据"。
+      const db = await getPositions()
+      if (db.length > 0) {
+        positions.value = db
       } else {
-        // 现货无衍生品持仓：回退展示账户持仓（余额>0 的资产），避免视图为空。
-        const balances = await getBinanceBalance()
-        // 复用 onTradeModeChange 已拉取的全市场价格，补全持仓实时价格/市值。
-        const prices = tickerPrices.value
-        if (Object.keys(prices).length === 0) await fetchTickerPrices()
-        await fetchLiveTrades()
-        const held = balances.filter((b) => Number(b.free) > 0 || Number(b.locked) > 0)
-        // 用本地持久化的 live 单成交记录算平均买入成本（避免逐标的查 Binance 限流）。
-        const avgCostOf = (asset: string) => {
-          const pair = `${asset}-USDT`
-          let cost = 0
-          let qty = 0
-          for (const t of liveTradesMap.value.values()) {
-            if (t.symbol !== pair) continue
-            if (t.status !== 'FILLED' || t.side !== 'BUY') continue
-            const fq = t.filled_quantity || 0
-            cost += (t.price || 0) * fq
-            qty += fq
+        // DB 尚未同步（或无持仓）→ 回退实时余额计算，避免视图为空。
+        const live = (await getBinancePositions()).map(binancePositionToPosition)
+        if (live.length > 0) {
+          positions.value = live
+        } else {
+          const balances = await getBinanceBalance()
+          const prices = tickerPrices.value
+          if (Object.keys(prices).length === 0) await fetchTickerPrices()
+          await fetchLiveTrades()
+          const held = balances.filter((b) => Number(b.free) > 0 || Number(b.locked) > 0)
+          const avgCostOf = (asset: string) => {
+            const pair = `${asset}-USDT`
+            let cost = 0
+            let qty = 0
+            for (const t of liveTradesMap.value.values()) {
+              if (t.symbol !== pair) continue
+              if (t.status !== 'FILLED' || t.side !== 'BUY') continue
+              const fq = t.filled_quantity || 0
+              cost += (t.price || 0) * fq
+              qty += fq
+            }
+            return qty > 0 ? cost / qty : 0
           }
-          return qty > 0 ? cost / qty : 0
+          positions.value = held.map((b): Position => {
+            const price = resolveBalancePrice(b.asset, prices)
+            const isStable = USD_STABLES.includes(b.asset)
+            const avgCost = price > 0 && !isStable ? avgCostOf(b.asset) : (isStable ? 1 : 0)
+            return binanceBalanceToPosition(b, price, avgCost)
+          })
         }
-        positions.value = held.map((b): Position => {
-          const price = resolveBalancePrice(b.asset, prices)
-          const isStable = USD_STABLES.includes(b.asset)
-          const avgCost = price > 0 && !isStable ? avgCostOf(b.asset) : (isStable ? 1 : 0)
-          return binanceBalanceToPosition(b, price, avgCost)
-        })
       }
     } else {
       positions.value = await getPositions()

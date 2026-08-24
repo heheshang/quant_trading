@@ -600,17 +600,21 @@ impl AccountService {
         }
 
         // 清理该账户下已不在币安持仓中的 symbol，保持库与币安一致。
+        // 仅当同步集非空时才清理：空集合（如瞬时空余额/接口异常）不清空，
+        // 避免误删已有持仓（防御性，保持库与币安一致但不因一次空同步丢数据）。
         let symbols: Vec<String> = positions.iter().map(|p| p.symbol.clone()).collect();
-        sqlx::query(
-            "DELETE FROM positions
-             WHERE account_id = $1
-               AND NOT (symbol = ANY($2::text[]))",
-        )
-        .bind(account_id)
-        .bind(&symbols)
-        .execute(&mut *tx)
-        .await
-        .map_err(ServiceError::Database)?;
+        if !symbols.is_empty() {
+            sqlx::query(
+                "DELETE FROM positions
+                 WHERE account_id = $1
+                   AND NOT (symbol = ANY($2::text[]))",
+            )
+            .bind(account_id)
+            .bind(&symbols)
+            .execute(&mut *tx)
+            .await
+            .map_err(ServiceError::Database)?;
+        }
 
         tx.commit().await.map_err(ServiceError::Database)?;
         Ok(())
