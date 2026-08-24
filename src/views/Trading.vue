@@ -368,7 +368,8 @@ async function fetchActiveOrders() {
         throw e
       }
     } else {
-      activeOrders.value = (await getActiveOrders()).map((o) => ({
+      // 纸面页只展示纸面单（algorithm 为独立种类，可在持仓/策略页查看）。
+      activeOrders.value = (await getActiveOrders('paper')).map((o) => ({
         ...o,
         strategy_name: strategyName(o.strategy_id),
       }))

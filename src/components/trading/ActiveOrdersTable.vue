@@ -17,6 +17,11 @@
               :value="name"
             />
           </el-select>
+          <el-select v-model="exchangeFilter" clearable placeholder="全部种类" style="width: 120px">
+            <el-option label="纸面" value="paper" />
+            <el-option label="实盘" value="live" />
+            <el-option label="算法" value="algorithm" />
+          </el-select>
           <SearchBar v-model="searchQuery" placeholder="搜索标的/ID" />
           <el-button @click="emit('refresh')">刷新</el-button>
           <el-button size="small" @click="exportCSV">导出CSV</el-button>
@@ -143,6 +148,7 @@ const { getOrderStatusType, getOrderStatusText } = useTradingUtils()
 
 const searchQuery = ref('')
 const strategyFilter = ref('')
+const exchangeFilter = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 /** 订单种类中文标签。 */
@@ -206,6 +212,9 @@ const filteredOrders = computed(() => {
   }
   if (strategyFilter.value) {
     list = list.filter((o) => orderStrategyName(o) === strategyFilter.value)
+  }
+  if (exchangeFilter.value) {
+    list = list.filter((o) => (o.exchange || 'paper') === exchangeFilter.value)
   }
   return list
 })

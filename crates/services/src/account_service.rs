@@ -71,7 +71,7 @@ impl AccountService {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_active_orders(&self) -> ServiceResult<Vec<Order>> {
+    pub async fn get_active_orders(&self, exchange: Option<&str>) -> ServiceResult<Vec<Order>> {
         let client = self
             .postgres
             .as_ref()
@@ -85,9 +85,11 @@ impl AccountService {
                    exchange, created_at, updated_at
             FROM orders
             WHERE status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
+              AND ($1::text IS NULL OR exchange = $1)
             ORDER BY created_at DESC
             "#,
         )
+        .bind(exchange)
         .fetch_all(pool)
         .await
         .map_err(|e| {
@@ -159,7 +161,7 @@ impl AccountService {
         Ok(())
     }
 
-    pub async fn get_recent_orders(&self, limit: u32) -> ServiceResult<Vec<Order>> {
+    pub async fn get_recent_orders(&self, limit: u32, exchange: Option<&str>) -> ServiceResult<Vec<Order>> {
         let client = self
             .postgres
             .as_ref()
@@ -172,10 +174,12 @@ impl AccountService {
                    quantity, filled_quantity, commission, slippage, status,
                    exchange, created_at, updated_at
             FROM orders
+            WHERE ($1::text IS NULL OR exchange = $1)
             ORDER BY created_at DESC
-            LIMIT $1
+            LIMIT $2
             "#,
         )
+        .bind(exchange)
         .bind(limit as i64)
         .fetch_all(pool)
         .await
@@ -599,7 +603,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_active_orders_no_db() {
         let svc = AccountService::new(None);
-        let result = svc.get_active_orders().await;
+        let result = svc.get_active_orders(None).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),

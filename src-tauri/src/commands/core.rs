@@ -206,6 +206,7 @@ pub async fn get_positions(state: State<'_, AppState>) -> Result<Vec<Position>, 
 pub async fn get_recent_orders(
     state: State<'_, AppState>,
     limit: Option<u32>,
+    exchange: Option<String>,
 ) -> Result<Vec<Order>, String> {
     let services = state
         .app_services
@@ -213,16 +214,19 @@ pub async fn get_recent_orders(
         .ok_or("Application services not initialized")?;
     services
         .account_service
-        .get_recent_orders(limit.unwrap_or(50))
+        .get_recent_orders(limit.unwrap_or(50), exchange.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_active_orders(state: State<'_, AppState>) -> Result<Vec<Order>, String> {
-    // 活跃订单以数据库为准（持久化，重启后仍可读）。
+pub async fn get_active_orders(
+    state: State<'_, AppState>,
+    exchange: Option<String>,
+) -> Result<Vec<Order>, String> {
+    // 活跃订单以数据库为准（持久化，重启后仍可读）；可按种类(paper/live/algorithm)过滤。
     if let Some(services) = state.app_services.as_ref() {
-        match services.account_service.get_active_orders().await {
+        match services.account_service.get_active_orders(exchange.as_deref()).await {
             Ok(orders) => return Ok(orders),
             Err(_) => {
                 // DB 不可用时降级到内存 OrderManager（保证不阻塞页面）。

@@ -80,7 +80,7 @@ describe('Trading.vue - 按钮测试', () => {
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_active_orders')
+    expect(mockInvoke).toHaveBeenCalledWith('get_active_orders', { exchange: 'paper' })
   }, 30000)
 
   it('导出 CSV - 触发浏览器下载', async () => {

@@ -148,7 +148,7 @@ async fn test_get_active_orders_returns_submitted() {
 
     let state_guard: tauri::State<'_, AppState> =
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
-    let result = get_active_orders(state_guard).await;
+    let result = get_active_orders(state_guard, None).await;
     assert!(result.is_ok());
     let orders = result.unwrap();
     assert_eq!(orders.len(), 1);

@@ -11,13 +11,13 @@ export function submitOrder(order: Order): Promise<string> {
   return call<string>('submit_order', { order })
 }
 
-export function getActiveOrders(): Promise<Order[]> {
-  return call<Order[]>('get_active_orders')
+export function getActiveOrders(exchange?: string): Promise<Order[]> {
+  return call<Order[]>('get_active_orders', { exchange: exchange || null })
 }
 
-/** 最近订单（含已成交/撤单/拒绝），按时间倒序。 */
-export function getRecentOrders(limit = 50): Promise<Order[]> {
-  return call<Order[]>('get_recent_orders', { limit })
+/** 最近订单（含已成交/撤单/拒绝），按时间倒序；可按种类(paper/live/algorithm)过滤。 */
+export function getRecentOrders(limit = 50, exchange?: string): Promise<Order[]> {
+  return call<Order[]>('get_recent_orders', { limit, exchange: exchange || null })
 }
 
 /**

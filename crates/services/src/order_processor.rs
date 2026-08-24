@@ -362,7 +362,7 @@ impl OrderProcessor {
             let interval = std::time::Duration::from_secs(1);
             loop {
                 tokio::time::sleep(interval).await;
-                let Ok(orders) = account_service.get_active_orders().await else {
+                let Ok(orders) = account_service.get_active_orders(None).await else {
                     continue;
                 };
                 let now = chrono::Utc::now();
