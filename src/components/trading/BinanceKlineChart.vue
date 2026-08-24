@@ -30,14 +30,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getKlines } from '@/services/market'
 import { startBinanceMarketData, subscribeBinanceCandle } from '@/services/binance'
 import type { BinanceKline, MarketDataRecord } from '@/services/types'
 import { getChartSeriesColors } from '@/composables/useChartTheme'
 
-const chartSymbol = ref('BTCUSDT')
+const props = defineProps<{ symbol?: string }>()
+const emit = defineEmits<{ (e: 'update:symbol', v: string): void }>()
+/** 由父级驱动（交易面板选中标的）；图表内改动回传 domain 符号。 */
+const chartSymbol = computed({
+  get: () => props.symbol ?? 'BTCUSDT',
+  set: (v: string) => emit('update:symbol', toDomainSymbol(v)),
+})
 const chartInterval = ref('1h')
 const candles = ref<BinanceKline[]>([])
 const candleError = ref('')
@@ -161,6 +167,14 @@ async function onIntervalChange(): Promise<void> {
   await subscribeCurrentInterval()
   await fetchCandles()
 }
+
+// 父级切换标的（交易面板选中的 symbol）时，重订阅并刷新该图表。
+watch(
+  () => props.symbol,
+  () => {
+    if (props.symbol) void onIntervalChange()
+  },
+)
 
 onMounted(async () => {
   await subscribeCurrentInterval()

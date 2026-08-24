@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   checkBinanceStatus,
@@ -76,10 +76,23 @@ const orderTotal = computed(() => {
 
 // ── Realtime stream ──
 const wsRunning = ref(false)
-const streamSymbol = ref('BTC-USDT')
 const liveKlines = ref<BinanceWsKline[]>([])
 const liveDepth = ref<BinanceWsDepth | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+/** 切换标的时，为限价单预填最新收盘价。 */
+async function prefillPrice(symbol: string) {
+  if (form.value.order_type !== 'Limit') return
+  try {
+    const rows = await getKlines(symbol, '1m', 1)
+    const last = rows[0]
+    if (last) form.value.price = last.close
+  } catch {
+    // 忽略：预填失败不阻塞操作
+  }
+}
+// 选中标的变化时预填最新价（仅限价单）。
+watch(() => form.value.symbol, (sym) => void prefillPrice(sym))
 
 /** DB 行情映射：remote WS 已导入 DB，前端读 DB（removed 依赖 binance:* WS 事件）。 */
 function dbKlineToWs(r: MarketDataRecord): BinanceWsKline {
@@ -100,13 +113,13 @@ function dbOrderbookToWs(r: OrderbookSnapshotRecord): BinanceWsDepth {
 }
 async function pollLiveData() {
   try {
-    const rows = await getKlines(streamSymbol.value, '1m', 60)
+    const rows = await getKlines(form.value.symbol, '1m', 60)
     liveKlines.value = rows.map(dbKlineToWs)
   } catch {
     // 忽略：下次轮询重试
   }
   try {
-    const r = await getOrderbook(streamSymbol.value)
+    const r = await getOrderbook(form.value.symbol)
     liveDepth.value = r ? dbOrderbookToWs(r) : null
   } catch {
     // 忽略
@@ -144,8 +157,8 @@ async function startStream() {
     // 启动后端 WS 并订阅（驱动 remote WS → DB 导入），显示改由 DB 轮询。
     // 幂等启动：行情图表可能已自启（返回 CONFLICT），忽略以便继续订阅。
     await startBinanceMarketData().catch(() => {})
-    await subscribeBinanceCandle(streamSymbol.value, '1m')
-    await subscribeBinanceDepth(streamSymbol.value)
+    await subscribeBinanceCandle(form.value.symbol, '1m')
+    await subscribeBinanceDepth(form.value.symbol)
     await pollLiveData()
     if (pollTimer) clearInterval(pollTimer)
     pollTimer = setInterval(pollLiveData, 5000)
@@ -241,14 +254,10 @@ function toggleHistory() {
   loadOrders()
 }
 
-onMounted(async () => {
-  try {
-    symbols.value = await getSymbols()
-  } catch {
-    symbols.value = []
-  }
-  // 三路并行加载，缩短首屏等待。
-  await Promise.all([loadBalance(), loadPositions(), loadOrders()])
+  // 默认限价单预填当前价。
+  void prefillPrice(form.value.symbol)
+  // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
+})
   // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
 })
 
@@ -276,14 +285,14 @@ onUnmounted(() => {
     <el-card class="section">
       <template #header>实时行情（WebSocket）</template>
       <div class="ws-controls">
-        <el-select v-model="streamSymbol" filterable size="small" style="width: 180px">
+        <el-select v-model="form.symbol" filterable size="small" style="width: 180px">
           <el-option v-for="s in symbols" :key="s" :label="s" :value="s" />
         </el-select>
         <el-button size="small" type="primary" :disabled="wsRunning" @click="startStream">开始</el-button>
         <el-button size="small" :disabled="!wsRunning" @click="stopStream">停止</el-button>
       </div>
 
-      <BinanceDepthChart :symbol="streamSymbol" :depth="liveDepth" />
+      <BinanceDepthChart :symbol="form.symbol" :depth="liveDepth" />
 
       <el-table v-if="liveKlines.length" :data="liveKlines" size="small" max-height="240" class="mt">
         <el-table-column prop="open_time" label="时间" :formatter="fmtKlineTime" />
@@ -300,10 +309,12 @@ onUnmounted(() => {
           <template #default="{ row }">{{ fmtNumber(row.close) }}</template>
         </el-table-column>
       </el-table>
-      <div v-else-if="wsRunning" class="hint">等待 K 线流…</div><div v-else class="hint">点击「开始」订阅该标的实时行情</div>
+      
+      <div v-else-if="wsRunning" class="hint">等待 K 线流…</div>
+      <div v-else class="hint">点击「开始」订阅该标的实时行情</div>
     </el-card>
 
-    <BinanceKlineChart />
+    <BinanceKlineChart v-model:symbol="form.symbol" />
 
     <el-card class="section">
       <template #header>持仓（{{ positions.length }}）</template>
