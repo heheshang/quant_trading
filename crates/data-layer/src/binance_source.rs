@@ -143,6 +143,25 @@ impl DataSource for BinanceDataSource {
         Ok(market_data)
     }
 
+    async fn get_klines_history(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        limit: i64,
+    ) -> Result<Vec<MarketData>> {
+        let binance_symbol = to_binance_symbol(symbol);
+        let timeframe = Self::normalize_interval(timeframe);
+        let limit = limit.clamp(1, 1000) as u32;
+        let client = self.client.read().await;
+        let candles = client
+            .get_candles(&binance_symbol, &timeframe, Some(limit))
+            .await?;
+        candles
+            .iter()
+            .map(|k| Self::kline_to_market_data(symbol, k))
+            .collect()
+    }
+
     async fn subscribe(&self, _symbols: Vec<String>) -> Result<()> {
         // Binance WebSocket subscription is handled through the `binance:*`
         // event stream; this hook stays `Ok(())` to keep the trait honest.

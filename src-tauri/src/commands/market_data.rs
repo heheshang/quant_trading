@@ -50,7 +50,7 @@ pub async fn get_klines(
     };
     let data = services
         .market_service
-        .get_klines_from_db(&symbol, &timeframe, limit.unwrap_or(100))
+        .get_klines(&symbol, &timeframe, limit.unwrap_or(100))
         .await?;
     ok_result(data)
 }

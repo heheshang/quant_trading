@@ -1,21 +1,27 @@
 use crate::error::{ServiceError, ServiceResult};
 use data_layer::market_data::DataSource;
 use data_layer::{
-    AccountSnapshotRecord, BalanceRecord, FundingRateRecord, LastPriceRecord, MarkPriceRecord,
-    MarketDataRecord, MarketDataRepository, OrderbookSnapshotRecord, PositionSnapshotRecord,
-    StreamTradeRecord, TickerSnapshotRecord,
+    AccountSnapshotRecord, BalanceRecord, FundingRateRecord, LastPriceRecord, MarketDataRecord,
+    MarketDataRepository, NewMarketDataRecord, OrderbookSnapshotRecord, PositionSnapshotRecord,
+    StreamTradeRecord, TickerSnapshotRecord, MarkPriceRecord,
 };
 use quant_common::types::MarketData;
 use rust_decimal::Decimal;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{error, instrument};
+use tracing::{error, info, instrument};
 
 /// Market data service — retrieves real-time and historical data, and reads
 /// persisted snapshots/funding/mark-price series from the repository.
 pub struct MarketService {
     data_source: Arc<RwLock<Option<Arc<dyn DataSource>>>>,
     market_data: Option<Arc<MarketDataRepository>>,
+    /// Per-(symbol, timeframe) kickoff time for REST backfill, throttled to one
+    /// attempt per minute to avoid hammering Binance on repeated empty polls.
+    backfill_guard: Arc<Mutex<HashMap<(String, String), Instant>>>,
 }
 
 impl MarketService {
@@ -26,6 +32,7 @@ impl MarketService {
         Self {
             data_source,
             market_data,
+            backfill_guard: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -99,6 +106,102 @@ impl MarketService {
                 error!("Failed to read klines from DB: {}", e);
                 ServiceError::Other(e.to_string())
             })
+    }
+
+    /// Latest N klines for an instrument/timeframe, read from DB, REST-backfilled
+    /// on cold start.
+    ///
+    /// DB-first read path for the K-line chart: when the `market_data` table has
+    /// no rows (or fewer than `limit`) for the requested timeframe — a timeframe
+    /// the WebSocket has not been streaming yet — fetch `limit` historical klines
+    /// from the Binance REST source, persist them, and re-read. Throttled to one
+    /// REST backfill per (symbol, timeframe) per minute.
+    #[instrument(skip(self), fields(symbol = %symbol, timeframe = %timeframe))]
+    pub async fn get_klines(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        limit: i64,
+    ) -> ServiceResult<Vec<MarketDataRecord>> {
+        let repo = self.repo_or_err("klines not available (no database)")?;
+        let mut rows = repo
+            .query_latest_klines(symbol, timeframe, limit)
+            .await
+            .map_err(|e| {
+                error!("Failed to read klines from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })?;
+
+        // 冷启动回填：库内该周期行数不足时才补（每分钟每组合最多一次）。
+        if rows.len() < limit as usize {
+            self.backfill_klines(symbol, timeframe, limit, &repo).await;
+            rows = repo
+                .query_latest_klines(symbol, timeframe, limit)
+                .await
+                .map_err(|e| {
+                    error!("Failed to re-read klines from DB: {}", e);
+                    ServiceError::Other(e.to_string())
+                })?;
+        }
+        Ok(rows)
+    }
+
+    /// Fetch `limit` historical klines from the REST source and persist them to
+    /// `market_data` (best-effort; failures log and leave the DB as-is).
+    async fn backfill_klines(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        limit: i64,
+        repo: &Arc<MarketDataRepository>,
+    ) {
+        let key = (symbol.to_string(), timeframe.to_string());
+        {
+            let guard = self.backfill_guard.lock().unwrap();
+            if let Some(last) = guard.get(&key) {
+                if last.elapsed() < Duration::from_secs(60) {
+                    return;
+                }
+            }
+        }
+        {
+            let mut guard = self.backfill_guard.lock().unwrap();
+            guard.insert(key, Instant::now());
+        }
+
+        let ds = self.data_source.read().await;
+        let Some(source) = ds.as_ref() else {
+            return;
+        };
+        let data = match source.get_klines_history(symbol, timeframe, limit).await {
+            Ok(d) => d,
+            Err(e) => {
+                error!(symbol = %symbol, timeframe = %timeframe, "kline backfill fetch failed: {}", e);
+                return;
+            }
+        };
+        if data.is_empty() {
+            return;
+        }
+
+        let records: Vec<NewMarketDataRecord> = data
+            .into_iter()
+            .map(|m| NewMarketDataRecord {
+                instrument_id: m.symbol.clone(),
+                timeframe: timeframe.to_string(),
+                timestamp: m.timestamp,
+                open: m.open,
+                high: m.high,
+                low: m.low,
+                close: m.close,
+                volume: m.volume,
+            })
+            .collect();
+
+        match repo.insert_batch(&records).await {
+            Ok(n) => info!(symbol = %symbol, timeframe = %timeframe, inserted = n, "kline backfill persisted"),
+            Err(e) => error!(symbol = %symbol, timeframe = %timeframe, "kline backfill persist failed: {}", e),
+        }
     }
 
     /// Latest N stream trades for a symbol, read from DB (`stream_trades`).

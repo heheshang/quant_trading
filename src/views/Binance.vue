@@ -137,7 +137,8 @@ function fmtKlineTime(row: BinanceWsKline): string {
 async function startStream() {
   try {
     // 启动后端 WS 并订阅（驱动 remote WS → DB 导入），显示改由 DB 轮询。
-    await startBinanceMarketData()
+    // 幂等启动：行情图表可能已自启（返回 CONFLICT），忽略以便继续订阅。
+    await startBinanceMarketData().catch(() => {})
     await subscribeBinanceCandle(streamSymbol.value, '1m')
     await subscribeBinanceDepth(streamSymbol.value)
     await pollLiveData()

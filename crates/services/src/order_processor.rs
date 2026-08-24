@@ -620,6 +620,14 @@ mod tests {
         ) -> quant_common::Result<Vec<MarketData>> {
             Ok(vec![])
         }
+        async fn get_klines_history(
+            &self,
+            _symbol: &str,
+            _timeframe: &str,
+            _limit: i64,
+        ) -> quant_common::Result<Vec<MarketData>> {
+            Ok(vec![])
+        }
         async fn subscribe(&self, _symbols: Vec<String>) -> quant_common::Result<()> {
             Ok(())
         }

@@ -7,10 +7,10 @@
     </template>
     <el-form inline size="small">
       <el-form-item label="交易对">
-        <el-input v-model="chartSymbol" style="width: 160px" @keyup.enter="fetchCandles" />
+        <el-input v-model="chartSymbol" style="width: 160px" @keyup.enter="onIntervalChange" />
       </el-form-item>
       <el-form-item label="周期">
-        <el-select v-model="chartInterval" style="width: 100px" @change="fetchCandles">
+        <el-select v-model="chartInterval" style="width: 100px" @change="onIntervalChange">
           <el-option label="1m" value="1m" />
           <el-option label="5m" value="5m" />
           <el-option label="15m" value="15m" />
@@ -33,6 +33,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getKlines } from '@/services/market'
+import { startBinanceMarketData, subscribeBinanceCandle } from '@/services/binance'
 import type { BinanceKline, MarketDataRecord } from '@/services/types'
 import { getChartSeriesColors } from '@/composables/useChartTheme'
 
@@ -44,6 +45,7 @@ const loading = ref(false)
 
 const chartRef = ref<HTMLDivElement>()
 let chartInstance: echarts.ECharts | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function formatTimestamp(ms: number): string {
   const d = new Date(ms)
@@ -142,16 +144,40 @@ async function fetchCandles(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  fetchCandles()
+/** 确保后端 WS 已在运行并订阅当前周期（驱动 remote WS → DB 导入当前周期）。 */
+async function subscribeCurrentInterval(): Promise<void> {
+  // 幂等启动：已在运行时返回 CONFLICT，忽略错误以便继续订阅。
+  await startBinanceMarketData().catch(() => {})
+  try {
+    await subscribeBinanceCandle(toDomainSymbol(chartSymbol.value), chartInterval.value)
+    candleError.value = ''
+  } catch (e) {
+    candleError.value = e instanceof Error ? e.message : '订阅实时行情失败'
+  }
+}
+
+/** 周期/标的切换：重订阅并刷新。 */
+async function onIntervalChange(): Promise<void> {
+  await subscribeCurrentInterval()
+  await fetchCandles()
+}
+
+onMounted(async () => {
+  await subscribeCurrentInterval()
+  await fetchCandles()
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = setInterval(fetchCandles, 5000)
 })
 
 onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
   chartInstance?.dispose()
   chartInstance = null
 })
 
-defineExpose({ chartRef, candleError, candles, fetchCandles })
 </script>
 
 <style scoped>

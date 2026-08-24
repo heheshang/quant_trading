@@ -18,6 +18,18 @@ pub trait DataSource: Send + Sync {
         end: DateTime<Utc>,
     ) -> Result<Vec<MarketData>>;
 
+    /// 拉取某标的/周期最近 `limit` 根 K 线（用于 DB 冷启动 REST 回填）。
+    ///
+    /// 区别于 [`DataSource::get_historical_data`]（按时间窗 + 固定周期），
+    /// 该方法按调用方指定的周期返回最新 `limit` 根，供 `get_klines` 在库内
+    /// 无数据时回填 `market_data`。
+    async fn get_klines_history(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        limit: i64,
+    ) -> Result<Vec<MarketData>>;
+
     /// 订阅实时行情
     async fn subscribe(&self, symbols: Vec<String>) -> Result<()>;
 
@@ -113,6 +125,15 @@ impl DataSource for MockDataSource {
         _symbol: &str,
         _start: DateTime<Utc>,
         _end: DateTime<Utc>,
+    ) -> Result<Vec<MarketData>> {
+        Ok(Vec::new())
+    }
+
+    async fn get_klines_history(
+        &self,
+        _symbol: &str,
+        _timeframe: &str,
+        _limit: i64,
     ) -> Result<Vec<MarketData>> {
         Ok(Vec::new())
     }
