@@ -322,7 +322,7 @@ onUnmounted(() => {
 
     <BinanceKlineChart v-model:symbol="form.symbol" />
 
-    <el-card class="section">
+    <el-card class="section chart-wide">
       <template #header>持仓（{{ positions.length }}）</template>
       <el-table :data="paginatedPositions" v-loading="positionsLoading" size="small">
         <el-table-column label="交易对">
@@ -405,7 +405,7 @@ onUnmounted(() => {
       />
     </el-card>
 
-    <el-card class="section">
+    <el-card class="section chart-wide">
       <template #header>下单</template>
       <el-form :model="form" label-width="90px" size="small">
         <el-form-item label="交易对">
@@ -445,18 +445,12 @@ onUnmounted(() => {
 
 <style scoped>
 .binance-panel {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-md);
-  align-items: start;
   width: 100%;
 }
-/* 图表 / 实时深度 / 订单（宽表格）占整行，其余卡片按流式 2 列排列。 */
-.binance-panel .chart-wide,
-.binance-panel .binance-kline-chart {
-  grid-column: 1 / -1;
-}
-/* 网格用 gap 控间距，移除卡片外 margin；图表自身底部 margin 归零。 */
+/* 卡片竖排叠满整行（每个 card 占满可用宽度）；间距用 gap。 */
 .binance-panel .section { margin-top: 0; }
 .binance-panel .binance-kline-chart { margin-bottom: 0; }
 .mt { margin-top: 12px; }
