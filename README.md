@@ -6,10 +6,15 @@
 
 本系统是一个完整的量化交易解决方案，涵盖数据管理、策略开发、回测分析、交易执行、风险管理和实时监控等核心功能。
 
-### 核心特性
-
-- ✅ **模块化架构**：13 个 Rust crate 分层设计，高内聚低耦合
-- ✅ **双数据库存储**：PostgreSQL（关系型 + RANGE 分区时序）+ Redis（缓存）
+- ✅ **完整回测系统**：支持策略开发、参数优化、性能评估（含**多标的组合回测**，按标的拆分 + 组合聚合，杜绝跨标的指标污染）
+- ✅ **智能执行算法**：TWAP、VWAP、冰山订单（拆分后逐单走风控 + 纸面/实盘执行，时间比例分布 + 末片吸收余量）
+- ✅ **三层风控体系**：事前（现金/持仓/单日亏损/集中度，卖出统一用可用量）、事中、事后
+- ✅ **实时监控告警**：Prometheus 指标 + DB 累计订单数 + 权益快照真实值，趋势图**双轴**（订单数左/金额右）
+- ✅ **订单分类**：`orders.exchange` 区分**纸面 / 实盘 / 算法**，交易页按 tab 展示对应类型（含类型徽标、完整交易类型中文）
+- ✅ **Binance 交易所集成**：REST + WebSocket 对接，实盘单镜像进 `orders` 表 + 终态回写
+- ✅ **安全加固**：起步强密钥 fail-fast、密钥 KDF 强化、API 密钥 AES-GCM 加密、JWT 落盘加密（后端密钥）、登录节流、会话 `token_version` 下线、审计完整性
+- ✅ **类型安全错误处理**：命令层以 `String` 错误返回，服务层 typed errors
+- ✅ **现代化界面**：Vue3 + Element Plus + ECharts + Pinia
 - ✅ **完整回测系统**：支持策略开发、参数优化、性能评估
 - ✅ **智能执行算法**：TWAP、VWAP、冰山订单等（`run_algorithmic_order` 已接线：拆分后按普通市价/限价子单走风控+纸面/实盘执行）
 - ✅ **三层风控体系**：事前、事中、事后全流程风险管理
@@ -42,11 +47,7 @@ quant-trading-system/
 │   ├── risk-layer/                 # 风险管理层
 │   ├── monitor-layer/              # 监控告警层
 │   └── security/                   # 安全模块（加密、认证、审计）
-├── src/                            # Vue3 前端
-│   ├── views/                      # 页面（10 个视图）
-│   ├── components/                 # 通用组件
-│   ├── composables/                # 组合式函数
-│   ├── stores/                     # Pinia 状态管理
+│   └── services/                   # API 服务层（含 secureStorage 安全存储适配器）
 │   └── services/                   # API 服务层
 ├── Cargo.toml                      # Workspace 配置
 ├── package.json                    # 前端依赖
@@ -102,11 +103,11 @@ git clone https://github.com/heheshang/quant_trading.git
 cd quant_trading
 ```
 
-2. **配置环境变量**
-```bash
-cp .env.example .env
-# 编辑 .env 文件，配置数据库连接、币安密钥等
-```
+> ⚠️ **必须设置强随机安全密钥（≥32 字节）**，否则启动将 fail-fast 拒绝：
+> ```bash
+> export JWT_SECRET=$(openssl rand -hex 32)
+> export ENCRYPTION_KEY=$(openssl rand -hex 32)
+> ```
 
 3. **用 Docker 启动数据库组件（推荐，无本地 PG/Redis 时）**
 
@@ -173,7 +174,7 @@ npm run tauri build
 - **PostgreSQL**：订单、持仓、账户、策略、回测结果存储
 - **Redis**：热点数据缓存，连接池管理（deadpool-redis）
 - **Binance 数据源**：历史行情、实时行情接入
-- **数据质量**：实时清洗、去重、异常检测
+- **迁移管理**：SQL 迁移脚本自动执行（含 `orders.exchange` 列、`market_data` 2027 分区）
 - **迁移管理**：SQL 迁移脚本自动执行
 
 ### 4. 仓储层 (`crates/repository`)
@@ -186,7 +187,13 @@ npm run tauri build
 
 - **业务编排**：组合 domain + repository + clients
 - **Typed Errors**：`ServiceError`（16 个变体）+ `ServiceResult<T>`
-- **7 个服务**：
+  - `AccountService` — 账户、订单、持仓管理（订单状态计数、纸面持仓推导、权益快照）
+  - `AuthService` — 登录、JWT、用户资料、密码管理（token_version 校验）
+  - `MarketService` — 实时/历史行情
+  - `BinanceService` — Binance 交易所封装
+  - `RiskService` — 风控指标、配置、事前检查
+  - `StrategyService` — 策略 CRUD、回测执行
+  - `ConfigService` — 运行时配置读写（含安全密钥校验）
   - `AccountService` — 账户、订单、持仓管理
   - `AuthService` — 登录、JWT、用户资料、密码管理
   - `MarketService` — 实时/历史行情
@@ -195,14 +202,20 @@ npm run tauri build
   - `StrategyService` — 策略 CRUD、回测执行
   - `ConfigService` — 运行时配置读写
 
-### 6. 策略层 (`crates/strategy-layer`)
-
-- **策略接口**：统一的 `Strategy` trait + `StrategyContext`
-- **技术指标**：SMA、EMA、RSI、MACD、布林带（命名常量，无魔法数字）
+- **仓位净额**：`net_quantity`（买入=目标−已有持仓、卖出=清仓持仓，避免全仓/过度杠杆）
+- **回测引擎**：高保真回测（滑点/手续费），**信号用 t 收盘、成交在 t+1 开盘**（无前视偏差），signal history 只喂目标标的（防跨标的污染）
+- **多标的组合回测**：按标的拆分 + 一次聚合（权益按时间戳求和、全量初资本重算指标、单测覆盖）
+- **调度器**：**逐标的**生成信号（每标的各自历史），实盘策略正确多标的下单
+- **性能指标**：夏普比率、最大回撤、胜率、盈亏比
 - **回测引擎**：高保真回测，包含滑点、手续费模拟
 - **性能指标**：夏普比率、最大回撤、胜率、盈亏比
 
-### 7. 交易层 (`crates/trading-layer`)
+- **订单管理**：订单生命周期管理（`OrderManager`，内存 + DB 双态）
+- **执行引擎**：支持模拟盘和实盘切换
+- **算法交易**：TWAP、VWAP、冰山订单（时间比例分布 + 末片吸收余量）
+- **纸面调度器**：永远用纸面引擎，只处理 `paper/algorithm` 单（跳过 `live`），限价单触及限价才成交、超时标记过期
+- **限价成交价**：以市价为基准 + 限价 clamp（成交不劣于限价）
+- **Binance 执行器**：对接 Binance 交易所下单
 
 - **订单管理**：订单生命周期管理
 - **执行引擎**：支持模拟盘和实盘切换
@@ -216,13 +229,21 @@ npm run tauri build
 - **事后分析** (`post_trade`)：归因分析
 - **VaR 计算** (`var`)：风险价值估算
 
-### 9. 监控层 (`crates/monitor-layer`)
+- **Prometheus 指标**：订单量、延迟、账户余额等（`position_value` 单一写者，避免双源覆盖）
+- **指标监控**：数据库累计订单数（含历史）+ 权益快照真实账户值，趋势图**双轴**（订单数左/金额右）
+- **后台任务**：权益快照写入器（每 60s）、实盘订单监控（每 5s，变化才写 + 失败重试 + 限流退避）
+- **结构化日志**：基于 tracing 的分级日志系统
+- **多渠道告警**：邮件、Webhook、企业微信
 
 - **Prometheus 指标**：订单量、延迟、账户余额等
 - **结构化日志**：基于 tracing 的分级日志系统
 - **多渠道告警**：邮件、Webhook、企业微信
 
-### 10. 安全模块 (`crates/security`)
+- **加密**：AES-256-GCM 数据加密（hex 长密钥解码存满熵 + Argon2id 派生短密钥 + 旧派生兼容解密）
+- **认证**：JWT 令牌（HS256）+ `token_version` 校验（改密即下线）+ 登录失败节流（指数退避锁机）
+- **API 密钥管理**：加密存储
+- **审计日志**：操作追踪（含下单成功/失败、`AuditAction::Unknown` 防误标）
+- **会话安全**：前端 `plugin-store` + 后端密钥加密落盘（`secure_encrypt`/`secure_decrypt`），WebView 不可直接读明文 token
 
 - **加密**：AES-GCM 数据加密、Argon2 密码哈希
 - **认证**：JWT 令牌生成与验证
@@ -298,9 +319,7 @@ match service.get_account().await {
 
 ## 🧪 测试
 
-### 测试覆盖
-
-- **前端**：33 个测试文件 / 423 个测试全部通过
+- **前端**：24 个测试文件 / 246 个测试全部通过
 - **Rust workspace**：编译、Clippy、测试通过；真实 PostgreSQL/Binance 集成测试默认 `#[ignore]`
 - **风控层**：事前/事中/事后全流程测试
 
@@ -327,9 +346,15 @@ cargo fmt --check
 cargo clippy --workspace --no-deps -- -D warnings
 ```
 
-## 🔒 安全与合规
-
-- ✅ 数据传输加密（TLS）
+- ✅ 起步强密钥 fail-fast（拒绝占位/过短 `JWT_SECRET`/`ENCRYPTION_KEY`）
+- ✅ API 密钥加密存储（AES-256-GCM，hex 解码满熵 + Argon2id KDF）
+- ✅ 密码哈希存储（Argon2）
+- ✅ JWT 令牌认证 + `token_version` 校验（改密即下线）
+- ✅ 登录失败节流（连续 5 次 → 指数退避锁机）
+- ✅ 会话 token `plugin-store` + 后端密钥加密落盘（`secure_encrypt`/`secure_decrypt`）
+- ✅ 操作审计日志（含下单成功/失败）
+- ✅ 实盘下单鉴权 + 前置风控（与纸面一致）
+- ✅ `.env.example` 无敏感信息泄露
 - ✅ API 密钥加密存储（AES-GCM）
 - ✅ 密码哈希存储（Argon2）
 - ✅ JWT 令牌认证
@@ -368,9 +393,22 @@ cargo clippy --workspace --no-deps -- -D warnings
 
 ## 🛣️ 开发路线图
 
-### 第一阶段（已完成）✅
-- [x] 项目架构搭建（13 crate 分层）
-- [x] 数据层实现（PostgreSQL + Redis）
+- [x] 策略层实现（回测引擎 + 技术指标 + 仓位净额）
+- [x] 交易层实现（订单管理 + 算法交易 + 纸面/实盘分类）
+- [x] 风控层实现（三层风控体系）
+- [x] 监控层实现（Prometheus + 告警 + 双轴趋势）
+- [x] 安全模块（加密 + 认证 + 审计 + 会话安全）
+- [x] Binance 交易所集成（含实盘单镜像）
+- [x] 前端界面（10 个视图 + 订单分类展示）
+- [x] Typed errors（服务层 ServiceError，命令层以 String 返回）
+- [x] 全链路安全/正确性审计修复（🔴5 🟠8 🟡10 + C1/C2 + UI 21 项）
+
+### 第二阶段（进行中）
+- [x] 数据库迁移脚本完善（exchange 列、2027 分区）
+- [x] WebSocket 实时行情推送（概览降频：重流仅活跃标的）
+- [x] 策略参数优化器（网格/贝叶斯/遗传）
+- [ ] OS keychain（stronghold/keychain）存储
+- [ ] 前端订阅进一步降频（限数量/降 orderbook 频率）
 - [x] 策略层实现（回测引擎 + 技术指标）
 - [x] 交易层实现（订单管理 + 算法交易）
 - [x] 风控层实现（三层风控体系）
@@ -379,7 +417,7 @@ cargo clippy --workspace --no-deps -- -D warnings
 - [x] Binance 交易所集成
 - [x] 前端界面（10 个视图）
 - [x] Typed errors（服务层 ServiceError，命令层以 String 返回）
-- [x] 测试覆盖（213 tests passing）
+- [x] 测试覆盖（前端 246 + Rust workspace 全绿）
 
 ### 第二阶段（进行中）
 - [ ] 数据库迁移脚本完善
