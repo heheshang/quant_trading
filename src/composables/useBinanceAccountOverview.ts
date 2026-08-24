@@ -142,7 +142,7 @@ export function useBinanceAccountOverview() {
       liveTrades.value = t
       lastFetched = Date.now()
       // 权益由后台快照写入器记录（每 60s）；这里只拉历史供曲线展示。
-      const rows = await getAccountSnapshots('USDT', 200)
+      const rows = await getAccountSnapshots('USDT', 2000)
       equityHistory.value = rows
         .map((r) => [String(r.ts), Number(r.eq ?? 0)] as [string, number])
         .sort((a, b) => a[0].localeCompare(b[0]))

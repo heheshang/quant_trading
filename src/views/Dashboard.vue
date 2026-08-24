@@ -92,7 +92,6 @@ import { useRouter } from 'vue-router'
 import { TrendCharts, Promotion, Tickets, Warning } from '@element-plus/icons-vue'
 import { useAccountStore } from '@/stores/account'
 import { useBinanceAccountOverview } from '@/composables/useBinanceAccountOverview'
-import { computeRealizedPnl, type FilledFill } from '@/utils/pnl'
 import { useOrderStore } from '@/stores/order'
 import { getRiskMetrics } from '@/services/risk'
 import { useFormatting } from '@/composables/useFormatting'
@@ -135,33 +134,20 @@ const error = computed(() => accountStore.error || orderStore.error)
 // 实盘账户概览（Balances×价格=总资产；live_trades 均价=盈亏）。
 const binanceOverview = useBinanceAccountOverview()
 const totalAssets = computed(() => binanceOverview.totalAssets.value)
-// 今日收益 = 当日已成交的真实已实现盈亏（平均成本法，纸面 + 实盘）。
+// 今日收益 = 今日最新权益 − 今日起始权益（后台每 60s 快照记录，含已实现+浮动，随资产曲线更新）。
 const dailyPnl = computed(() => {
+  const rows = binanceOverview.equityHistory.value
+  if (rows.length < 2) return 0
   const startOfDay = Date.now() - (Date.now() % 86_400_000)
-  const fills: FilledFill[] = []
-  for (const o of orderStore.recentOrders) {
-    if (o.status !== 'Filled') continue
-    if (new Date(o.created_at).getTime() < startOfDay) continue
-    fills.push({
-      symbol: o.symbol,
-      side: o.side as 'Buy' | 'Sell',
-      price: o.price ?? 0,
-      quantity: o.filled_quantity || 0,
-      ts: new Date(o.created_at).getTime(),
-    })
-  }
-  for (const t of binanceOverview.liveTrades.value) {
-    if (t.status !== 'FILLED') continue
-    if (new Date(t.updated_at).getTime() < startOfDay) continue
-    fills.push({
-      symbol: t.symbol,
-      side: t.side === 'BUY' ? 'Buy' : 'Sell',
-      price: t.price,
-      quantity: t.filled_quantity,
-      ts: new Date(t.updated_at).getTime(),
-    })
-  }
-  return computeRealizedPnl(fills)
+  const today = rows.filter(([ts]) => new Date(ts).getTime() >= startOfDay)
+  if (today.length === 0) return 0
+  const latest = Number(today[today.length - 1][1]) || 0
+  const before = rows.filter(([ts]) => new Date(ts).getTime() < startOfDay)
+  const baseline =
+    before.length > 0
+      ? Number(before[before.length - 1][1]) || 0
+      : Number(today[0][1]) || 0
+  return latest - baseline
 })
 const totalPnl = computed(() => binanceOverview.totalPnl.value)
 const unrealizedPnl = computed(() => binanceOverview.unrealizedPnl.value)
