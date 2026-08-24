@@ -2,13 +2,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  getBinanceOrders,
   checkBinanceStatus,
   startBinanceMarketData,
   stopBinanceMarketData,
   subscribeBinanceCandle,
   subscribeBinanceDepth,
 } from '@/services/binance'
+import { getActiveOrders, getRecentOrders } from '@/services/order'
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
 import AssetBalanceTable from '@/components/trading/AssetBalanceTable.vue'
 import { useTradingUtils } from '@/components/trading/useTradingUtils'
@@ -24,7 +24,7 @@ import type {
   BinanceStatus,
   BinanceWsKline,
   BinanceWsDepth,
-  BinanceOrder,
+  Order,
   MarketDataRecord,
   OrderbookSnapshotRecord,
 } from '@/services/types'
@@ -32,7 +32,7 @@ import type {
 const balances = ref<BinanceBalance[]>([])
 const { getOrderTypeText } = useTradingUtils()
 const positions = ref<Position[]>([])
-const orders = ref<BinanceOrder[]>([])
+const orders = ref<Order[]>([])
 const status = ref<BinanceStatus | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
@@ -191,7 +191,10 @@ async function loadPositions() {
 async function loadOrders() {
   ordersLoading.value = true
   try {
-    orders.value = await getBinanceOrders(ordersSymbol.value, ordersHistory.value)
+    // 从 DB 读（app 已镜像的 Binance 实盘单,exchange='live'）。按 active/历史 分支。
+    orders.value = ordersHistory.value
+      ? await getRecentOrders(100, 'live')
+      : await getActiveOrders('live')
   } catch (e) {
     ElMessage.error(`获取币安订单失败: ${e}`)
   } finally {
@@ -218,7 +221,7 @@ async function submitOrder() {
   }
 }
 
-async function cancelOrder(order: BinanceOrder) {
+async function cancelOrder(order: Order) {
   try {
     await cancelBinanceOrder(order.symbol, order.order_id)
     ElMessage.success(`撤单成功: #${order.order_id}`)
@@ -351,9 +354,9 @@ onUnmounted(() => {
         </el-table-column>
         <el-table-column prop="price" label="价格" />
         <el-table-column label="数量">
-          <template #default="{ row }">{{ fmtNumber(row.orig_qty ?? row.executed_qty) }}</template>
+          <template #default="{ row }">{{ fmtNumber(row.quantity ?? row.filled_quantity) }}</template>
         </el-table-column>
-        <el-table-column prop="executed_qty" label="已成交" />
+        <el-table-column prop="filled_quantity" label="已成交" />
         <el-table-column prop="status" label="状态" />
         <el-table-column v-if="!ordersHistory" label="操作">
           <template #default="{ row }">

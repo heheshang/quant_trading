@@ -407,9 +407,45 @@ pub async fn start_binance_user_data_stream(
         .await
         .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, format!("Failed to start user data stream: {}", e)))?;
 
-    let mut rx = client.get_receiver().await;
-    let app_clone = app.clone();
-    let running = state.binance_ws_state.user_data_running.clone();
+    let market_repo = state.app_services.as_ref().and_then(|s| s.market_data.clone());
+    running.store(true, Ordering::SeqCst);
+    info!("binance user data stream started (listen_key obtained)");
+    tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                BinanceWsMessage::AccountPosition(p) => {
+                    let _ = app_clone.emit("binance:account", &p);
+                    // 用户数据流实时账户余额 → 落库 balances（与 REST 快照互补，更实时）。
+                    if let Some(repo) = &market_repo {
+                        let new_balances: Vec<data_layer::NewBalance> = p
+                            .balances
+                            .iter()
+                            .map(|b| data_layer::NewBalance {
+                                asset: b.asset.clone(),
+                                free: b.free,
+                                locked: b.locked,
+                            })
+                            .collect();
+                        if !new_balances.is_empty() {
+                            match repo.upsert_balances(&new_balances).await {
+                                Ok(_) => info!(assets = new_balances.len(), "[user-stream] balances persisted"),
+                                Err(e) => warn!(error = %e, "[user-stream] balances import failed"),
+                            }
+                        }
+                    }
+                }
+                BinanceWsMessage::OrderUpdate(o) => {
+                    let _ = app_clone.emit("binance:order", &o);
+                }
+                BinanceWsMessage::Error(e) => {
+                    debug!("Binance user data WS error: {e}");
+                    let _ = app_clone.emit("binance:user_data_error", &e);
+                }
+                _ => {}
+            }
+        }
+        running.store(false, Ordering::SeqCst);
+    });
     running.store(true, Ordering::SeqCst);
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {

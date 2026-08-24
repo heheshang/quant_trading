@@ -46,7 +46,9 @@ describe('BinanceView', () => {
               updated_at: '2024-01-01T00:00:00Z',
             },
           ]
-        case 'get_binance_orders':
+        case 'get_active_orders':
+          return []
+        case 'get_recent_orders':
           return []
         case 'get_klines':
           return []
@@ -77,20 +79,15 @@ describe('BinanceView', () => {
 
   it('loads active orders by default and history on toggle', async () => {
     const wrapper = await mountComponent()
-    expect(mockInvoke).toHaveBeenCalledWith('get_binance_orders', {
-      symbol: 'BTC-USDT',
-      history: false,
-      limit: undefined,
-    })
+    expect(mockInvoke).toHaveBeenCalledWith('get_active_orders', { exchange: 'live' })
     // Simulate the radio group flipping to history before the @change handler.
     wrapper.vm.ordersHistory = true
     wrapper.vm.toggleHistory()
     await flushPromises()
     await wrapper.vm.$nextTick()
-    expect(mockInvoke).toHaveBeenCalledWith('get_binance_orders', {
-      symbol: 'BTC-USDT',
-      history: true,
-      limit: undefined,
+    expect(mockInvoke).toHaveBeenCalledWith('get_recent_orders', {
+      limit: 100,
+      exchange: 'live',
     })
   })
 
