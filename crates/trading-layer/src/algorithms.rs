@@ -40,28 +40,39 @@ impl AlgorithmicOrderSlicer {
         }
 
         let slice_quantity = params.total_quantity / Decimal::from(params.num_slices);
-        let time_interval = params.duration_minutes / params.num_slices as i64;
+        let total_secs = params.duration_minutes * 60;
 
         let mut orders = Vec::new();
-        let mut current_time = start_time;
-
-        for i in 0..params.num_slices {
+        let n = params.num_slices;
+        for i in 0..n {
+            // 时间按比例分布（避免整数截断漂移），i=n 时正好铺满 duration。
+            let offset_secs = if n > 1 {
+                total_secs * i as i64 / n as i64
+            } else {
+                0
+            };
+            let t = start_time + Duration::seconds(offset_secs);
+            // 末片吸收整除余量，保证总量精确等于 total_quantity。
+            let quantity = if i == n - 1 {
+                params.total_quantity - slice_quantity * Decimal::from(n as i64 - 1)
+            } else {
+                slice_quantity
+            };
             let order = Order { order_id: 0,
-            strategy_id: format!("TWAP_{}", i),
-            symbol: symbol.clone(),
-            order_type: OrderType::Market,
-            side: side.clone(),
-            price: None,
-            quantity: slice_quantity,
-            filled_quantity: Decimal::ZERO,
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: current_time,
-            updated_at: current_time,
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
+                strategy_id: format!("TWAP_{}", i),
+                symbol: symbol.clone(),
+                order_type: OrderType::Market,
+                side: side.clone(),
+                price: None,
+                quantity,
+                filled_quantity: Decimal::ZERO,
+                status: quant_common::types::OrderStatus::Pending,
+                created_at: t,
+                updated_at: t,
+                commission: Decimal::ZERO,
+                slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
 
             orders.push(order);
-            current_time += Duration::minutes(time_interval);
         }
 
         info!("TWAP sliced into {} orders", orders.len());
@@ -90,24 +101,30 @@ impl AlgorithmicOrderSlicer {
         }
 
         let mut orders = Vec::new();
+        let mut placed = Decimal::ZERO;
 
         for (i, (timestamp, volume)) in volume_profile.iter().enumerate() {
-            let volume_ratio = *volume / total_volume;
-            let slice_quantity = params.total_quantity * volume_ratio;
+            // 末片吸收整除余量，保证总量精确等于 total_quantity。
+            let slice_quantity = if i == volume_profile.len() - 1 {
+                params.total_quantity - placed
+            } else {
+                params.total_quantity * (*volume / total_volume)
+            };
+            placed += slice_quantity;
 
             let order = Order { order_id: 0,
-            strategy_id: format!("VWAP_{}", i),
-            symbol: symbol.clone(),
-            order_type: OrderType::Market,
-            side: side.clone(),
-            price: None,
-            quantity: slice_quantity,
-            filled_quantity: Decimal::ZERO,
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: *timestamp,
-            updated_at: *timestamp,
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
+                strategy_id: format!("VWAP_{}", i),
+                symbol: symbol.clone(),
+                order_type: OrderType::Market,
+                side: side.clone(),
+                price: None,
+                quantity: slice_quantity,
+                filled_quantity: Decimal::ZERO,
+                status: quant_common::types::OrderStatus::Pending,
+                created_at: *timestamp,
+                updated_at: *timestamp,
+                commission: Decimal::ZERO,
+                slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
 
             orders.push(order);
         }

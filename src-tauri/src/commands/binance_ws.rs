@@ -310,7 +310,6 @@ pub fn start_monitor_metrics(app_services: &quant_services::AppServices) {
             if let Ok(Some(equity)) = account_service.get_latest_equity("USDT").await {
                 let eq = equity.to_f64().unwrap_or(0.0);
                 monitor_layer::MetricsCollector::set_account_balance(eq);
-                monitor_layer::MetricsCollector::set_position_value(eq);
             }
             if let Ok(pnl) = account_service.get_today_equity_pnl("USDT").await {
                 monitor_layer::MetricsCollector::set_daily_pnl(pnl.to_f64().unwrap_or(0.0));
@@ -325,71 +324,96 @@ pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::A
     let account_service = app_services.account_service.clone();
     tokio::spawn(async move {
         use quant_common::types::OrderStatus;
+        use rust_decimal::Decimal;
         use std::collections::HashMap;
         // 上一轮仍开放的单（order_id → 域 symbol），用于检测终态回写。
         let mut last_open: HashMap<i64, String> = HashMap::new();
+        // 最近一次记录的状态（order_id → (status, executed_qty)），变化才写库/发事件。
+        let mut last_state: HashMap<i64, (String, Decimal)> = HashMap::new();
+        let map_open_status = |s: &str| -> Option<OrderStatus> {
+            match s {
+                "PARTIALLY_FILLED" => Some(OrderStatus::PartiallyFilled),
+                "NEW" => Some(OrderStatus::Submitted),
+                _ => None,
+            }
+        };
+        let map_terminal = |s: &str| -> Option<OrderStatus> {
+            match s {
+                "FILLED" => Some(OrderStatus::Filled),
+                "CANCELED" => Some(OrderStatus::Cancelled),
+                "REJECTED" => Some(OrderStatus::Rejected),
+                "EXPIRED" => Some(OrderStatus::Expired),
+                _ => None,
+            }
+        };
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            let Ok(open) = binance.get_open_orders(None).await else {
-                continue;
+            let open = match binance.get_open_orders(None).await {
+                Ok(o) => o,
+                Err(_) => {
+                    // 限流/网络：退避 10s 再试，避免高频打 Binance。
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    continue;
+                }
             };
             let mut current: HashMap<i64, String> = HashMap::new();
             let mut changed = false;
             for o in &open {
                 let sym = exchange_binance::from_binance_symbol(&o.symbol);
                 current.insert(o.order_id, sym);
-                if live_trades
-                    .update_status(o.order_id, &o.status, o.executed_qty)
-                    .await
-                    .is_ok()
-                {
-                    changed = true;
+                // 状态未变 → 跳过写库/发事件（避免每 5s 无条件写 + 事件洪泛）。
+                let key = (o.status.clone(), o.executed_qty);
+                if last_state.get(&o.order_id) == Some(&key) {
+                    continue;
                 }
-                // 同步 orders 表状态（活跃单统一从 DB 读）。
-                let status = match o.status.as_str() {
-                    "PARTIALLY_FILLED" => OrderStatus::PartiallyFilled,
-                    "NEW" => OrderStatus::Submitted,
-                    _ => continue,
-                };
-                let _ = account_service
-                    .update_order_status(
-                        o.order_id,
-                        status,
-                        o.executed_qty,
-                        rust_decimal::Decimal::ZERO,
-                    )
+                let _ = live_trades
+                    .update_status(o.order_id, &o.status, o.executed_qty)
                     .await;
+                if let Some(status) = map_open_status(&o.status) {
+                    let _ = account_service
+                        .update_order_status(
+                            o.order_id,
+                            status,
+                            o.executed_qty,
+                            Decimal::ZERO,
+                        )
+                        .await;
+                }
+                last_state.insert(o.order_id, key);
+                changed = true;
             }
-            // 之前开放、现在不再开放的单 → 终态（按 Binance 实际状态回写 orders/live_trades）。
+            // 不再开放的单 → 确认终态并回写；get_order 失败则保留待下轮重试。
+            let mut retry: HashMap<i64, String> = HashMap::new();
             for (order_id, sym) in last_open.iter() {
                 if current.contains_key(order_id) {
                     continue;
                 }
-                if let Ok(o) = binance.get_order(sym, *order_id).await {
-                    let terminal = match o.status.as_str() {
-                        "FILLED" => Some(OrderStatus::Filled),
-                        "CANCELED" => Some(OrderStatus::Cancelled),
-                        "REJECTED" => Some(OrderStatus::Rejected),
-                        "EXPIRED" => Some(OrderStatus::Expired),
-                        _ => None,
-                    };
-                    if let Some(status) = terminal {
-                        let _ = account_service
-                            .update_order_status(
-                                *order_id,
-                                status,
-                                o.executed_qty,
-                                rust_decimal::Decimal::ZERO,
-                            )
-                            .await;
-                        let _ = live_trades
-                            .update_status(*order_id, &o.status, o.executed_qty)
-                            .await;
-                        changed = true;
+                match binance.get_order(sym, *order_id).await {
+                    Ok(o) => {
+                        if let Some(status) = map_terminal(&o.status) {
+                            let _ = account_service
+                                .update_order_status(
+                                    *order_id,
+                                    status,
+                                    o.executed_qty,
+                                    Decimal::ZERO,
+                                )
+                                .await;
+                            let _ = live_trades
+                                .update_status(*order_id, &o.status, o.executed_qty)
+                                .await;
+                            changed = true;
+                        }
+                        last_state.remove(order_id);
+                    }
+                    Err(_) => {
+                        // 瞬时失败不丢状态：保留待重试。
+                        retry.insert(*order_id, sym.clone());
                     }
                 }
             }
             last_open = current;
+            last_open.extend(retry);
             if changed {
                 let _ = app.emit("binance:live_orders_updated", ());
             }

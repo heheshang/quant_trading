@@ -10,32 +10,89 @@ use tracing::{error, info, instrument, warn};
 /// 数据加密服务
 pub struct DataEncryption {
     cipher: Aes256Gcm,
+    /// 旧派生（SHA256/截断）的解密器，用于兼容历史数据。
+    legacy_cipher: Option<Aes256Gcm>,
 }
 
 impl DataEncryption {
     /// 创建新的加密服务
     pub fn new(key: &[u8; 32]) -> Self {
         let cipher = Aes256Gcm::new(key.into());
-        Self { cipher }
+        Self { cipher, legacy_cipher: None }
     }
 
-    /// 从密钥字符串创建
+    /// 从密钥字符串创建：hex 长密钥解码存满熵；短密钥用 Argon2id 派生；并保留旧派生兼容。
     pub fn from_key_string(key_str: &str) -> Result<Self> {
-        let mut key = [0u8; 32];
-        let key_bytes = key_str.as_bytes();
-
-        if key_bytes.len() < 32 {
-            // 如果密钥太短，用 SHA256 哈希扩展
-            use sha2::{Digest, Sha256};
-            let hash = Sha256::digest(key_bytes);
-            key.copy_from_slice(&hash);
-        } else {
-            key.copy_from_slice(&key_bytes[..32]);
-        }
-
-        Ok(Self::new(&key))
+        let mut s = Self::new(&derive_aes_key(key_str));
+        s.legacy_cipher = Some(
+            Aes256Gcm::new_from_slice(&derive_legacy_key(key_str))
+                .map_err(|e| Error::Internal(format!("Invalid legacy key: {}", e)))?,
+        );
+        Ok(s)
     }
+}
 
+/// 派生 AES-256 密钥：
+/// 1. hex 字符串（如 `openssl rand -hex 32`，64 字符）→ 解码取满 32 字节（避免截断丢熵）；
+/// 2. 原始字节 ≥32 → 取前 32；
+/// 3. 过短 → Argon2id（固定应用盐）派生，避免明文/SHA256 无盐。
+fn derive_aes_key(key_str: &str) -> [u8; 32] {
+    let trimmed = key_str.trim();
+    if let Some(bytes) = decode_hex(trimmed) {
+        if bytes.len() >= 32 {
+            let mut k = [0u8; 32];
+            k.copy_from_slice(&bytes[..32]);
+            return k;
+        }
+    }
+    if trimmed.as_bytes().len() >= 32 {
+        let mut k = [0u8; 32];
+        k.copy_from_slice(&trimmed.as_bytes()[..32]);
+        return k;
+    }
+    let mut k = [0u8; 32];
+    let params = argon2::Params::new(19 * 1024, 2, 1, Some(32)).unwrap_or_default();
+    let a2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    if a2
+        .hash_password_into(trimmed.as_bytes(), b"quant-trading-enc-v1", &mut k)
+        .is_err()
+    {
+        use sha2::{Digest, Sha256};
+        k.copy_from_slice(&Sha256::digest(trimmed.as_bytes()));
+    }
+    k
+}
+
+/// 旧派生（升级前）：<32 字节 SHA256 扩展，否则取前 32 字节（用于解密历史数据）。
+fn derive_legacy_key(key_str: &str) -> [u8; 32] {
+    let mut key = [0u8; 32];
+    let key_bytes = key_str.as_bytes();
+    if key_bytes.len() < 32 {
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(key_bytes);
+        key.copy_from_slice(&hash);
+    } else {
+        key.copy_from_slice(&key_bytes[..32]);
+    }
+    key
+}
+
+/// 将 hex 字符串解码为字节；非法 hex 或长度非偶数返回 None。
+fn decode_hex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    let sb = s.as_bytes();
+    for chunk in sb.chunks(2) {
+        let hi = (chunk[0] as char).to_digit(16)?;
+        let lo = (chunk[1] as char).to_digit(16)?;
+        out.push(((hi << 4) | lo) as u8);
+    }
+    Some(out)
+}
+
+impl DataEncryption {
     /// 加密数据
     #[instrument(skip(self, plaintext))]
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<String> {
@@ -75,12 +132,22 @@ impl DataEncryption {
         let nonce = Nonce::from_slice(&data[..12]);
         let ciphertext = &data[12..];
 
-        let plaintext = self.cipher.decrypt(nonce, ciphertext).map_err(|e| {
-            error!(error = %e, "decryption failed");
-            Error::Internal(format!("Decryption failed: {}", e))
-        })?;
-
-        Ok(plaintext)
+        match self.cipher.decrypt(nonce, ciphertext) {
+            Ok(pt) => Ok(pt),
+            Err(e) => {
+                // 兼容升级前旧派生密钥加密的数据。
+                if let Some(legacy) = &self.legacy_cipher {
+                    return legacy
+                        .decrypt(nonce, ciphertext)
+                        .map_err(|le| {
+                            error!(error = %e, legacy = %le, "decryption failed (both ciphers)");
+                            Error::Internal("Decryption failed".to_string())
+                        });
+                }
+                error!(error = %e, "decryption failed");
+                Err(Error::Internal(format!("Decryption failed: {}", e)))
+            }
+        }
     }
 
     /// 加密字符串

@@ -162,14 +162,10 @@ pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, Str
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_account_info().await {
             Ok(account) => {
-                monitor_layer::MetricsCollector::set_account_balance(
-                    account.total_assets.to_f64().unwrap_or(0.0),
-                );
+                // 单一写者：position_value 仅在此处写（账户真实持仓市值）；账户余额/当日盈亏
+                // 由 start_monitor_metrics（连续快照）写，避免两个来源互相覆盖。
                 monitor_layer::MetricsCollector::set_position_value(
                     account.market_value.to_f64().unwrap_or(0.0),
-                );
-                monitor_layer::MetricsCollector::set_daily_pnl(
-                    account.daily_pnl.to_f64().unwrap_or(0.0),
                 );
                 Ok(account)
             }
