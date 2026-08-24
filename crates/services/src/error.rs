@@ -144,6 +144,13 @@ impl ServiceError {
     }
 }
 
+impl From<ServiceError> for quant_common::api::ApiFailure {
+    /// 让命令里的 `service.xxx().await?` 直接转成 `ApiFailure`（`?` 自动转换）。
+    fn from(e: ServiceError) -> Self {
+        quant_common::api::ApiFailure::new(e.api_code(), e.api_message())
+    }
+}
+
 impl From<quant_repository::RepoError> for ServiceError {
     /// Map repository-layer errors to typed service errors.
     ///

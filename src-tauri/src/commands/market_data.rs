@@ -19,16 +19,17 @@ fn parse_ts(value: Option<String>) -> Result<Option<chrono::DateTime<chrono::Utc
 
 /// 查询行情数据中可用的标的列表（下拉数据源，来自数据库）。
 #[tauri::command]
-pub async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn get_symbols(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<String>>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
-        .market_service
-        .list_symbols()
-        .await
-        .map_err(|e| e.to_string())
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let syms = services.market_service.list_symbols().await?;
+    ok_result(syms)
 }
 
 /// 查询行情快照（按标的 + 可选时间范围）。
@@ -39,18 +40,23 @@ pub async fn get_ticker_snapshots(
     from: Option<String>,
     to: Option<String>,
     limit: Option<i64>,
-) -> Result<Vec<TickerSnapshotRecord>, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<TickerSnapshotRecord>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{code, ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    let from = parse_ts(from)?;
-    let to = parse_ts(to)?;
-    services
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let from = parse_ts(from).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let to = parse_ts(to).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let rows = services
         .market_service
         .get_ticker_snapshots(&inst_id, from, to, limit)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(rows)
 }
 
 /// 记录当前账户权益快照（资产曲线的点）。
@@ -58,16 +64,15 @@ pub async fn get_ticker_snapshots(
 pub async fn record_account_snapshot(
     state: State<'_, AppState>,
     eq: rust_decimal::Decimal,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
-        .account_service
-        .record_equity_snapshot(eq)
-        .await
-        .map_err(|e| e.to_string())
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    services.account_service.record_equity_snapshot(eq).await?;
+    ok_result(serde_json::Value::Null)
 }
 
 /// 查询账户快照（按币种 + 可选时间范围）。
@@ -78,18 +83,23 @@ pub async fn get_account_snapshots(
     from: Option<String>,
     to: Option<String>,
     limit: Option<i64>,
-) -> Result<Vec<AccountSnapshotRecord>, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<AccountSnapshotRecord>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{code, ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    let from = parse_ts(from)?;
-    let to = parse_ts(to)?;
-    services
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let from = parse_ts(from).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let to = parse_ts(to).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let rows = services
         .market_service
         .get_account_snapshots(&ccy, from, to, limit)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(rows)
 }
 
 /// 查询持仓快照（按标的 + 可选时间范围）。
@@ -100,18 +110,23 @@ pub async fn get_position_snapshots(
     from: Option<String>,
     to: Option<String>,
     limit: Option<i64>,
-) -> Result<Vec<PositionSnapshotRecord>, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<PositionSnapshotRecord>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{code, ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    let from = parse_ts(from)?;
-    let to = parse_ts(to)?;
-    services
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let from = parse_ts(from).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let to = parse_ts(to).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let rows = services
         .market_service
         .get_position_snapshots(&inst_id, from, to, limit)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(rows)
 }
 
 /// 查询资金费率（按标的 + 可选时间范围）。
@@ -122,18 +137,23 @@ pub async fn get_funding_rates(
     from: Option<String>,
     to: Option<String>,
     limit: Option<i64>,
-) -> Result<Vec<FundingRateRecord>, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<FundingRateRecord>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{code, ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    let from = parse_ts(from)?;
-    let to = parse_ts(to)?;
-    services
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let from = parse_ts(from).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let to = parse_ts(to).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let rows = services
         .market_service
         .get_funding_rates(&inst_id, from, to, limit)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(rows)
 }
 
 /// 查询标记价格（按标的 + 可选时间范围）。
@@ -144,16 +164,21 @@ pub async fn get_mark_prices(
     from: Option<String>,
     to: Option<String>,
     limit: Option<i64>,
-) -> Result<Vec<MarkPriceRecord>, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<MarkPriceRecord>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{code, ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    let from = parse_ts(from)?;
-    let to = parse_ts(to)?;
-    services
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let from = parse_ts(from).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let to = parse_ts(to).map_err(|e| ApiFailure::new(code::INVALID_PARAM, e))?;
+    let rows = services
         .market_service
         .get_mark_prices(&inst_id, from, to, limit)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(rows)
 }

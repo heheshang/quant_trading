@@ -276,12 +276,16 @@ pub async fn get_recent_orders(
 pub async fn get_active_orders(
     state: State<'_, AppState>,
     exchange: Option<String>,
-) -> Result<Vec<Order>, String> {
-    state.require_auth().await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<Order>>> {
+    use crate::commands::auth_err;
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     // 活跃订单以数据库为准（持久化，重启后仍可读）；可按种类(paper/live/algorithm)过滤。
     if let Some(services) = state.app_services.as_ref() {
         match services.account_service.get_active_orders(exchange.as_deref()).await {
-            Ok(orders) => return Ok(orders),
+            Ok(orders) => return ok_result(orders),
             Err(_) => {
                 // DB 不可用时降级到内存 OrderManager（保证不阻塞页面）。
             }
@@ -289,7 +293,7 @@ pub async fn get_active_orders(
     }
 
     // DB 不可用 → 内存 OrderManager 兜底。
-    Ok(state.order_manager.get_active_orders().await)
+    ok_result(state.order_manager.get_active_orders().await)
 }
 
 /// 撤销订单（paper / OrderManager 订单）

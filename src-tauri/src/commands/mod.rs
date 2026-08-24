@@ -10,6 +10,16 @@ pub mod optimizer;
 pub mod strategy_risk;
 pub mod twofa;
 
+/// 认证失败的 `ApiFailure`（未登录/会话失效）。
+pub fn auth_err(e: String) -> quant_common::api::ApiFailure {
+    quant_common::api::ApiFailure::new(quant_common::api::code::UNAUTHORIZED, e)
+}
+
+/// 服务未初始化的 `ApiFailure`。
+pub fn not_init_err(msg: impl Into<String>) -> quant_common::api::ApiFailure {
+    quant_common::api::ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, msg)
+}
+
 pub use api_keys::*;
 pub use audit::*;
 pub use auth::*;
