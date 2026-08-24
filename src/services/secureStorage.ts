@@ -40,10 +40,32 @@ async function dec(v: string): Promise<string> {
   }
 }
 
+/**
+ * 判断值是否「不是有效密文」（即迁移前的明文）。
+ *
+ * 密文 = base64(nonce(12) + ciphertext + tag)，解码后必然 ≥12 字节。
+ * 明文 JWT（含 `.`）或任意非 base64 字符串会抛 `InvalidCharacterError`。
+ * 仅当确认为明文时才做「加密写回」迁移——避免把真密文（如 key 变更解不开）
+ * 误当明文二次加密而损坏。
+ */
+function looksLikePlaintext(v: string): boolean {
+  if (typeof atob !== 'function') return false // 无法判断 → 走正常解密（失败会回退原值）
+  try {
+    return atob(v).length < 12
+  } catch {
+    return true
+  }
+}
+
 export async function getItem(key: string): Promise<string | null> {
   const store = await getStore()
   const raw = store ? await store.get<string>(key) : localStorage.getItem(key)
   if (raw === null || raw === undefined) return null
+  // 迁移：旧代码（enc 未加密时）写入的明文 token → 加密写回，动态清除明文残留。
+  if (looksLikePlaintext(raw)) {
+    await setItem(key, raw)
+    return raw
+  }
   return dec(raw)
 }
 
