@@ -8,6 +8,7 @@ use data_layer::{LiveTrade, LiveTradesRepository};
 use rust_decimal::Decimal;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct LiveTradesService {
     repo: Option<Arc<LiveTradesRepository>>,
 }
@@ -54,5 +55,18 @@ impl LiveTradesService {
     pub async fn list(&self) -> ServiceResult<Vec<LiveTrade>> {
         let repo = self.repo_or_err("list")?;
         repo.list_all().await.map_err(|e| ServiceError::Other(e.to_string()))
+    }
+
+    /// Update only status / filled quantity (preserve strategy link).
+    pub async fn update_status(
+        &self,
+        order_id: i64,
+        status: &str,
+        filled_quantity: Decimal,
+    ) -> ServiceResult<()> {
+        let repo = self.repo_or_err("update_status")?;
+        repo.update_status(order_id, status, filled_quantity)
+            .await
+            .map_err(|e| ServiceError::Other(e.to_string()))
     }
 }

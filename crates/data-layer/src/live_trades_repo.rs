@@ -93,4 +93,24 @@ impl LiveTradesRepository {
         .map_err(|e| Error::Database(format!("Failed to list live_trades: {}", e)))?;
         Ok(rows)
     }
+
+    /// Update only status / filled quantity (preserve `strategy_id`, price etc.).
+    /// Used by the live-order monitor to keep tracked orders in sync with Binance.
+    #[instrument(skip(self), fields(order_id = %order_id, status = %status))]
+    pub async fn update_status(&self, order_id: i64, status: &str, filled_quantity: Decimal) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE live_trades
+            SET status = $1, filled_quantity = $2, updated_at = now()
+            WHERE order_id = $3
+            "#,
+        )
+        .bind(status)
+        .bind(filled_quantity)
+        .bind(order_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to update live_trade status: {}", e)))?;
+        Ok(())
+    }
 }

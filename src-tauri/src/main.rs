@@ -18,6 +18,7 @@ use data_layer::BinanceDataSource;
 use exchange_binance::types::BinanceEnvironment;
 use exchange_binance::{Client as BinanceClient, ClientInterface as BinanceClientInterface};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
+use tauri::Manager;
 use quant_clients::RedisCache;
 use quant_services::AppServices;
 use state::AppState;
@@ -310,6 +311,14 @@ async fn main() {
 
     tauri::Builder::default()
         .manage(app_state)
+        .setup(|app| {
+            // 启动实盘订单状态监控（后台轮询 Binance + 同步 live_trades + 推事件）。
+            let state = app.state::<state::AppState>();
+            if let Some(services) = state.app_services.as_ref() {
+                commands::binance_ws::start_live_order_monitor(app.handle().clone(), services);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::update_config,

@@ -45,6 +45,7 @@ macro_rules! with_binance_client {
 }
 
 /// Binance exchange operations.
+#[derive(Clone)]
 pub struct BinanceService {
     binance_client: SharedBinanceClient,
 }

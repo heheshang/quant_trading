@@ -261,6 +261,37 @@ pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> Result
     Ok(())
 }
 
+/// 启动实盘订单状态监控（后台轮询 Binance + 同步 `live_trades` + 推事件）。
+///
+/// 每 5s 拉取开放订单，把状态/成交量同步进 `live_trades`（保留策略关联），
+/// 有变化时推送 `binance:live_orders_updated`，前端自动刷新。这是 WS 用户流
+/// 不可用（测试网 -1099）时的 REST 兜底，保证实盘单状态自动更新。
+pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::AppServices) {
+    let binance = app_services.binance_service.clone();
+    let live_trades = app_services.live_trades.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            let Ok(open) = binance.get_open_orders(None).await else {
+                continue;
+            };
+            let mut changed = false;
+            for o in open {
+                if live_trades
+                    .update_status(o.order_id, &o.status, o.executed_qty)
+                    .await
+                    .is_ok()
+                {
+                    changed = true;
+                }
+            }
+            if changed {
+                let _ = app.emit("binance:live_orders_updated", ());
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

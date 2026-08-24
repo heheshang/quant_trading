@@ -554,13 +554,20 @@ async function confirmCancelOrder() {
 }
 
 let orderEventUnlisten: Promise<() => void> | null = null
+let liveOrdersUnlisten: Promise<() => void> | null = null
 
 onMounted(() => {
   fetchTickerPrices(); fetchAccountInfo(); fetchPositions(); fetchActiveOrders(); fetchStrategies()
   orderEventUnlisten = listen('order:submitted', () => { fetchActiveOrders() })
+  // 后台实盘订单监控推送：状态变化时同步本地 live_trades + 刷新活跃订单。
+  liveOrdersUnlisten = listen('binance:live_orders_updated', () => {
+    fetchLiveTrades()
+    fetchActiveOrders()
+  })
 })
 onUnmounted(() => {
   if (orderEventUnlisten) orderEventUnlisten.then(fn => fn())
+  if (liveOrdersUnlisten) liveOrdersUnlisten.then(fn => fn())
   teardownUserDataStream()
 })
 
