@@ -77,18 +77,15 @@ describe('marketData store', () => {
     expect(store.symbols).toEqual(DEFAULT_MARKET_SYMBOLS)
     expect(store.activeSymbol).toBe('BTC-USDT')
 
-    // Each symbol subscribes ticker/trades/orderbook/candle.
+    // 概览只订阅轻量 ticker；重流(trade/orderbook/candle)仅活跃标的。
     const cmds = mockInvoke.mock.calls.map(([cmd]) => cmd)
     for (const sym of DEFAULT_MARKET_SYMBOLS) {
-      expect(cmds).toContain('subscribe_binance_ticker')
-      expect(cmds).toContain('subscribe_binance_trades')
-      expect(cmds).toContain('subscribe_binance_orderbook')
-      expect(cmds).toContain('subscribe_binance_candle')
       expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_ticker', { symbol: sym })
-      expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_trades', { symbol: sym })
-      expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_orderbook', { symbol: sym })
-      expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_candle', { symbol: sym, interval: '1m' })
     }
+    const active = DEFAULT_MARKET_SYMBOLS[0]
+    expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_trades', { symbol: active })
+    expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_orderbook', { symbol: active })
+    expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_candle', { symbol: active, interval: '1m' })
   })
 
   it('routes binance:ticker into the ticker map', async () => {

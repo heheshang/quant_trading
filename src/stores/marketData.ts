@@ -114,16 +114,22 @@ export const useMarketDataStore = defineStore('marketData', () => {
     }
   }
 
+  /** 订阅某标的的重流（trade/orderbook/candle）——只给活跃标的用，防 N×4 洪泛。 */
+  async function subscribeHeavy(sym: string): Promise<void> {
+    await Promise.all([
+      subscribeBinanceTrades(sym),
+      subscribeBinanceOrderbook(sym),
+      subscribeBinanceCandle(sym, '1m'),
+    ])
+  }
+
   async function ensureSubscribed(syms: string[]) {
+    // 行情概览：只订阅轻量 ticker（每个标的一条流）；重流仅活跃标的订阅。
     for (const sym of syms) {
-      await Promise.all([
-        subscribeBinanceTicker(sym),
-        subscribeBinanceTrades(sym),
-        subscribeBinanceOrderbook(sym),
-        subscribeBinanceCandle(sym, '1m'),
-      ])
+      await subscribeBinanceTicker(sym)
     }
     symbols.value = Array.from(new Set([...symbols.value, ...syms]))
+    await subscribeHeavy(activeSymbol.value)
   }
 
   /** Start the stream once (idempotent). Subsequent calls no-op. */
@@ -161,6 +167,8 @@ export const useMarketDataStore = defineStore('marketData', () => {
     if (symbols.value.includes(sym)) {
       activeSymbol.value = sym
       prefetchCandles(sym)
+      // 切换标的时订阅其重流（后端去重，重复调用安全）。
+      void subscribeHeavy(sym)
     }
   }
 
