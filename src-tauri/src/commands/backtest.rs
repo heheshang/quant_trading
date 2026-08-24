@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use quant_common::types::{Alert, BacktestResult};
-use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use std::collections::HashMap;
 use tauri::{Emitter, State};
 
@@ -111,32 +111,61 @@ pub async fn delete_backtest_result(
         .map_err(|e| e.to_string())
 }
 
-/// 获取实时指标数据
+/// 获取实时指标数据（Monitor UI）。
+///
+/// 订单数为数据库累计（含历史），账户指标取真实 account_info；DB 不可用时降级到原子值。
 #[tauri::command]
-pub async fn get_metrics() -> Result<HashMap<String, f64>, String> {
+pub async fn get_metrics(state: State<'_, AppState>) -> Result<HashMap<String, f64>, String> {
     let mut metrics = HashMap::new();
 
-    metrics.insert(
-        "orders_total".to_string(),
-        monitor_layer::ORDERS_TOTAL.get(),
-    );
-    metrics.insert(
-        "orders_filled".to_string(),
-        monitor_layer::ORDERS_FILLED.get(),
-    );
-    metrics.insert(
-        "orders_cancelled".to_string(),
-        monitor_layer::ORDERS_CANCELLED.get(),
-    );
-    metrics.insert(
-        "account_balance".to_string(),
-        monitor_layer::ACCOUNT_BALANCE.get(),
-    );
-    metrics.insert(
-        "position_value".to_string(),
-        monitor_layer::POSITION_VALUE.get(),
-    );
-    metrics.insert("daily_pnl".to_string(), monitor_layer::DAILY_PNL.get());
+    match state.app_services.as_ref() {
+        Some(services) => {
+            match services.account_service.get_order_counts().await {
+                Ok(c) => {
+                    metrics.insert("orders_total".to_string(), c.total as f64);
+                    metrics.insert("orders_filled".to_string(), c.filled as f64);
+                    metrics.insert("orders_cancelled".to_string(), c.cancelled as f64);
+                    metrics.insert("orders_rejected".to_string(), c.rejected as f64);
+                    metrics.insert("orders_open".to_string(), c.open as f64);
+                }
+                Err(_) => {
+                    metrics.insert("orders_total".to_string(), monitor_layer::ORDERS_TOTAL.get());
+                    metrics.insert("orders_filled".to_string(), monitor_layer::ORDERS_FILLED.get());
+                    metrics.insert("orders_cancelled".to_string(), monitor_layer::ORDERS_CANCELLED.get());
+                    metrics.insert("orders_rejected".to_string(), monitor_layer::ORDERS_REJECTED.get());
+                }
+            }
+            match services.account_service.get_latest_equity("USDT").await {
+                Ok(Some(equity)) => {
+                    metrics.insert("account_balance".to_string(), equity.to_f64().unwrap_or(0.0));
+                    metrics.insert("position_value".to_string(), equity.to_f64().unwrap_or(0.0));
+                }
+                _ => {
+                    let fallback = services.account_service.get_account_info().await.map(|a| a.total_assets.to_f64().unwrap_or(0.0)).unwrap_or(monitor_layer::ACCOUNT_BALANCE.get());
+                    metrics.insert("account_balance".to_string(), fallback);
+                    metrics.insert("position_value".to_string(), fallback);
+                }
+            }
+            match services.account_service.get_today_equity_pnl("USDT").await {
+                Ok(pnl) => {
+                    metrics.insert("daily_pnl".to_string(), pnl.to_f64().unwrap_or(0.0));
+                }
+                Err(_) => {
+                    let fallback = services.account_service.get_account_info().await.map(|a| a.daily_pnl.to_f64().unwrap_or(0.0)).unwrap_or(monitor_layer::DAILY_PNL.get());
+                    metrics.insert("daily_pnl".to_string(), fallback);
+                }
+            }
+        }
+        None => {
+            metrics.insert("orders_total".to_string(), monitor_layer::ORDERS_TOTAL.get());
+            metrics.insert("orders_filled".to_string(), monitor_layer::ORDERS_FILLED.get());
+            metrics.insert("orders_cancelled".to_string(), monitor_layer::ORDERS_CANCELLED.get());
+            metrics.insert("orders_rejected".to_string(), monitor_layer::ORDERS_REJECTED.get());
+            metrics.insert("account_balance".to_string(), monitor_layer::ACCOUNT_BALANCE.get());
+            metrics.insert("position_value".to_string(), monitor_layer::POSITION_VALUE.get());
+            metrics.insert("daily_pnl".to_string(), monitor_layer::DAILY_PNL.get());
+        }
+    }
 
     Ok(metrics)
 }

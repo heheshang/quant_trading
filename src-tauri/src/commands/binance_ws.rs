@@ -300,23 +300,20 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
     });
 }
 
-/// 每 5s 用真实账户信息刷新监控指标 Gauge（余额/持仓市值/当日盈亏），
-/// 使 Monitor「指标监控」在不调用 get_account_info 的页面也能显示实时值。
+/// 每 5s 用真实权益快照刷新监控指标 Gauge（余额/持仓市值/当日盈亏），
+/// 使 Prometheus 端点与 Monitor「指标监控」一致（账户值来自后台快照写入器）。
 pub fn start_monitor_metrics(app_services: &quant_services::AppServices) {
     let account_service = app_services.account_service.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            if let Ok(account) = account_service.get_account_info().await {
-                monitor_layer::MetricsCollector::set_account_balance(
-                    account.total_assets.to_f64().unwrap_or(0.0),
-                );
-                monitor_layer::MetricsCollector::set_position_value(
-                    account.market_value.to_f64().unwrap_or(0.0),
-                );
-                monitor_layer::MetricsCollector::set_daily_pnl(
-                    account.daily_pnl.to_f64().unwrap_or(0.0),
-                );
+            if let Ok(Some(equity)) = account_service.get_latest_equity("USDT").await {
+                let eq = equity.to_f64().unwrap_or(0.0);
+                monitor_layer::MetricsCollector::set_account_balance(eq);
+                monitor_layer::MetricsCollector::set_position_value(eq);
+            }
+            if let Ok(pnl) = account_service.get_today_equity_pnl("USDT").await {
+                monitor_layer::MetricsCollector::set_daily_pnl(pnl.to_f64().unwrap_or(0.0));
             }
         }
     });

@@ -1,10 +1,21 @@
 use crate::error::{ServiceError, ServiceResult};
+use chrono::Utc;
 use quant_common::types::{Account, Order, OrderStatus, Position};
 use quant_repository::PostgresClient;
 use rust_decimal::Decimal;
 use sqlx::Row;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+
+/// 订单状态计数（数据库累计，含历史）。
+#[derive(Debug, Clone, Default)]
+pub struct OrderCounts {
+    pub total: i64,
+    pub filled: i64,
+    pub cancelled: i64,
+    pub rejected: i64,
+    pub open: i64,
+}
 
 /// Account and position query service.
 pub struct AccountService {
@@ -175,6 +186,118 @@ impl AccountService {
         let orders = Self::map_order_rows(&rows)?;
         info!(count = orders.len(), "Recent orders retrieved");
         Ok(orders)
+    }
+
+    /// 订单状态计数（数据库累计，含历史）。
+    #[instrument(skip_all)]
+    pub async fn get_order_counts(&self) -> ServiceResult<OrderCounts> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+
+        let row = sqlx::query(
+            r#"
+            SELECT
+              COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE status = 'Filled') AS filled,
+              COUNT(*) FILTER (WHERE status = 'Cancelled') AS cancelled,
+              COUNT(*) FILTER (WHERE status = 'Rejected') AS rejected,
+              COUNT(*) FILTER (WHERE status IN ('Pending','Submitted','PartiallyFilled')) AS open
+            FROM orders
+            "#,
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to count orders: {}", e);
+            ServiceError::from(e)
+        })?;
+
+        let n = |i: usize| -> i64 { row.try_get::<i64, _>(i).unwrap_or(0) };
+        Ok(OrderCounts {
+            total: n(0),
+            filled: n(1),
+            cancelled: n(2),
+            rejected: n(3),
+            open: n(4),
+        })
+    }
+
+    /// 最新账户权益（USDT 总权益，来自后台快照写入器，每 60s 记录）。
+    #[instrument(skip_all)]
+    pub async fn get_latest_equity(&self, ccy: &str) -> ServiceResult<Option<Decimal>> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+        let row = sqlx::query(
+            "SELECT eq FROM account_snapshots WHERE ccy = $1 ORDER BY ts DESC LIMIT 1",
+        )
+        .bind(ccy)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch latest equity: {}", e);
+            ServiceError::from(e)
+        })?;
+        Ok(row.and_then(|r| r.try_get::<Option<Decimal>, _>("eq").ok().flatten()))
+    }
+
+    /// 当日权益差值（今日最新 − 今日起始），与 Dashboard「今日收益」一致。
+    /// 使用 UTC 日界（与快照 timestamptz 对齐）。
+    #[instrument(skip_all)]
+    pub async fn get_today_equity_pnl(&self, ccy: &str) -> ServiceResult<Decimal> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+
+        // 今日 0 点（UTC）后与之前各一条，用于差值。
+        let rows = sqlx::query(
+            r#"
+            SELECT ts, eq
+            FROM account_snapshots
+            WHERE ccy = $1
+              AND ts >= date_trunc('day', now()) - interval '1 day'
+            ORDER BY ts ASC
+            "#,
+        )
+        .bind(ccy)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch equity snapshots: {}", e);
+            ServiceError::from(e)
+        })?;
+
+        let day_start = sqlx::query("SELECT date_trunc('day', now())")
+            .fetch_one(pool)
+            .await
+            .map(|r| r.get::<chrono::DateTime<Utc>, _>("date_trunc"))
+            .unwrap_or_else(|_| chrono::Utc::now());
+
+        let mut today_eq: Vec<Decimal> = Vec::new();
+        let mut before_eq: Option<Decimal> = None;
+        for r in &rows {
+            let ts: chrono::DateTime<Utc> = r.get("ts");
+            let eq: Decimal = r.get("eq");
+            if ts >= day_start {
+                today_eq.push(eq);
+            } else {
+                before_eq = Some(eq);
+            }
+        }
+
+        if today_eq.len() < 2 && before_eq.is_none() {
+            return Ok(Decimal::ZERO);
+        }
+        let latest = today_eq.last().copied().unwrap_or(Decimal::ZERO);
+        let baseline = before_eq.unwrap_or_else(|| today_eq.first().copied().unwrap_or(Decimal::ZERO));
+        Ok(latest - baseline)
     }
 
     /// 把 `orders` 表行映射为 `Order`（共用逻辑，避免重复）。
