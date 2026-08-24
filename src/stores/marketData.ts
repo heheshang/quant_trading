@@ -24,6 +24,8 @@ import type {
 
 /** Default symbols tracked by the realtime stream. */
 export const DEFAULT_MARKET_SYMBOLS = ['BTC-USDT', 'ETH-USDT']
+/** 概览 ticker 订阅上限（防大标的列表导致流数无界）。 */
+export const MAX_SUBSCRIBE = 30
 
 /**
  * Realtime Binance market data store.
@@ -125,7 +127,8 @@ export const useMarketDataStore = defineStore('marketData', () => {
 
   async function ensureSubscribed(syms: string[]) {
     // 行情概览：只订阅轻量 ticker（每个标的一条流）；重流仅活跃标的订阅。
-    for (const sym of syms) {
+    // 上限 MAX_SUBSCRIBE 个标的，防止大标的列表导致流数无界（默认仅 2）。
+    for (const sym of syms.slice(0, MAX_SUBSCRIBE)) {
       await subscribeBinanceTicker(sym)
     }
     symbols.value = Array.from(new Set([...symbols.value, ...syms]))
