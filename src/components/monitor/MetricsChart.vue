@@ -56,6 +56,10 @@ const metricLabels: Record<string, string> = {
 
 const chartColorKeys = ['blue', 'green', 'orange', 'purple', 'teal', 'gray', 'red']
 
+// 双轴分组：订单计数（左轴） vs 金额（右轴）。
+const COUNT_METRICS = ['orders_total', 'orders_filled', 'orders_cancelled', 'orders_open']
+const AMOUNT_METRICS = ['account_balance', 'position_value', 'daily_pnl']
+
 function seriesColor(index: number): string {
   const colors = getChartSeriesColors()
   const key = chartColorKeys[index % chartColorKeys.length]
@@ -84,14 +88,42 @@ function buildOption(): echarts.EChartsCoreOption {
   }
 
   const times = props.metricsHistory.map(item => item.time)
+
+  // 双轴：订单计数类归左轴(0)，金额类归右轴(1)。
+  const hasCount = props.selectedMetrics.some(k => COUNT_METRICS.includes(k))
+  const hasAmount = props.selectedMetrics.some(k => AMOUNT_METRICS.includes(k))
+  const amountAxisIndex = hasCount ? 1 : 0
+  const yAxisIndexFor = (key: string): number =>
+    COUNT_METRICS.includes(key) ? 0 : amountAxisIndex
+
   const series = props.selectedMetrics.map((key, index) => ({
     name: metricLabels[key] || key,
     type: 'line' as const,
     smooth: true,
+    yAxisIndex: yAxisIndexFor(key),
     data: props.metricsHistory.map(item => item.metrics[key] ?? 0),
     itemStyle: { color: seriesColor(index) },
     lineStyle: { color: seriesColor(index) },
   }))
+
+  const yAxis: Record<string, unknown>[] = []
+  if (hasCount) {
+    yAxis.push({
+      type: 'value' as const,
+      name: '订单数',
+      axisLabel: { color: theme.axisLabel },
+      splitLine: { lineStyle: { color: theme.splitLine } },
+    })
+  }
+  if (hasAmount) {
+    yAxis.push({
+      type: 'value' as const,
+      name: '金额',
+      position: 'right',
+      axisLabel: { color: theme.axisLabel },
+      splitLine: { show: false },
+    })
+  }
 
   return {
     tooltip: {
@@ -107,17 +139,13 @@ function buildOption(): echarts.EChartsCoreOption {
       bottom: 0,
       textStyle: { color: theme.axisLabel },
     },
-    grid: { left: 50, right: 20, bottom: 40, top: 20 },
+    grid: { left: 50, right: hasAmount ? 60 : 20, bottom: 40, top: 20 },
     xAxis: {
       type: 'category' as const,
       data: times,
       axisLabel: { color: theme.axisLabel },
     },
-    yAxis: {
-      type: 'value' as const,
-      axisLabel: { color: theme.axisLabel },
-      splitLine: { lineStyle: { color: theme.splitLine } },
-    },
+    yAxis,
     series,
   }
 }
