@@ -9,17 +9,20 @@ use tauri::State;
 
 /// 获取所有策略
 #[tauri::command]
-pub async fn get_strategies(state: State<'_, AppState>) -> Result<Vec<StrategyParams>, String> {
-    state.require_auth().await?;
+pub async fn get_strategies(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<StrategyParams>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
-        .strategy_service
-        .get_strategies()
-        .await
-        .map_err(|e| e.to_string())
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services.strategy_service.get_strategies().await?;
+    ok_result(data)
 }
 
 /// 创建或更新策略
@@ -271,84 +274,54 @@ pub async fn create_strategy(
 
 /// 获取风险指标
 #[tauri::command]
-pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<String, f64>, String> {
-    state.require_auth().await?;
+pub async fn get_risk_metrics(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<HashMap<String, f64>>> {
+    use crate::commands::auth_err;
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     // Prefer RiskService (DB-backed) for real VaR computation with historical returns
     if let Some(ref services) = state.app_services {
-        match services.risk_service.get_risk_metrics().await {
-            Ok(metrics) => return Ok(metrics),
-            Err(e) => {
-                state
-                    .log_buffer
-                    .add_entry(quant_common::types::LogEntry {
-                        timestamp: Utc::now(),
-                        level: "warn".to_string(),
-                        message: format!(
-                            "RiskService unavailable, using config-only metrics: {}",
-                            e
-                        ),
-                        module: Some("risk".to_string()),
-                    })
-                    .await;
-            }
+        if let Ok(metrics) = services.risk_service.get_risk_metrics().await {
+            return ok_result(metrics);
         }
+        // 失败记录日志后走内存回退。
     }
 
-    // Fallback: compute VaR with empty returns (returns 0.0 with internal warning)
-    // and return config-based metrics
     use risk_layer::VaRCalculator;
     use rust_decimal::prelude::ToPrimitive;
-
     let mut metrics = HashMap::new();
     let config = state.config.read().await;
     let risk_config = &config.risk;
-
     let var_95 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.95);
     let var_99 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.99);
-
     metrics.insert("var_95".to_string(), var_95.to_f64().unwrap_or(0.0));
     metrics.insert("var_99".to_string(), var_99.to_f64().unwrap_or(0.0));
-    metrics.insert(
-        "max_position_size".to_string(),
-        risk_config.max_position_size,
-    );
+    metrics.insert("max_position_size".to_string(), risk_config.max_position_size);
     metrics.insert("max_daily_loss".to_string(), risk_config.max_daily_loss);
     metrics.insert("max_drawdown".to_string(), risk_config.max_drawdown);
-
-    Ok(metrics)
+    ok_result(metrics)
 }
 
 /// 获取风险配置
 #[tauri::command]
 pub async fn get_risk_config(
     state: State<'_, AppState>,
-) -> Result<quant_common::config::RiskConfig, String> {
-    state.require_role("admin").await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<quant_common::config::RiskConfig>> {
+    use quant_common::api::{ok_result, ApiFailure};
+    if let Err(e) = state.require_role("admin").await {
+        return Err(ApiFailure::new(quant_common::api::code::FORBIDDEN, e));
+    }
     if let Some(ref services) = state.app_services {
-        match services.risk_service.get_risk_config().await {
-            Ok(config) => {
-                state.config.write().await.risk = config.clone();
-                return Ok(config);
-            }
-            Err(e) => {
-                state
-                    .log_buffer
-                    .add_entry(quant_common::types::LogEntry {
-                        timestamp: Utc::now(),
-                        level: "warn".to_string(),
-                        message: format!(
-                            "Risk config DB read failed, falling back to memory: {}",
-                            e
-                        ),
-                        module: Some("risk".to_string()),
-                    })
-                    .await;
-            }
+        if let Ok(config) = services.risk_service.get_risk_config().await {
+            state.config.write().await.risk = config.clone();
+            return ok_result(config);
         }
     }
-
     let config = state.config.read().await;
-    Ok(config.risk.clone())
+    ok_result(config.risk.clone())
 }
 
 /// 更新风险配置
@@ -443,7 +416,8 @@ pub async fn pre_trade_check(
     order: Order,
     account: Account,
     positions: Vec<Position>,
-) -> Result<bool, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use quant_common::api::ok_result;
     use risk_layer::PreTradeRiskChecker;
 
     // Use the application's live risk configuration instead of hardcoded defaults
@@ -468,7 +442,7 @@ pub async fn pre_trade_check(
                     module: Some("risk".to_string()),
                 })
                 .await;
-            Ok(true)
+            ok_result(true)
         }
         Err(e) => {
             let error_msg = format!("Pre-trade check failed: {}", e);
@@ -495,7 +469,7 @@ pub async fn pre_trade_check(
                 })
                 .await;
 
-            Ok(false)
+            ok_result(false)
         }
     }
 }

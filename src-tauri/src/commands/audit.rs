@@ -14,14 +14,18 @@ pub async fn get_audit_logs(
     action: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<AuditLog>, String> {
-    state.require_role("admin").await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<AuditLog>>> {
+    use quant_common::api::{ok_result, ApiFailure};
+    if let Err(e) = state.require_role("admin").await {
+        return Err(ApiFailure::new(quant_common::api::code::FORBIDDEN, e));
+    }
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
-    state
+    let logs = state
         .audit_logger
         .query_logs(user_id, username, action, limit, offset)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, e.to_string()))?;
+    ok_result(logs)
 }
