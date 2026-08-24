@@ -1,6 +1,45 @@
 use crate::state::AppState;
 use crate::state::AuthedUser;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 use tauri::State;
+
+/// 登录失败节流：连续失败 ≥5 次后按指数退避锁定（60s * 2^(n-5)，上限 30min）。
+struct LoginThrottle {
+    fail_count: u32,
+    locked_until: Option<Instant>,
+}
+static LOGIN_THROTTLE: LazyLock<Mutex<HashMap<String, LoginThrottle>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+fn login_throttle() -> &'static Mutex<HashMap<String, LoginThrottle>> {
+    &LOGIN_THROTTLE
+}
+fn check_login_throttle(user: &str) -> Result<(), String> {
+    let m = login_throttle().lock().unwrap();
+    if let Some(t) = m.get(user) {
+        if let Some(until) = t.locked_until {
+            if Instant::now() < until {
+                return Err("登录尝试过多，请稍后再试".to_string());
+            }
+        }
+    }
+    Ok(())
+}
+fn record_login_failure(user: &str) {
+    let mut m = login_throttle().lock().unwrap();
+    let e = m
+        .entry(user.to_string())
+        .or_insert(LoginThrottle { fail_count: 0, locked_until: None });
+    e.fail_count += 1;
+    if e.fail_count >= 5 {
+        let backoff = 60u64.saturating_mul(1 << e.fail_count.saturating_sub(5).min(5));
+        e.locked_until = Some(Instant::now() + Duration::from_secs(backoff));
+    }
+}
+fn record_login_success(user: &str) {
+    login_throttle().lock().unwrap().remove(user);
+}
 
 /// Decode a JWT token with the configured secret to recover the subject claims
 /// (user_id, username, role) used to (re)establish the in-memory auth session.
@@ -34,6 +73,8 @@ pub async fn login(
     password: String,
     code: Option<String>,
 ) -> Result<String, String> {
+    // 登录节流：连续失败后锁定，防暴力破解。
+    check_login_throttle(&username)?;
     // Delegate to AuthService which verifies against database password hashes.
     // When the user has 2FA enabled, `code` is verified by the service before
     // a token is issued.
@@ -72,6 +113,11 @@ pub async fn login(
         .audit_logger
         .log_login(&audit_user_id, &username, None, success)
         .await;
+    if result.is_ok() {
+        record_login_success(&username);
+    } else {
+        record_login_failure(&username);
+    }
     result
 }
 
@@ -89,13 +135,16 @@ pub async fn verify_token(state: State<'_, AppState>, token: String) -> Result<b
             auth_service.verify_token(&token).is_ok()
         }
     };
+
     // Re-validate & refresh the in-memory session from a valid token so a
     // restored session (e.g. `restoreSession` on app start) re-establishes
-    // RBAC state. Invalid tokens leave the session as-is.
+    // RBAC state. Invalid tokens clear the session (改密即下线).
     if valid {
         if let Some(claims) = token_claims(&state, &token).await {
             *state.auth_session.write().await = Some(session_from_claims(&claims));
         }
+    } else {
+        *state.auth_session.write().await = None;
     }
     Ok(valid)
 }

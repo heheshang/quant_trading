@@ -105,10 +105,10 @@ async fn test_paper_buy_applies_slippage_and_commission() {
 
     assert_eq!(result.filled_quantity, dec!(2));
     assert_eq!(result.status, OrderStatus::Filled);
-    // 买入溢价：10000 + 10000 * 0.0005 = 10005
-    assert!((result.avg_price.to_f64().unwrap() - 10005.0).abs() < 0.01);
-    // 佣金 = 10005 * 2 * 0.001 = 20.01
-    assert!((result.commission.to_f64().unwrap() - 20.01).abs() < 0.01);
+    // 限价单：成交价不得劣于限价——市价=限价=10000，滑点被 clamp 到 10000。
+    assert!((result.avg_price.to_f64().unwrap() - 10000.0).abs() < 0.01);
+    // 佣金 = 10000 * 2 * 0.001 = 20
+    assert!((result.commission.to_f64().unwrap() - 20.0).abs() < 0.01);
 }
 
 #[tokio::test]
@@ -126,8 +126,8 @@ async fn test_paper_sell_applies_discount() {
     .await
     .unwrap();
 
-    // 卖出折价：10000 - 10000 * 0.0005 = 9995
-    assert!((result.avg_price.to_f64().unwrap() - 9995.0).abs() < 0.01);
+    // 限价卖单：成交价不得劣于限价——市价=限价=10000，折价被 clamp 到 10000。
+    assert!((result.avg_price.to_f64().unwrap() - 10000.0).abs() < 0.01);
     assert_eq!(result.commission, Decimal::ZERO);
 }
 

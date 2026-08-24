@@ -363,6 +363,7 @@ impl OrderProcessor {
         let mut trading = self.config.read().await.trading.clone();
         trading.enable_paper_trading = true;
         let delay_ms = trading.simulation_delay_ms;
+        let timeout = std::time::Duration::from_secs(trading.order_timeout_seconds);
         let engine = ExecutionEngine::new_binance(
             self.order_manager.clone(),
             trading,
@@ -383,6 +384,20 @@ impl OrderProcessor {
                 for order in orders {
                     // 只处理纸面/算法单；实盘单（exchange='live'）走 Binance 实时路径，跳过。
                     if order.exchange == "live" {
+                        continue;
+                    }
+                    // 订单超时未成交（如限价长时间未触及）→ 标记 Expired，避免永挂活跃。
+                    let created_clock = order.created_at + chrono::Duration::from_std(timeout)
+                        .unwrap_or_else(|_| chrono::Duration::seconds(30));
+                    if now > created_clock {
+                        let _ = account_service
+                            .update_order_status(
+                                order.order_id,
+                                quant_common::types::OrderStatus::Expired,
+                                order.filled_quantity,
+                                order.commission,
+                            )
+                            .await;
                         continue;
                     }
                     let due = order.created_at

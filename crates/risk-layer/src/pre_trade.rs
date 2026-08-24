@@ -141,19 +141,21 @@ impl PreTradeRiskChecker {
             ));
         }
 
+        let is_sell = matches!(order.side, quant_common::types::OrderSide::Sell);
+        // 卖出用可用量（可卖出部分）；买入用总量。
         let current_qty = positions
             .iter()
             .find(|p| p.symbol == order.symbol)
-            .map(|p| p.quantity)
+            .map(|p| if is_sell { p.available_quantity } else { p.quantity })
             .unwrap_or(Decimal::ZERO);
 
         let new_qty = match order.side {
             quant_common::types::OrderSide::Buy => current_qty + order.quantity,
-            quant_common::types::OrderSide::Sell => current_qty - order.quantity,
+            quant_common::types::OrderSide::Sell => (current_qty - order.quantity).max(Decimal::ZERO),
         };
 
-        // 持仓限制按市值占比计算，而非直接比较持仓数量（前者是比例，后者是绝对量）
-        let new_position_value = order_price * new_qty.abs();
+        // 持仓限制按市值占比计算，而非直接比较持仓数量；卖出已被 clamp，无需 .abs()。
+        let new_position_value = order_price * new_qty;
         let position_ratio = new_position_value / account.total_assets;
         let max_ratio =
             Decimal::from_f64_retain(self.config.max_position_size).unwrap_or(Decimal::ZERO);
@@ -213,7 +215,9 @@ impl PreTradeRiskChecker {
 
         let new_position_value = match order.side {
             quant_common::types::OrderSide::Buy => current_position_value + order_value,
-            quant_common::types::OrderSide::Sell => current_position_value - order_value,
+            quant_common::types::OrderSide::Sell => {
+                (current_position_value - order_value).max(Decimal::ZERO)
+            }
         };
 
         if account.total_assets <= Decimal::ZERO {

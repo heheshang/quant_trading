@@ -57,16 +57,24 @@ impl PaperExecutionStrategy {
         order: &Order,
         market_data: &MarketData,
     ) -> Result<Decimal> {
-        let base_price = order.price.unwrap_or(market_data.close);
+        // 以市价为成交基准（非限价），避免「限价±滑点」永远劣于限价。
+        let base_price = market_data.close;
         let slippage_factor =
             Decimal::from_f64_retain(self.config.default_slippage).unwrap_or(Decimal::ZERO);
 
         let slippage_amount = base_price * slippage_factor;
 
-        let execution_price = match order.side {
+        let mut execution_price = match order.side {
             OrderSide::Buy => base_price + slippage_amount,
             OrderSide::Sell => base_price - slippage_amount,
         };
+        // 限价单：成交价不得劣于限价（买入 ≤ limit，卖出 ≥ limit）。
+        if let Some(limit) = order.price {
+            execution_price = match order.side {
+                OrderSide::Buy => execution_price.min(limit),
+                OrderSide::Sell => execution_price.max(limit),
+            };
+        }
 
         Ok(execution_price)
     }
