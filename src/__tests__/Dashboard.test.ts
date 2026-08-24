@@ -3,6 +3,10 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 
+// `require` is used inside vi.hoisted/vi.mock factories (node runtime) —
+// declare it so vue-tsc doesn't flag an unknown global.
+declare const require: (id: string) => any
+
 // ---------------------------------------------------------------------------
 // Hoisted mock data — accessible inside vi.mock factories (which are hoisted)
 // ---------------------------------------------------------------------------
@@ -100,6 +104,36 @@ vi.mock('@/services/account', () => ({
 vi.mock('@/services/order', () => ({
   getActiveOrders: vi.fn().mockResolvedValue(defaultOrders),
 }))
+
+// Mock the live Binance account overview composable (Dashboard now derives
+// 总资产/盈亏 from live Binance data instead of the paper account store).
+const { binanceOverviewState } = vi.hoisted(() => {
+  const { ref } = require('vue')
+  return {
+    binanceOverviewState: {
+      totalAssets: ref(1_000_000),
+      unrealizedPnl: ref(15_000),
+      dailyPnl: ref(3_000),
+      totalPnl: ref(50_000),
+    },
+  }
+})
+vi.mock('@/composables/useBinanceAccountOverview', () => {
+  const { ref } = require('vue')
+  return {
+    useBinanceAccountOverview: () => ({
+      balances: ref([]),
+      prices: ref({}),
+      liveTrades: ref([]),
+      loading: ref(false),
+      totalAssets: binanceOverviewState.totalAssets,
+      unrealizedPnl: binanceOverviewState.unrealizedPnl,
+      dailyPnl: binanceOverviewState.dailyPnl,
+      totalPnl: binanceOverviewState.totalPnl,
+      refresh: vi.fn(),
+    }),
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Stub child components
@@ -234,10 +268,8 @@ describe('Dashboard', () => {
   })
 
   it('applies red for negative PnL values', async () => {
-    vi.mocked(getAccountInfo).mockResolvedValue({ ...defaultAccount, total_pnl: -10_000 })
-    vi.mocked(getPositions).mockResolvedValue([
-      { symbol: 'BTC-USDT', quantity: 1, available_quantity: 1, avg_price: 40000, market_value: 50000, unrealized_pnl: -5000, realized_pnl: 0, updated_at: '2024-01-01T00:00:00Z' },
-    ])
+    binanceOverviewState.totalPnl.value = -10_000
+    binanceOverviewState.unrealizedPnl.value = -5_000
 
     const wrapper = createWrapper()
     await flushPromises()
@@ -249,10 +281,8 @@ describe('Dashboard', () => {
   })
 
   it('applies different colors when total and unrealized PnL have opposite signs', async () => {
-    vi.mocked(getAccountInfo).mockResolvedValue({ ...defaultAccount, total_pnl: 50_000 })
-    vi.mocked(getPositions).mockResolvedValue([
-      { symbol: 'BTC-USDT', quantity: 1, available_quantity: 1, avg_price: 40000, market_value: 50000, unrealized_pnl: -10000, realized_pnl: 0, updated_at: '2024-01-01T00:00:00Z' },
-    ])
+    binanceOverviewState.totalPnl.value = 50_000
+    binanceOverviewState.unrealizedPnl.value = -10_000
 
     const wrapper = createWrapper()
     await flushPromises()

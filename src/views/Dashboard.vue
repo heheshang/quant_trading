@@ -28,10 +28,10 @@
 
       <el-row :gutter="20">
         <el-col :xs="12" :sm="12" :md="6">
-          <StatsCard title="总资产" :value="accountStore.totalAssets" format="currency" :icon="TrendCharts" icon-bg="var(--color-primary)" :loading="loading" @click="router.push('/trading')" />
+          <StatsCard title="总资产" :value="totalAssets" format="currency" :icon="TrendCharts" icon-bg="var(--color-primary)" :loading="loading" @click="router.push('/trading')" />
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
-          <StatsCard title="今日收益" :value="Math.abs(accountStore.dailyPnl)" format="currency" :icon="Promotion" icon-bg="var(--color-success)" :trend="accountStore.dailyPnl" :loading="loading" @click="router.push('/monitor')" />
+          <StatsCard title="今日收益" :value="Math.abs(dailyPnl)" format="currency" :icon="Promotion" icon-bg="var(--color-success)" :trend="dailyPnl" :loading="loading" @click="router.push('/monitor')" />
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="活跃订单" :value="orderStore.orderCount" format="number" :icon="Tickets" icon-bg="var(--color-warning)" :loading="loading" @click="router.push('/trading')" />
@@ -91,6 +91,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { TrendCharts, Promotion, Tickets, Warning } from '@element-plus/icons-vue'
 import { useAccountStore } from '@/stores/account'
+import { useBinanceAccountOverview } from '@/composables/useBinanceAccountOverview'
 import { useOrderStore } from '@/stores/order'
 import { getRiskMetrics } from '@/services/risk'
 import { useFormatting } from '@/composables/useFormatting'
@@ -128,12 +129,14 @@ function onDateRangeChange(value: [Date, Date]) {
   refreshData()
 }
 
-const loading = computed(() => accountStore.loading || orderStore.loading)
+const loading = computed(() => accountStore.loading || orderStore.loading || binanceOverview.loading.value)
 const error = computed(() => accountStore.error || orderStore.error)
-const totalPnl = computed(() => accountStore.accountInfo?.total_pnl ?? 0)
-const unrealizedPnl = computed(() =>
-  accountStore.positions.reduce((sum, p) => sum + (Number(p.unrealized_pnl) || 0), 0),
-)
+// 实盘账户概览（Balances×价格=总资产；live_trades 均价=盈亏）。
+const binanceOverview = useBinanceAccountOverview()
+const totalAssets = computed(() => binanceOverview.totalAssets.value)
+const dailyPnl = computed(() => binanceOverview.dailyPnl.value)
+const totalPnl = computed(() => binanceOverview.totalPnl.value)
+const unrealizedPnl = computed(() => binanceOverview.unrealizedPnl.value)
 const riskMetrics = ref<Record<string, number>>({})
 const riskLevelLoading = ref(false)
 
@@ -173,6 +176,7 @@ async function refreshData() {
     accountStore.refreshAll(),
     orderStore.fetchActiveOrders(true),
     orderStore.fetchRecentOrders(true),
+    binanceOverview.refresh(true),
   ])
 }
 async function fetchRiskLevel() {
@@ -193,6 +197,7 @@ onMounted(async () => {
   await accountStore.fetchPositions(true)
   await orderStore.fetchActiveOrders(true)
   await orderStore.fetchRecentOrders(true)
+  await binanceOverview.refresh(true)
   fetchRiskLevel()
   refreshInterval = setInterval(() => refreshData(), 30_000)
   await marketStore.start()
