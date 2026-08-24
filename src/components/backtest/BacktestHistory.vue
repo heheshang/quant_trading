@@ -131,13 +131,22 @@ export interface HistoryRow extends BacktestResultSummaryRow {
   profit_loss_ratio?: number
 }
 
-const props = defineProps<{
-  historyRecords: HistoryRow[]
-  historyLoading: boolean
-  total: number
-  page: number
-  pageSize: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    historyRecords: HistoryRow[]
+    historyLoading: boolean
+    total: number
+    page: number
+    pageSize: number
+  }>(),
+  {
+    historyRecords: () => [],
+    historyLoading: false,
+    total: 0,
+    page: 1,
+    pageSize: 10,
+  },
+)
 
 const emit = defineEmits<{
   viewDetail: [id: number]

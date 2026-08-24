@@ -104,7 +104,7 @@ describe('Backtest.vue - 按钮测试', () => {
     wrapper.vm.fetchHistory()
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
-    expect(mockInvoke).toHaveBeenCalledWith('get_backtest_results', { limit: 50, offset: 0 })
+    expect(mockInvoke).toHaveBeenCalledWith('get_backtest_results', { limit: 10, offset: 0 })
   }, 30000)
 
   it('回测运行期间 loading 状态', async () => {

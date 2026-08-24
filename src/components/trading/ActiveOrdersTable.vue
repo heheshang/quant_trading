@@ -176,7 +176,9 @@ function orderPnL(row: Order): number {
   const cur = priceOf(row.symbol)
   if (!cur) return 0
   const dir = row.side === 'Buy' ? 1 : -1
-  return (cur - row.price) * row.quantity * dir
+  // 部分成交按已成交量算，避免高估未实现盈亏。
+  const qty = row.filled_quantity || 0
+  return (cur - row.price) * qty * dir
 }
 
 /** 盈亏比率（%）。 */
@@ -245,7 +247,14 @@ function exportCSV() {
     o.filled_quantity,
     getOrderStatusText(o.status),
   ])
-  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+  // 转义 + 防公式注入：以 = + - @ 开头的字段前加单引号；含分隔符/引号/换行字段加引号包起来。
+  const esc = (v: unknown): string => {
+    let s = String(v ?? '')
+    if (/^[=+\-@]/.test(s)) s = "'" + s
+    if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"'
+    return s
+  }
+  const csv = [headers.map(esc).join(','), ...rows.map((r) => r.map(esc).join(','))].join('\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

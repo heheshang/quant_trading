@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login as apiLogin, verifyToken as apiVerifyToken } from '@/services/auth'
+import { useMarketDataStore } from '@/stores/marketData'
 
 /**
  * Authentication store.
@@ -160,6 +161,13 @@ export const useAuthStore = defineStore('auth', () => {
     removeItem(STORAGE_KEYS.AUTH_TOKEN)
     removeItem(STORAGE_KEYS.USERNAME)
     removeItem(STORAGE_KEYS.IS_AUTHENTICATED)
+
+    // 清空实时行情数据，避免重新登录后残留上一位用户的标的数据。
+    try {
+      useMarketDataStore().clear()
+    } catch {
+      // 非 Pinia 上下文（如测试/未初始化）忽略。
+    }
   }
 
   /** Store the path user wanted before being redirected to login. */

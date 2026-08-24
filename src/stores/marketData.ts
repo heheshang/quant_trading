@@ -153,6 +153,15 @@ export const useMarketDataStore = defineStore('marketData', () => {
     }
   }
 
+  /** 清空按标的累积的实时数据（登出/切换用户时防旧数据残留）。 */
+  function clear() {
+    tickers.value = {}
+    trades.value = {}
+    orderBooks.value = {}
+    candles.value = {}
+    symbols.value = []
+  }
+
   /** Stop the stream and detach all listeners. */
   async function stop() {
     if (!running.value) return
@@ -161,6 +170,7 @@ export const useMarketDataStore = defineStore('marketData', () => {
     await stopBinanceStream()
     running.value = false
     status.value = 'idle'
+    clear()
   }
 
   function setActiveSymbol(sym: string) {
@@ -187,6 +197,7 @@ export const useMarketDataStore = defineStore('marketData', () => {
     candlesForActive,
     start,
     stop,
+    clear,
     setActiveSymbol,
   }
 })

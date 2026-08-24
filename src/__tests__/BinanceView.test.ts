@@ -36,7 +36,7 @@ describe('BinanceView', () => {
         case 'get_binance_positions':
           return [
             {
-              symbol: 'BTCUSDT',
+              symbol: 'BTC-USDT',
               position_amt: 0.001,
               entry_price: 50000,
               mark_price: 51000,
@@ -80,7 +80,7 @@ describe('BinanceView', () => {
   it('loads active orders by default and history on toggle', async () => {
     const wrapper = await mountComponent()
     expect(mockInvoke).toHaveBeenCalledWith('get_binance_orders', {
-      symbol: 'BTCUSDT',
+      symbol: 'BTC-USDT',
       history: false,
       limit: undefined,
     })
@@ -90,7 +90,7 @@ describe('BinanceView', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
     expect(mockInvoke).toHaveBeenCalledWith('get_binance_orders', {
-      symbol: 'BTCUSDT',
+      symbol: 'BTC-USDT',
       history: true,
       limit: undefined,
     })
@@ -99,7 +99,7 @@ describe('BinanceView', () => {
   it('cancels an order and reloads orders', async () => {
     const wrapper = await mountComponent()
     const order: BinanceOrder = {
-      symbol: 'BTCUSDT',
+      symbol: 'BTC-USDT',
       order_id: 99,
       client_order_id: 'x',
       status: 'NEW',
@@ -109,7 +109,7 @@ describe('BinanceView', () => {
     }
     await wrapper.vm.cancelOrder(order)
     expect(mockInvoke).toHaveBeenCalledWith('cancel_binance_order', {
-      symbol: 'BTCUSDT',
+      symbol: 'BTC-USDT',
       orderId: 99,
     })
   })
