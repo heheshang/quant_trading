@@ -46,7 +46,7 @@
           />
         </el-card>
         <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
-        <PositionsTable :positions="positions" />
+        <PositionsTable :positions="displayPositions" />
         <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
       </el-tab-pane>
     </el-tabs>
@@ -281,6 +281,21 @@ const accountInfo = ref<AccountInfo>({
 })
 const positions = ref<Position[]>([])
 const activeOrders = ref<Order[]>([])
+// 纸面持仓：由已成交订单重放得出（响应式随 paperOverview.orders 变化）。
+const displayPositions = computed(() =>
+  tradeMode.value === 'paper'
+    ? paperOverview.account.value.holdings.map((h) => ({
+        symbol: h.symbol,
+        quantity: h.quantity,
+        available_quantity: h.quantity,
+        avg_price: h.avg_price,
+        market_value: h.market_value,
+        unrealized_pnl: h.unrealized_pnl,
+        realized_pnl: 0,
+        updated_at: new Date().toISOString(),
+      }))
+    : positions.value,
+)
 const strategies = ref<StrategyParams[]>([])
 const orderStore = useOrderStore()
 const submitting = ref(false)

@@ -32,7 +32,8 @@ export function usePaperAccountOverview(initialCash: number) {
 
   const account = computed(() => {
     let cash = initialCash
-    const pos = new Map<string, number>()
+    // 每标的持仓数量 + 累计成本（用于均价/浮动盈亏）。
+    const pos = new Map<string, { qty: number; cost: number }>()
     const fills: FilledFill[] = []
     const sorted = [...orders.value].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
@@ -42,12 +43,15 @@ export function usePaperAccountOverview(initialCash: number) {
       const qty = o.filled_quantity || 0
       const price = o.price ?? 0
       const notional = price * qty
+      const p = pos.get(o.symbol) ?? { qty: 0, cost: 0 }
       if (o.side === 'Buy') {
         cash -= notional
-        pos.set(o.symbol, (pos.get(o.symbol) || 0) + qty)
+        pos.set(o.symbol, { qty: p.qty + qty, cost: p.cost + notional })
       } else {
         cash += notional
-        pos.set(o.symbol, Math.max(0, (pos.get(o.symbol) || 0) - qty))
+        const avg = p.qty > 0 ? p.cost / p.qty : 0
+        const newQty = Math.max(0, p.qty - qty)
+        pos.set(o.symbol, { qty: newQty, cost: avg * newQty })
       }
       fills.push({
         symbol: o.symbol,
@@ -59,9 +63,20 @@ export function usePaperAccountOverview(initialCash: number) {
     }
     let marketValue = 0
     const holdings = [...pos.entries()]
-      .filter(([, q]) => q > 0)
-      .map(([sym, q]) => ({ symbol: sym, quantity: q, value: q * priceOf(sym) }))
-    for (const h of holdings) marketValue += h.value
+      .filter(([, pc]) => pc.qty > 0)
+      .map(([sym, pc]) => {
+        const p = priceOf(sym)
+        const avg = pc.qty > 0 ? pc.cost / pc.qty : 0
+        const mv = pc.qty * p
+        return {
+          symbol: sym,
+          quantity: pc.qty,
+          avg_price: avg,
+          market_value: mv,
+          unrealized_pnl: (p - avg) * pc.qty,
+        }
+      })
+    for (const h of holdings) marketValue += h.market_value
 
     const startOfDay = Date.now() - (Date.now() % 86_400_000)
     const todayPnl = computeRealizedPnl(fills.filter((f) => f.ts >= startOfDay))
