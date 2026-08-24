@@ -98,9 +98,13 @@ impl ExecutionStrategy for PaperExecutionStrategy {
         order.status = OrderStatus::Filled;
         order.updated_at = Utc::now();
 
-        self.order_manager
+        // Best-effort：写入内存 OrderManager。调度器可能处理 DB 恢复的单
+        // （不在内存 OrderManager），此时忽略 NotFound，仍返回 Filled 结果
+        // 供上层把 DB 状态更新成功。
+        let _ = self
+            .order_manager
             .update_order_status(order.order_id, OrderStatus::Filled)
-            .await?;
+            .await;
 
         let result = ExecutionResult {
             order_id: order.order_id,
