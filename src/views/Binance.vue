@@ -254,10 +254,16 @@ function toggleHistory() {
   loadOrders()
 }
 
+onMounted(async () => {
+  try {
+    symbols.value = await getSymbols()
+  } catch {
+    symbols.value = []
+  }
+  // 三路并行加载，缩短首屏等待。
+  await Promise.all([loadBalance(), loadPositions(), loadOrders()])
   // 默认限价单预填当前价。
   void prefillPrice(form.value.symbol)
-  // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
-})
   // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
 })
 
@@ -282,7 +288,7 @@ onUnmounted(() => {
 
     <AssetBalanceTable :balances="balances" title="账户余额" :loading="loading" @refresh="loadBalance" />
 
-    <el-card class="section">
+    <el-card class="section chart-wide">
       <template #header>实时行情（WebSocket）</template>
       <div class="ws-controls">
         <el-select v-model="form.symbol" filterable size="small" style="width: 180px">
@@ -348,7 +354,7 @@ onUnmounted(() => {
       <el-button class="mt" size="small" @click="loadPositions">刷新</el-button>
     </el-card>
 
-    <el-card class="section">
+    <el-card class="section chart-wide">
       <template #header>
         <div class="orders-header">
           <span>订单（{{ filteredOrders.length }}）</span>
@@ -438,8 +444,21 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.binance-panel { max-width: 720px; }
-.section { margin-top: 16px; }
+.binance-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: var(--space-md);
+  align-items: start;
+  width: 100%;
+}
+/* 图表 / 实时深度 / 订单（宽表格）占整行，其余卡片按流式 2 列排列。 */
+.binance-panel .chart-wide,
+.binance-panel .binance-kline-chart {
+  grid-column: 1 / -1;
+}
+/* 网格用 gap 控间距，移除卡片外 margin；图表自身底部 margin 归零。 */
+.binance-panel .section { margin-top: 0; }
+.binance-panel .binance-kline-chart { margin-bottom: 0; }
 .mt { margin-top: 12px; }
 .ws-controls { display: flex; gap: 8px; margin-bottom: 12px; }
 .hint { color: var(--color-text-secondary); padding: 8px 0; }
