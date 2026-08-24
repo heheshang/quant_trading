@@ -5,6 +5,7 @@
 
 use exchange_binance::types::BinanceEnvironment;
 use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient};
+use rust_decimal::prelude::ToPrimitive;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
 
@@ -295,6 +296,28 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                 equity += qty * price;
             }
             let _ = account_service.record_equity_snapshot(equity).await;
+        }
+    });
+}
+
+/// 每 5s 用真实账户信息刷新监控指标 Gauge（余额/持仓市值/当日盈亏），
+/// 使 Monitor「指标监控」在不调用 get_account_info 的页面也能显示实时值。
+pub fn start_monitor_metrics(app_services: &quant_services::AppServices) {
+    let account_service = app_services.account_service.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            if let Ok(account) = account_service.get_account_info().await {
+                monitor_layer::MetricsCollector::set_account_balance(
+                    account.total_assets.to_f64().unwrap_or(0.0),
+                );
+                monitor_layer::MetricsCollector::set_position_value(
+                    account.market_value.to_f64().unwrap_or(0.0),
+                );
+                monitor_layer::MetricsCollector::set_daily_pnl(
+                    account.daily_pnl.to_f64().unwrap_or(0.0),
+                );
+            }
         }
     });
 }

@@ -117,6 +117,7 @@ impl ExecutionStrategy for PaperExecutionStrategy {
             executed_at: Utc::now(),
         };
 
+        monitor_engine::MetricsCollector::inc_orders_filled();
         info!("Order {} filled at price {}", order.order_id, execution_price);
         Ok(result)
     }

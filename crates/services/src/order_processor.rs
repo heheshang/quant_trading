@@ -274,6 +274,7 @@ impl OrderProcessor {
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
 
+        monitor_engine::MetricsCollector::inc_orders_total();
         Ok(OrderPlacement { order_id, event })
     }
 

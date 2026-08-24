@@ -318,6 +318,8 @@ async fn main() {
                 commands::binance_ws::start_live_order_monitor(app.handle().clone(), services);
                 // 资产曲线后台快照写入器（独立于前端刷新，每 60s 记录权益）。
                 commands::binance_ws::start_equity_snapshot_writer(services);
+                // 指标 Gauge 每 5s 刷新真实账户值（Monitor 指标监控）。
+                commands::binance_ws::start_monitor_metrics(services);
             }
             Ok(())
         })

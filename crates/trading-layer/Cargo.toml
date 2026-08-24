@@ -9,6 +9,7 @@ license.workspace = true
 quant-common = { path = "../common" }
 data-layer = { path = "../data-layer" }
 exchange-binance = { path = "../exchange-binance" }
+monitor-engine = { package = "monitor-layer", path = "../monitor-layer" }
 
 tokio = { workspace = true }
 serde = { workspace = true }
