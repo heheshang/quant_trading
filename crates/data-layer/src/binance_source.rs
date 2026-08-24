@@ -161,6 +161,7 @@ impl quant_common::MarketDataProvider for BinanceDataSource {
         symbol: &str,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
+        _timeframe: &str,
     ) -> std::result::Result<Vec<MarketData>, String> {
         <Self as DataSource>::get_historical_data(self, symbol, start, end)
             .await

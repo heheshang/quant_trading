@@ -13,6 +13,7 @@ import {
   subscribeBinanceDepth,
 } from '@/services/binance'
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
+import { getSymbols } from '@/services/market'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -35,9 +36,10 @@ const positionsLoading = ref(false)
 const ordersLoading = ref(false)
 const ordersHistory = ref(false)
 const ordersSymbol = ref('BTCUSDT')
+const symbols = ref<string[]>([])
 
 const form = ref({
-  symbol: 'BTCUSDT',
+  symbol: 'BTC-USDT',
   side: 'Buy' as 'Buy' | 'Sell',
   order_type: 'Limit' as 'Market' | 'Limit',
   price: 0,
@@ -165,6 +167,11 @@ function toggleHistory() {
 }
 
 onMounted(async () => {
+  try {
+    symbols.value = await getSymbols()
+  } catch {
+    symbols.value = []
+  }
   await loadBalance()
   await loadPositions()
   await loadOrders()
@@ -285,7 +292,9 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
       <template #header>下单</template>
       <el-form :model="form" label-width="90px" size="small">
         <el-form-item label="交易对">
-          <el-input v-model="form.symbol" />
+          <el-select v-model="form.symbol" filterable style="width: 100%">
+            <el-option v-for="s in symbols" :key="s" :label="s" :value="s" />
+          </el-select>
         </el-form-item>
         <el-form-item label="方向">
           <el-radio-group v-model="form.side">

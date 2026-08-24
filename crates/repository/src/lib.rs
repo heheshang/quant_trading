@@ -21,7 +21,9 @@ pub mod strategy_repository;
 pub use alerts::{AlertRepository, PgAlertRepository};
 pub use api_key::{ApiKeyRecord, ApiKeyRepository, NewApiKey, PgApiKeyRepository};
 pub use audit::{AuditFilter, AuditLogRecord, AuditRepository, NewAuditLog, PgAuditRepository};
-pub use backtest::{BacktestRepository, BacktestResultSummaryRow, PgBacktestRepository};
+pub use backtest::{
+    BacktestRepository, BacktestResultSummaryRow, BacktestResultsPage, PgBacktestRepository,
+};
 pub use error::RepoError;
 pub use postgres::PostgresClient;
 pub use strategy_repository::{

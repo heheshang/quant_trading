@@ -1,5 +1,7 @@
 use data_layer::PostgresClient;
-use exchange_binance::{websocket::BinanceWebSocket, ClientInterface as BinanceClientInterface};
+use exchange_binance::{
+    websocket::BinanceWebSocket, ClientInterface as BinanceClientInterface, UserDataStreamClient,
+};
 use monitor_layer::{AlertManager, LogBuffer};
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
@@ -35,6 +37,8 @@ impl AuthedUser {
 pub struct BinanceWsState {
     pub running: Arc<AtomicBool>,
     pub ws: RwLock<Option<BinanceWebSocket>>,
+    pub user_data_running: Arc<AtomicBool>,
+    pub user_data_ws: RwLock<Option<UserDataStreamClient>>,
 }
 
 impl BinanceWsState {
@@ -42,6 +46,8 @@ impl BinanceWsState {
         Self {
             running: Arc::new(AtomicBool::new(false)),
             ws: RwLock::new(None),
+            user_data_running: Arc::new(AtomicBool::new(false)),
+            user_data_ws: RwLock::new(None),
         }
     }
 }

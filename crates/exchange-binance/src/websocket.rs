@@ -30,6 +30,8 @@ pub enum BinanceWsMessage {
     OrderBook(BinanceWsDepth),
     Ticker(BinanceWsTicker),
     Trade(BinanceWsTrade),
+    AccountPosition(BinanceWsAccountPosition),
+    OrderUpdate(BinanceWsOrderUpdate),
     Error(String),
 }
 
@@ -80,10 +82,41 @@ pub struct BinanceWsTrade {
     /// `m` — true when the buyer is the maker (aggressor was a sell).
     pub is_buyer_maker: bool,
 }
+/// Parsed `outboundAccountPosition` (account balance update) from the user
+/// data stream (`@userDataStream`). Pushed when balances change.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BinanceWsAccountPosition {
+    pub event_time: i64,
+    pub balances: Vec<BinanceWsBalance>,
+}
+
+/// A single asset balance within [`BinanceWsAccountPosition`].
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BinanceWsBalance {
+    pub asset: String,
+    pub free: rust_decimal::Decimal,
+    pub locked: rust_decimal::Decimal,
+}
+
+/// Parsed `executionReport` (order update) from the user data stream.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BinanceWsOrderUpdate {
+    pub symbol: String, // domain symbol, e.g. BTC-USDT
+    pub order_id: i64,
+    pub client_order_id: String,
+    pub side: String,         // BUY / SELL
+    pub order_type: String,   // LIMIT / MARKET
+    pub price: rust_decimal::Decimal,
+    pub quantity: rust_decimal::Decimal,
+    pub executed_quantity: rust_decimal::Decimal,
+    pub status: String,       // NEW / FILLED / CANCELED / ...
+    pub event_time: i64,
+}
 
 /// Binance WebSocket client.
 pub struct BinanceWebSocket {
     environment: BinanceEnvironment,
+    ws_url_override: Option<String>,
     streams: Arc<RwLock<Vec<String>>>,
     message_tx: mpsc::UnboundedSender<BinanceWsMessage>,
     message_rx: Arc<RwLock<mpsc::UnboundedReceiver<BinanceWsMessage>>>,
@@ -92,12 +125,13 @@ pub struct BinanceWebSocket {
 }
 
 impl BinanceWebSocket {
-    pub fn new(environment: BinanceEnvironment) -> Self {
+    pub fn new(environment: BinanceEnvironment, ws_url: Option<String>) -> Self {
         let (message_tx, message_rx) = mpsc::unbounded_channel();
         let (command_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         Self {
             environment,
+            ws_url_override: ws_url,
             streams: Arc::new(RwLock::new(Vec::new())),
             message_tx,
             message_rx: Arc::new(RwLock::new(message_rx)),
@@ -107,10 +141,10 @@ impl BinanceWebSocket {
     }
 
     fn ws_url(&self) -> String {
-        match self.environment {
+        self.ws_url_override.clone().unwrap_or_else(|| match self.environment {
             BinanceEnvironment::Spot => "wss://stream.binance.com:9443/stream".to_string(),
             BinanceEnvironment::Futures => "wss://fstream.binance.com/stream".to_string(),
-        }
+        })
     }
 
     /// Track a stream (e.g. `btcusdt@kline_1h`) and queue a subscribe command.
@@ -165,6 +199,12 @@ impl BinanceWebSocket {
     pub async fn subscribe_trades(&self, symbol: &str) -> Result<()> {
         let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
         self.subscribe_stream(&format!("{}@trade", binance)).await
+    }
+
+    /// Subscribe to the account user-data stream via a `listenKey`.
+    /// The key is a valid combined-stream name, so it is added as a stream.
+    pub async fn subscribe_user_data(&self, listen_key: &str) -> Result<()> {
+        self.subscribe_stream(&listen_key.to_lowercase()).await
     }
 
     pub async fn subscriptions(&self) -> Vec<String> {
@@ -295,7 +335,7 @@ impl BinanceWebSocket {
 }
 
 /// Parse an incoming text frame into a [`BinanceWsMessage`] (best-effort).
-fn parse_ws_text(text: &str) -> Option<BinanceWsMessage> {
+pub(crate) fn parse_ws_text(text: &str) -> Option<BinanceWsMessage> {
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
         // Raw stream payload or combined stream envelope.
         if v.get("stream").is_some() && v.get("data").is_some() {
@@ -311,6 +351,17 @@ fn parse_ws_text(text: &str) -> Option<BinanceWsMessage> {
                 "depthupdate" => parse_depth(v["data"].clone()),
                 "24hrticker" => parse_ticker(v["data"].clone()),
                 "trade" => parse_trade(v["data"].clone()),
+                "outboundaccountposition" => parse_account_position(v["data"].clone()),
+                "executionreport" => parse_order_update(v["data"].clone()),
+                _ => None,
+            };
+        }
+        // Bare event payload (`{"e": "outboundAccountPosition", ...}`) —
+        // the WebSocket API delivers user-data events without a `data` wrapper.
+        if let Some(e) = v.get("e").and_then(|x| x.as_str()) {
+            return match e.to_lowercase().as_str() {
+                "outboundaccountposition" => parse_account_position(v.clone()),
+                "executionreport" => parse_order_update(v.clone()),
                 _ => None,
             };
         }
@@ -405,6 +456,39 @@ fn parse_trade(data: serde_json::Value) -> Option<BinanceWsMessage> {
         quantity: parse_decimal_str(data.get("q")?.as_str()?),
         trade_time: data.get("T")?.as_i64()?,
         is_buyer_maker: data.get("m")?.as_bool().unwrap_or(false),
+    }))
+}
+
+fn parse_account_position(data: serde_json::Value) -> Option<BinanceWsMessage> {
+    let balances = data
+        .get("B")?
+        .as_array()?
+        .iter()
+        .filter_map(|b| {
+            let asset = b.get("a")?.as_str()?.to_string();
+            let free = parse_decimal_str(b.get("f")?.as_str()?);
+            let locked = parse_decimal_str(b.get("l")?.as_str()?);
+            Some(BinanceWsBalance { asset, free, locked })
+        })
+        .collect();
+    Some(BinanceWsMessage::AccountPosition(BinanceWsAccountPosition {
+        event_time: data.get("E")?.as_i64()?,
+        balances,
+    }))
+}
+
+fn parse_order_update(data: serde_json::Value) -> Option<BinanceWsMessage> {
+    Some(BinanceWsMessage::OrderUpdate(BinanceWsOrderUpdate {
+        symbol: from_binance_symbol(data.get("s")?.as_str()?),
+        order_id: data.get("i")?.as_i64()?,
+        client_order_id: data.get("c")?.as_str().unwrap_or_default().to_string(),
+        side: data.get("S")?.as_str().unwrap_or_default().to_string(),
+        order_type: data.get("o")?.as_str().unwrap_or_default().to_string(),
+        price: parse_decimal_str(data.get("p")?.as_str()?),
+        quantity: parse_decimal_str(data.get("q")?.as_str()?),
+        executed_quantity: parse_decimal_str(data.get("z")?.as_str()?),
+        status: data.get("X")?.as_str().unwrap_or_default().to_string(),
+        event_time: data.get("E")?.as_i64()?,
     }))
 }
 

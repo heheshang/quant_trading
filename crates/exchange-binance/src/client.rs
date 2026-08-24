@@ -12,18 +12,66 @@ use quant_common::{Error, Result};
 use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use sha2::Sha256;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
+use ed25519_dalek::{SigningKey, Signer as _};
+use ed25519_dalek::pkcs8::DecodePrivateKey;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
-
-const SPOT_BASE: &str = "https://api.binance.com";
-const FUTURES_BASE: &str = "https://fapi.binance.com";
 
 /// HMAC-SHA256 signature for a raw query string (hex-encoded).
 pub(crate) fn sign(secret: &str, query: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key");
     mac.update(query.as_bytes());
     hex::encode(mac.finalize().into_bytes())
+}
+/// Authentication scheme for signed Binance requests.
+enum SigningScheme {
+    /// HMAC-SHA256 (hex signature). Default / legacy.
+    Hmac(String),
+    /// Ed25519 asymmetric (base64 signature) — Binance's recommended key type.
+    Ed25519(SigningKey),
+}
+
+/// Decode a PEM body (base64 between the `-----BEGIN/END-----` markers) to DER.
+fn pem_to_der(pem: &str) -> Result<Vec<u8>> {
+    let body: String = pem
+        .lines()
+        .filter(|l| !l.contains("-----"))
+        .collect::<Vec<_>>()
+        .join("");
+    BASE64
+        .decode(body)
+        .map_err(|e| Error::Config(format!("invalid Ed25519 private key base64: {e}")))
+}
+
+impl SigningScheme {
+    fn new(key_type: &str, secret: &str, private_key_pem: Option<&str>) -> Result<Self> {
+        match key_type {
+            "" | "hmac" => Ok(SigningScheme::Hmac(secret.to_string())),
+            "ed25519" => {
+                let pem = private_key_pem.ok_or_else(|| {
+                    Error::Config(
+                        "BINANCE_KEY_TYPE=ed25519 requires BINANCE_PRIVATE_KEY_PATH".to_string(),
+                    )
+                })?;
+                let der = pem_to_der(pem)?;
+                let key = SigningKey::from_pkcs8_der(&der)
+                    .map_err(|e| Error::Config(format!("invalid Ed25519 private key: {e}")))?;
+                Ok(SigningScheme::Ed25519(key))
+            }
+            other => Err(Error::Config(format!("unsupported BINANCE_KEY_TYPE: {other}"))),
+        }
+    }
+
+    fn sign(&self, payload: &str) -> String {
+        match self {
+            SigningScheme::Hmac(secret) => sign(secret, payload),
+            SigningScheme::Ed25519(key) => BASE64.encode(key.sign(payload.as_bytes()).to_bytes()),
+        }
+    }
 }
 
 /// Current UNIX timestamp in milliseconds.
@@ -51,6 +99,8 @@ pub trait ClientInterface: Send + Sync {
     async fn get_order_book(&self, symbol: &str, limit: Option<u32>) -> Result<BinanceOrderBook>;
     /// 24h ticker (`/api/v3/ticker/24hr`).
     async fn get_ticker_24hr(&self, symbol: &str) -> Result<BinanceTicker24h>;
+    /// Latest price for all symbols (`/api/v3/ticker/price`, no symbol → all).
+    async fn get_all_ticker_prices(&self) -> Result<HashMap<String, Decimal>>;
     /// Place an order (`/api/v3/order`, signed).
     async fn place_order(&self, request: &BinancePlaceOrderRequest) -> Result<BinanceOrder>;
     /// Cancel an order (`/api/v3/order`, signed).
@@ -73,26 +123,72 @@ pub struct Client {
     http: reqwest::Client,
     base: String,
     api_key: Option<String>,
-    api_secret: String,
+    signer: SigningScheme,
     environment: BinanceEnvironment,
 }
 
 impl Client {
-    pub fn new(api_key: String, api_secret: String, environment: BinanceEnvironment) -> Self {
-        let base = match environment {
-            BinanceEnvironment::Spot => SPOT_BASE,
-            BinanceEnvironment::Futures => FUTURES_BASE,
-        };
-        Self {
+    pub fn new(
+        api_key: String,
+        api_secret: String,
+        environment: BinanceEnvironment,
+        base_url: Option<String>,
+        key_type: String,
+        private_key_pem: Option<String>,
+    ) -> Result<Self> {
+        let base = base_url.unwrap_or_else(|| environment.base_url().to_string());
+        let signer = SigningScheme::new(&key_type, &api_secret, private_key_pem.as_deref())?;
+        Ok(Self {
             http: reqwest::Client::new(),
-            base: base.to_string(),
+            base,
             api_key: if api_key.is_empty() {
                 None
             } else {
                 Some(api_key)
             },
-            api_secret,
+            signer,
             environment,
+        })
+    }
+
+    /// Max retries for transient rate-limit (429) responses.
+    const RATE_LIMIT_MAX_RETRIES: usize = 3;
+
+    /// Read `Retry-After` seconds from a rate-limit/ban response.
+    fn retry_after_secs(resp: &reqwest::Response) -> Option<u64> {
+        resp.headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+    }
+
+    /// Send a request, retrying transient 429 (rate limit) with exponential
+    /// backoff; a 418 (IP ban) fails immediately so we never keep hammering a
+    /// banned IP (which would extend the ban to 3 days).
+    async fn send_with_rate_limit_backoff<F>(&self, mut build: F) -> Result<reqwest::Response>
+    where
+        F: FnMut() -> reqwest::RequestBuilder,
+    {
+        let mut attempt = 0usize;
+        loop {
+            let resp = build().send().await.map_err(|e| Error::Network(e.to_string()))?;
+            let status = resp.status();
+            if status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::IM_A_TEAPOT {
+                let retry_after = Self::retry_after_secs(&resp)
+                    .unwrap_or_else(|| 1u64 << attempt.min(3));
+                let banned = status == StatusCode::IM_A_TEAPOT;
+                if banned || attempt >= Self::RATE_LIMIT_MAX_RETRIES {
+                    return Err(Error::RateLimited {
+                        message: format!("HTTP {} (rate limited / banned)", status.as_u16()),
+                        retry_after_secs: retry_after,
+                    });
+                }
+                tracing::warn!(attempt, retry_after, "Binance rate limited; backing off");
+                tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
+                attempt += 1;
+                continue;
+            }
+            return Ok(resp);
         }
     }
 
@@ -104,12 +200,8 @@ impl Client {
     ) -> Result<T> {
         let url = format!("{}{}", self.base, path);
         let resp = self
-            .http
-            .get(&url)
-            .query(params)
-            .send()
-            .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .send_with_rate_limit_backoff(|| self.http.get(&url).query(params))
+            .await?;
         Self::unwrap(resp, path).await
     }
 
@@ -122,15 +214,16 @@ impl Client {
         let mut query = params;
         query.push(("timestamp", now_ms().to_string()));
         let qs = Self::build_query(&query);
-        let signature = sign(&self.api_secret, &qs);
+        let signature = self.signer.sign(&qs);
         let url = format!("{}{}?{}&signature={}", self.base, path, qs, signature);
+        let api_key = self.api_key.clone();
         let resp = self
-            .http
-            .get(&url)
-            .header("X-MBX-APIKEY", self.api_key.as_deref().unwrap_or(""))
-            .send()
-            .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .send_with_rate_limit_backoff(|| {
+                self.http
+                    .get(&url)
+                    .header("X-MBX-APIKEY", api_key.as_deref().unwrap_or(""))
+            })
+            .await?;
         Self::unwrap(resp, path).await
     }
 
@@ -259,6 +352,19 @@ impl ClientInterface for Client {
         })
     }
 
+    async fn get_all_ticker_prices(&self) -> Result<HashMap<String, Decimal>> {
+        #[derive(serde::Deserialize)]
+        struct PriceRow {
+            symbol: String,
+            price: String,
+        }
+        let rows: Vec<PriceRow> = self.get_json("/api/v3/ticker/price", &[]).await?;
+        Ok(rows
+            .into_iter()
+            .map(|p| (p.symbol, parse_decimal(&p.price)))
+            .collect())
+    }
+
     async fn place_order(&self, request: &BinancePlaceOrderRequest) -> Result<BinanceOrder> {
         let mut params: Vec<(&str, String)> = vec![
             ("symbol", request.symbol.clone()),
@@ -269,21 +375,26 @@ impl ClientInterface for Client {
         if let Some(price) = request.price {
             params.push(("price", price.to_string()));
         }
+        // Binance requires `timeInForce` for LIMIT orders.
+        if matches!(request.order_type, BinanceOrderType::Limit) {
+            params.push(("timeInForce", "GTC".to_string()));
+        }
         let qs = Self::build_query(&params);
         let timestamp = now_ms().to_string();
         let full_qs = format!("{}&timestamp={}", qs, timestamp);
-        let signature = sign(&self.api_secret, &full_qs);
+        let signature = self.signer.sign(&full_qs);
         let url = format!(
             "{}/api/v3/order?{}&signature={}",
             self.base, full_qs, signature
         );
+        let api_key = self.api_key.clone();
         let resp = self
-            .http
-            .post(&url)
-            .header("X-MBX-APIKEY", self.api_key.as_deref().unwrap_or(""))
-            .send()
-            .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .send_with_rate_limit_backoff(|| {
+                self.http
+                    .post(&url)
+                    .header("X-MBX-APIKEY", api_key.as_deref().unwrap_or(""))
+            })
+            .await?;
         let o: ApiOrder = Self::unwrap(resp, "/api/v3/order").await?;
         Ok(o.into())
     }
@@ -296,18 +407,19 @@ impl ClientInterface for Client {
         let qs = Self::build_query(&params);
         let timestamp = now_ms().to_string();
         let full_qs = format!("{}&timestamp={}", qs, timestamp);
-        let signature = sign(&self.api_secret, &full_qs);
+        let signature = self.signer.sign(&full_qs);
         let url = format!(
             "{}/api/v3/order?{}&signature={}",
             self.base, full_qs, signature
         );
+        let api_key = self.api_key.clone();
         let _resp = self
-            .http
-            .delete(&url)
-            .header("X-MBX-APIKEY", self.api_key.as_deref().unwrap_or(""))
-            .send()
-            .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .send_with_rate_limit_backoff(|| {
+                self.http
+                    .delete(&url)
+                    .header("X-MBX-APIKEY", api_key.as_deref().unwrap_or(""))
+            })
+            .await?;
         Ok(())
     }
 

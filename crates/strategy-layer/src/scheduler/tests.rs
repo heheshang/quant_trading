@@ -24,6 +24,7 @@ impl MarketDataProvider for MockProvider {
         _symbol: &str,
         _start: DateTime<Utc>,
         _end: DateTime<Utc>,
+        _timeframe: &str,
     ) -> Result<Vec<MarketData>, String> {
         Ok(Vec::new())
     }

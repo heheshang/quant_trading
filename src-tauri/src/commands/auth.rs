@@ -56,9 +56,21 @@ pub async fn login(
         }
     }
     let success = result.is_ok();
+    // Resolve the real user id from the username so even a failed login with an
+    // existing account attributes the event to that user. A non-existent
+    // username resolves to None; the login itself already failed.
+    let resolved_user_id = match state.app_services.as_ref() {
+        Some(services) => services
+            .auth_service
+            .resolve_user_id(&username)
+            .await
+            .unwrap_or(None),
+        None => None,
+    };
+    let audit_user_id = resolved_user_id.map(|id| id.to_string()).unwrap_or_default();
     let _ = state
         .audit_logger
-        .log_login("0", &username, None, success)
+        .log_login(&audit_user_id, &username, None, success)
         .await;
     result
 }

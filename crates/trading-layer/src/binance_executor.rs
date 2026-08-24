@@ -109,6 +109,7 @@ impl BinanceExecutor {
             order_type,
             price: order.price,
             quantity: order.quantity,
+            strategy_id: order.strategy_id.clone().into(),
         })
     }
 

@@ -129,9 +129,11 @@ async fn test_list_types() {
 #[tokio::test]
 async fn test_default_registry_has_builtin_strategies() {
     let registry = default_registry();
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 4);
     assert!(registry.has_type("MeanReversion"));
     assert!(registry.has_type("TrendFollowing"));
+    assert!(registry.has_type("MACD"));
+    assert!(registry.has_type("RSI"));
 }
 
 #[tokio::test]

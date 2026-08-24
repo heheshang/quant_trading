@@ -712,6 +712,7 @@ fn make_backtest_result() -> BacktestResult {
     BacktestResult {
         id: Some(0),
         strategy_id: "strat_1".into(),
+        strategy_name: None,
         start_date: Utc::now(),
         end_date: Utc::now() + chrono::Duration::days(30),
         initial_capital: dec!(1000000),
@@ -726,6 +727,7 @@ fn make_backtest_result() -> BacktestResult {
         winning_trades: 60,
         losing_trades: 40,
         equity_curve: vec![],
+        trades: vec![],
     }
 }
 

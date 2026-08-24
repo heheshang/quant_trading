@@ -7,9 +7,9 @@
 //! New code should import from `quant_domain::types` directly.
 
 pub use quant_domain::types::{
-    allowed_transitions, Account, Alert, AlertLevel, BacktestResult, Exchange, Instrument,
-    InstrumentType, MarketData, Order, OrderSide, OrderStatus, OrderType, Position, RiskMetrics,
-    SchedulerTaskInfo, StatusTransition, StrategyError, StrategyGuard, StrategyParams,
+    allowed_transitions, Account, Alert, AlertLevel, BacktestResult, BacktestTrade, Exchange,
+    Instrument, InstrumentType, MarketData, Order, OrderSide, OrderStatus, OrderType, Position,
+    RiskMetrics, SchedulerTaskInfo, StatusTransition, StrategyError, StrategyGuard, StrategyParams,
     StrategyStatus, StrategyType,
 };
 

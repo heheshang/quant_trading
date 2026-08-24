@@ -40,6 +40,9 @@ src-tauri/config.toml
 .env
 .env.local
 .env.*.local
+# Generated testnet Ed25519 keypair (private key must never be committed)
+test-prv-key.pem
+test-pub-key.pem
 
 # Database
 *.db

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use quant_domain::BacktestResult;
+use quant_domain::{BacktestResult, BacktestTrade};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -32,6 +32,7 @@ struct BacktestResultRow {
     symbols: Option<Vec<String>>,
     commission_rate: Option<Decimal>,
     slippage: Option<Decimal>,
+    trades: Option<serde_json::Value>,
     created_at: DateTime<Utc>,
 }
 
@@ -42,10 +43,16 @@ impl BacktestResultRow {
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
+        let trades: Vec<BacktestTrade> = self
+            .trades
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
 
         BacktestResult {
             id: Some(self.id),
             strategy_id: self.strategy_id.clone(),
+            strategy_name: self.strategy_name.clone(),
             start_date: self.start_date,
             end_date: self.end_date,
             initial_capital: self.initial_capital,
@@ -58,8 +65,9 @@ impl BacktestResultRow {
             profit_loss_ratio: self.profit_loss_ratio.unwrap_or(Decimal::ZERO),
             total_trades: self.total_trades.unwrap_or(0),
             winning_trades: self.winning_trades.unwrap_or(0),
-            losing_trades: self.losing_trades.unwrap_or(0),
+                        losing_trades: self.losing_trades.unwrap_or(0),
             equity_curve,
+            trades,
         }
     }
 }
@@ -79,6 +87,12 @@ pub struct BacktestResultSummaryRow {
     pub win_rate: Option<Decimal>,
     pub created_at: DateTime<Utc>,
 }
+/// Paginated backtest results (rows for the current page + total count).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BacktestResultsPage {
+    pub rows: Vec<BacktestResultSummaryRow>,
+    pub total: i64,
+}
 
 /// Backtest data access trait.
 #[async_trait]
@@ -89,6 +103,8 @@ pub trait BacktestRepository: Send + Sync + 'static {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<BacktestResultSummaryRow>, RepoError>;
+    /// Total number of backtest results (for pagination).
+    async fn count(&self) -> Result<i64, RepoError>;
 
     /// Query a single backtest result by ID (includes equity_curve).
     async fn find_by_id(&self, id: i64) -> Result<Option<BacktestResult>, RepoError>;
@@ -147,6 +163,17 @@ impl BacktestRepository for PgBacktestRepository {
             RepoError::from(e)
         })
     }
+    #[instrument(skip(self))]
+    async fn count(&self) -> Result<i64, RepoError> {
+        let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM backtest_results")
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to count backtest results: {}", e);
+                RepoError::from(e)
+            })?;
+        Ok(total)
+    }
 
     #[instrument(skip(self), fields(%id))]
     async fn find_by_id(&self, id: i64) -> Result<Option<BacktestResult>, RepoError> {
@@ -159,7 +186,7 @@ impl BacktestRepository for PgBacktestRepository {
                    sharpe_ratio, max_drawdown,
                    win_rate, profit_loss_ratio,
                    total_trades, winning_trades, losing_trades,
-                   equity_curve, symbols,
+                   equity_curve, symbols, trades,
                    commission_rate, slippage, created_at
             FROM backtest_results
             WHERE id = $1
@@ -185,10 +212,13 @@ impl BacktestRepository for PgBacktestRepository {
         commission_rate: Decimal,
         slippage: Decimal,
     ) -> Result<(), RepoError> {
-        let backtest_id = result.id.unwrap_or(0);
+        // `result.id` is None for new backtests; let Postgres generate the id.
+        let backtest_id: Option<i64> = result.id;
         let equity_json = serde_json::to_value(&result.equity_curve)
             .map_err(|e| RepoError::Database(format!("Failed to serialize equity curve: {}", e)))?;
         let symbols_str: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
+        let trades_json = serde_json::to_value(&result.trades)
+            .map_err(|e| RepoError::Database(format!("Failed to serialize trades: {}", e)))?;
 
         sqlx::query(
             r#"
@@ -201,9 +231,10 @@ impl BacktestRepository for PgBacktestRepository {
                 win_rate, profit_loss_ratio,
                 total_trades, winning_trades, losing_trades,
                 equity_curve, symbols,
-                commission_rate, slippage
+                commission_rate, slippage,
+                trades
             ) VALUES (
-                $1, $2, $3,
+                COALESCE($1, nextval('backtest_results_id_seq')), $2, $3,
                 $4, $5,
                 $6, $7,
                 $8, $9,
@@ -211,7 +242,8 @@ impl BacktestRepository for PgBacktestRepository {
                 $12, $13,
                 $14, $15, $16,
                 $17, $18,
-                $19, $20
+                $19, $20,
+                $21
             )
             "#,
         )
@@ -235,6 +267,7 @@ impl BacktestRepository for PgBacktestRepository {
         .bind(&symbols_str)
         .bind(commission_rate)
         .bind(slippage)
+        .bind(&trades_json)
         .execute(&*self.pool)
         .await
         .map_err(|e| {

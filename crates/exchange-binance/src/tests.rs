@@ -22,6 +22,17 @@ fn hmac_signature_differs_with_secret() {
     let b = sign("secret2", "symbol=BTCUSDT&timestamp=1");
     assert_ne!(a, b);
 }
+#[test]
+fn ed25519_signature_is_64_byte_base64() {
+    use base64::Engine as _;
+    use ed25519_dalek::{Signer, SigningKey};
+    let key = SigningKey::from_bytes(&[0x7b; 32]);
+    let sig = key.sign(b"symbol=BTCUSDT&timestamp=123");
+    assert_eq!(sig.to_bytes().len(), 64, "Ed25519 signature is 64 bytes");
+    let b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+    assert_eq!(b64.len(), 88, "base64(64 bytes) is 88 chars");
+    assert!(b64.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
+}
 
 #[test]
 fn parse_decimal_handles_bad_input_and_zap() {

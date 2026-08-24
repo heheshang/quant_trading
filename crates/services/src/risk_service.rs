@@ -73,16 +73,6 @@ impl RiskService {
             ServiceError::from(e)
         })?;
 
-        if account_rows.len() < 2 {
-            error!(
-                "Insufficient account history for VaR (need >= 2, got {})",
-                account_rows.len()
-            );
-            return Err(ServiceError::Other(
-                "Insufficient account history for VaR calculation (need >= 2 data points)".into(),
-            ));
-        }
-
         // Compute percentage returns: daily_pnl / total_assets
         let returns: Vec<Decimal> = account_rows
             .iter()
@@ -93,9 +83,20 @@ impl RiskService {
             })
             .collect();
 
-        // Compute VaR at multiple confidence levels
-        let var_95 = VaRCalculator::historical_simulation(&returns, 0.95);
-        let var_99 = VaRCalculator::historical_simulation(&returns, 0.99);
+        // Historical VaR needs >= 2 data points; degrade gracefully so a fresh
+        // account with no history doesn't fail the whole risk-metrics request.
+        let (var_95, var_99) = if returns.len() >= 2 {
+            (
+                VaRCalculator::historical_simulation(&returns, 0.95),
+                VaRCalculator::historical_simulation(&returns, 0.99),
+            )
+        } else {
+            warn!(
+                "Insufficient account history for VaR (need >= 2, got {}); VaR unavailable",
+                returns.len()
+            );
+            (Decimal::ZERO, Decimal::ZERO)
+        };
 
         metrics.insert("var_95".to_string(), var_95.to_f64().unwrap_or(0.0));
         metrics.insert("var_99".to_string(), var_99.to_f64().unwrap_or(0.0));

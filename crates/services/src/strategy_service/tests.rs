@@ -76,6 +76,7 @@ async fn run_backtest_no_db_returns_error() {
             Decimal::from_f64(0.001).unwrap(),
             Decimal::from_f64(0.0005).unwrap(),
             &["BTC-USDT".to_string()],
+            "1H",
         )
         .await;
     assert!(result.is_err());
@@ -167,7 +168,10 @@ async fn list_strategy_types_with_registry() {
 
     let result = svc.list_strategy_types().unwrap();
     assert!(!result.is_empty());
-    assert_eq!(result[0].type_name, "MeanReversion");
+    let names: Vec<&str> = result.iter().map(|t| t.type_name.as_str()).collect();
+    for expected in ["MeanReversion", "TrendFollowing", "MACD", "RSI"] {
+        assert!(names.contains(&expected), "missing type: {expected}");
+    }
 }
 
 #[tokio::test]

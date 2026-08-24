@@ -1,5 +1,5 @@
 import { call } from './transport'
-import type { BacktestResult, BacktestResultSummaryRow } from './types'
+import type { BacktestResult, BacktestResultsPage } from './types'
 
 /**
  * Backtest service.
@@ -15,6 +15,7 @@ export function runBacktest(
   commission_rate: number,
   slippage: number,
   symbols: string[],
+  timeframe: string,
 ): Promise<BacktestResult> {
   return call<BacktestResult>('run_backtest', {
     strategyId: strategy_id,
@@ -24,14 +25,15 @@ export function runBacktest(
     commissionRate: commission_rate,
     slippage,
     symbols,
+    timeframe,
   })
 }
 
 export function getBacktestResults(
   limit: number,
   offset: number,
-): Promise<BacktestResultSummaryRow[]> {
-  return call<BacktestResultSummaryRow[]>('get_backtest_results', { limit, offset })
+): Promise<BacktestResultsPage> {
+  return call<BacktestResultsPage>('get_backtest_results', { limit, offset })
 }
 
 export function getBacktestResult(id: number): Promise<BacktestResult> {

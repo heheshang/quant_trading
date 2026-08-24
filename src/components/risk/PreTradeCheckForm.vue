@@ -10,7 +10,14 @@
       <el-row :gutter="20">
         <el-col :xs="24" :span="12">
           <el-form-item label="标的代码" prop="symbol">
-            <el-input v-model="testOrder.symbol" placeholder="输入标的代码" />
+            <el-select
+              v-model="testOrder.symbol"
+              filterable
+              placeholder="选择标的代码"
+              style="width: 100%"
+            >
+              <el-option v-for="s in symbolList" :key="s" :label="s" :value="s" />
+            </el-select>
           </el-form-item>
         </el-col>
         <el-col :xs="24" :span="12">
@@ -51,20 +58,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { getAccountInfo, getPositions } from '@/services/account'
 import { preTradeCheck } from '@/services/risk'
+import { getSymbols } from '@/services/market'
 
 const formRef = ref<FormInstance>()
 const checkResult = ref<boolean | null>(null)
 const checking = ref(false)
+const symbolList = ref<string[]>([])
+
+onMounted(async () => {
+  try { symbolList.value = await getSymbols() } catch { symbolList.value = [] }
+})
 
 const testOrder = reactive({
   order_id: 0,
   strategy_id: 'test_strategy',
-  symbol: '600519.SH',
+  symbol: 'BTC-USDT',
   order_type: 'Limit' as const,
   side: 'Buy' as const,
   price: 1685.00,
@@ -78,7 +91,7 @@ const testOrder = reactive({
 })
 
 const rules = {
-  symbol: [{ required: true, message: '请输入标的代码', trigger: 'blur' }],
+  symbol: [{ required: true, message: '请选择标的代码', trigger: 'change' }],
   side: [{ required: true, message: '请选择买卖方向', trigger: 'change' }],
   price: [
     { required: true, message: '请输入价格', trigger: 'blur' },

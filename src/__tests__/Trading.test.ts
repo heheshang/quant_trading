@@ -69,7 +69,7 @@ describe('Trading.vue - 按钮测试', () => {
     wrapper.vm.orderForm.symbol = 'BTC-USDT'
     wrapper.vm.resetOrderForm()
     await wrapper.vm.$nextTick()
-    expect(wrapper.vm.orderForm.symbol).toBe('600519.SH')
+    expect(wrapper.vm.orderForm.symbol).toBe('BTC-USDT')
   }, 30000)
 
   it('刷新订单 - 调用 fetchActiveOrders', async () => {

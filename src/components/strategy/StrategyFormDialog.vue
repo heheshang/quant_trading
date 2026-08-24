@@ -85,7 +85,9 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="交易标的" prop="symbols">
-              <el-select v-model="formData.symbols" multiple allow-create filterable default-first-option placeholder="输入交易标的后回车添加" style="width: 100%" />
+              <el-select v-model="formData.symbols" multiple allow-create filterable default-first-option placeholder="选择或输入交易标的" style="width: 100%">
+                <el-option v-for="s in symbolList" :key="s" :label="s" :value="s" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -117,13 +119,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { InfoFilled, WarningFilled, EditPen, Setting } from '@element-plus/icons-vue';
 import { useStrategyStore } from '@/stores/strategy';
 import { useAuthStore } from '@/stores/auth';
 import StrategyParamEditor from './StrategyParamEditor.vue';
 import type { StrategyParams, StrategyStatus, ParameterSchema } from '@/services/types';
+import { getSymbols } from '@/services/market';
 
 const props = withDefaults(defineProps<{
   visible: boolean;
@@ -200,6 +203,11 @@ function defaultFormData() {
 }
 
 const formData = ref(defaultFormData());
+const symbolList = ref<string[]>([]);
+
+onMounted(async () => {
+  try { symbolList.value = await getSymbols(); } catch { symbolList.value = []; }
+});
 
 watch(() => props.visible, (visible) => {
   if (!visible) return;

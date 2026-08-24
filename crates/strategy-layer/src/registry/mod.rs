@@ -12,7 +12,9 @@ use thiserror::Error;
 use crate::strategy::Strategy;
 
 mod factories;
-pub use factories::{MeanReversionFactory, TrendFollowingFactory};
+pub use factories::{
+    MacdFactory, MeanReversionFactory, RsiFactory, TrendFollowingFactory,
+};
 
 // ─── FactoryError ─────────────────────────────────────────────────────────
 
@@ -216,6 +218,18 @@ pub fn default_registry() -> StrategyRegistry {
         Box::new(TrendFollowingFactory),
         "趋势跟踪策略",
         "基于 EMA 交叉的趋势跟踪策略，短期 EMA 上穿长期 EMA 时买入，下穿时卖出",
+    );
+    registry.register(
+        "MACD",
+        Box::new(MacdFactory),
+        "MACD 交叉策略",
+        "MACD 柱状图由负转正时买入、由正转负时卖出（动量/趋势）",
+    );
+    registry.register(
+        "RSI",
+        Box::new(RsiFactory),
+        "RSI 反转策略",
+        "RSI 低于超卖阈值买入、高于超买阈值卖出（均值回归）",
     );
     registry
 }

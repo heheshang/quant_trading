@@ -6,6 +6,7 @@
 
 pub mod client;
 pub mod types;
+pub mod user_data_stream;
 pub mod websocket;
 
 pub use client::{Client, ClientInterface};
@@ -14,6 +15,7 @@ pub use types::{
     BinanceOrder, BinanceOrderBook, BinanceOrderType, BinancePlaceOrderRequest, BinancePosition,
     BinanceSide, BinanceTicker24h,
 };
+pub use user_data_stream::UserDataStreamClient;
 pub use websocket::{BinanceWebSocket, BinanceWsMessage};
 
 #[cfg(test)]

@@ -36,6 +36,7 @@ export type OrderStatus = 'Pending' | 'Submitted' | 'PartiallyFilled' | 'Filled'
 export interface Order {
   order_id: number
   strategy_id: string
+  strategy_name?: string
   symbol: string
   order_type: OrderType
   side: OrderSide
@@ -235,10 +236,13 @@ export interface StrategyTypeInfo {
 export type StrategyType =
   | 'TrendFollowing'
   | 'MeanReversion'
+  | 'MACD'
+  | 'RSI'
 
 export interface BacktestResult {
   id?: number
   strategy_id: string
+  strategy_name: string | null
   start_date: string
   end_date: string
   initial_capital: number
@@ -267,6 +271,10 @@ export interface BacktestResultSummaryRow {
   total_trades: number | null
   win_rate: number | null
   created_at: string
+}
+export interface BacktestResultsPage {
+  rows: BacktestResultSummaryRow[]
+  total: number
 }
 
 export interface RiskMetrics {
@@ -367,6 +375,10 @@ export interface BinanceConfig {
   api_secret: string
   environment: string
   enable: boolean
+  base_url: string | null
+  ws_url: string | null
+  key_type: string
+  private_key_path: string | null
 }
 
 // ── Binance ──
@@ -401,6 +413,7 @@ export interface BinancePlaceOrderRequest {
   order_type: 'Market' | 'Limit'
   price?: number
   quantity: number
+  strategy_id?: string
 }
 export interface BinanceOrder {
   symbol: string
@@ -415,6 +428,21 @@ export interface BinanceOrder {
   orig_qty?: number
   time?: number
   update_time?: number
+}
+
+/** 本地持久化的 live 单成交记录（策略关联 + 成交价/量）。 */
+export interface LiveTrade {
+  id: number
+  order_id: number
+  symbol: string
+  strategy_id: string
+  side: string
+  price: number
+  quantity: number
+  filled_quantity: number
+  status: string
+  created_at: string
+  updated_at: string
 }
 
 export interface BinancePosition {
@@ -471,4 +499,28 @@ export interface BinanceWsTrade {
   quantity: number
   trade_time: number
   is_buyer_maker: boolean
+}
+
+/** 用户数据流 `outboundAccountPosition`（余额变化）。 */
+export interface BinanceWsAccountPosition {
+  event_time: number
+  balances: BinanceWsBalance[]
+}
+export interface BinanceWsBalance {
+  asset: string
+  free: number
+  locked: number
+}
+/** 用户数据流 `executionReport`（订单变化）。 */
+export interface BinanceWsOrderUpdate {
+  symbol: string
+  order_id: number
+  client_order_id: string
+  side: string
+  order_type: string
+  price: number
+  quantity: number
+  executed_quantity: number
+  status: string
+  event_time: number
 }

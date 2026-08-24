@@ -11,9 +11,13 @@ use quant_common::Result;
 
 pub mod mean_reversion;
 pub mod trend_following;
+pub mod macd;
+pub mod rsi;
 
 pub use mean_reversion::MeanReversionStrategy;
 pub use trend_following::TrendFollowingStrategy;
+pub use macd::MacdStrategy;
+pub use rsi::RsiStrategy;
 
 /// 策略上下文
 pub struct StrategyContext {

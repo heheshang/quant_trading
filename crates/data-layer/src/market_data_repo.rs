@@ -170,6 +170,17 @@ impl MarketDataRepository {
         Ok(records)
     }
 
+    /// Distinct instruments present in `market_data` (the symbol dropdown source).
+    #[instrument(skip(self))]
+    pub async fn list_symbols(&self) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT DISTINCT instrument_id FROM market_data ORDER BY instrument_id")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| Error::Database(format!("Failed to list market_data symbols: {}", e)))?;
+        Ok(rows.into_iter().map(|(s,)| s).collect())
+    }
+
     /// Insert a single ticker snapshot record
     #[instrument(skip(self))]
     pub async fn insert_ticker_snapshot(&self, item: &NewTickerSnapshot) -> Result<u64> {

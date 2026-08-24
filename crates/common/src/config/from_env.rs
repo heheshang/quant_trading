@@ -191,6 +191,48 @@ impl AppConfig {
         config.binance.api_secret = env_string("BINANCE_API_SECRET", &config.binance.api_secret);
         config.binance.environment = env_string("BINANCE_ENVIRONMENT", &config.binance.environment);
         config.binance.enable = env_parse("BINANCE_ENABLE", config.binance.enable);
+        config.binance.base_url = env_option("BINANCE_BASE_URL");
+        config.binance.ws_url = env_option("BINANCE_WS_URL");
+        config.binance.ws_api_url = env_option("BINANCE_WS_API_URL");
+        config.binance.key_type = env_string("BINANCE_KEY_TYPE", &config.binance.key_type);
+        config.binance.key_type = env_string("BINANCE_KEY_TYPE", &config.binance.key_type);
+        config.binance.private_key_path = env_option("BINANCE_PRIVATE_KEY_PATH");
+        // Resolve Binance endpoints: env overrides win, otherwise fall back to
+        // the environment default so the app never bakes an endpoint into the
+        // exchange client. All URLs are injected via env (BINANCE_BASE_URL /
+        // BINANCE_WS_URL); these defaults are only used when they are unset.
+        let env_layout = config.binance.environment.clone();
+        if config.binance.base_url.is_none() {
+            config.binance.base_url = Some(
+                match env_layout.as_str() {
+                    "futures" => "https://fapi.binance.com",
+                    _ => "https://api.binance.com",
+                }
+                .to_string(),
+            );
+        }
+        if config.binance.ws_url.is_none() {
+            config.binance.ws_url = Some(
+                match env_layout.as_str() {
+                    "futures" => "wss://fstream.binance.com/stream",
+                    _ => "wss://stream.binance.com:9443/stream",
+                }
+                .to_string(),
+            );
+        }
+        if config.binance.ws_api_url.is_none() {
+            let testnet = config
+                .binance
+                .base_url
+                .as_deref()
+                .map(|u| u.contains("testnet"))
+                .unwrap_or(false);
+            config.binance.ws_api_url = Some(if testnet {
+                "wss://ws-api.testnet.binance.vision/ws-api/v3".to_string()
+            } else {
+                "wss://ws-api.binance.com/ws-api/v3".to_string()
+            });
+        }
 
         config
     }

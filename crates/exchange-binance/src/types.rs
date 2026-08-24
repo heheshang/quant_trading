@@ -93,22 +93,53 @@ pub struct BinancePlaceOrderRequest {
     pub order_type: BinanceOrderType,
     pub price: Option<Decimal>,
     pub quantity: Decimal,
+    pub strategy_id: Option<String>,
 }
 
 /// Trade side.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum BinanceSide {
     Buy,
     Sell,
 }
 
+impl<'de> serde::Deserialize<'de> for BinanceSide {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.to_ascii_uppercase().as_str() {
+            "BUY" => Ok(Self::Buy),
+            "SELL" => Ok(Self::Sell),
+            _ => Err(serde::de::Error::custom(format!("unknown side: `{s}`"))),
+        }
+    }
+}
+
 /// Order type.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum BinanceOrderType {
     Market,
     Limit,
+}
+
+impl<'de> serde::Deserialize<'de> for BinanceOrderType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.to_ascii_uppercase().as_str() {
+            "MARKET" => Ok(Self::Market),
+            "LIMIT" => Ok(Self::Limit),
+            _ => Err(serde::de::Error::custom(format!(
+                "unknown order type: `{s}`"
+            ))),
+        }
+    }
 }
 
 /// Normalized Binance order result.

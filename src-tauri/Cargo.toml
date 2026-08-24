@@ -42,6 +42,7 @@ sqlx = { workspace = true }
 chrono = { workspace = true }
 dotenv = { workspace = true }
 uuid = { workspace = true }
+anyhow = { workspace = true }
 rust_decimal = { workspace = true, features = ["maths"] }
 rust_decimal_macros = { workspace = true, features = ["reexportable"] }
 

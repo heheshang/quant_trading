@@ -11,6 +11,10 @@ pub enum Error {
     #[error("Network error: {0}")]
     Network(String),
 
+    /// 交易所限流/封禁（HTTP 429 / 418）。`retry_after_secs` 为建议等待秒数。
+    #[error("Rate limited by exchange ({retry_after_secs}s): {message}")]
+    RateLimited { message: String, retry_after_secs: u64 },
+
     #[error("Configuration error: {0}")]
     Config(String),
 

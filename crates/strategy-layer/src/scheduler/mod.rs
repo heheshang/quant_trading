@@ -203,6 +203,7 @@ impl StrategyScheduler {
                                     symbol,
                                     chrono::Utc::now() - chrono::Duration::hours(24),
                                     chrono::Utc::now(),
+                                    "1H",
                                 ).await {
                                     Ok(data) => market_data.extend(data),
                                     Err(e) => {

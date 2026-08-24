@@ -28,6 +28,10 @@
           <BacktestChart ref="chartRef" :result="backtestResult" />
         </el-tab-pane>
         <el-tab-pane label="交易记录" name="trades">
+          <div class="trade-header" v-if="backtestResult">
+            <span class="th-item">策略：<strong>{{ backtestResult.strategy_name || '-' }}</strong></span>
+            <span class="th-item">ID：{{ backtestResult.strategy_id }}</span>
+          </div>
           <BacktestTradeList :records="tradeRecords" />
         </el-tab-pane>
       </el-tabs>
@@ -35,9 +39,14 @@
     <BacktestHistory
       :history-records="historyRecords"
       :history-loading="historyLoading"
+      :total="historyTotal"
+      :page="historyPage"
+      :page-size="historyPageSize"
       @view-detail="viewHistoryDetail"
       @refresh="fetchHistory"
       @delete-record="deleteHistoryRecord"
+      @update:page="onHistoryPageChange"
+      @update:page-size="onHistoryPageSizeChange"
     />
     <el-card class="loading-card" v-if="running">
       <div class="loading-content">
@@ -82,6 +91,9 @@ const running = ref(false)
 const templates = ref<ConfigTemplate[]>([])
 const historyRecords = ref<BacktestResultSummaryRow[]>([])
 const historyLoading = ref(false)
+const historyTotal = ref(0)
+const historyPage = ref(1)
+const historyPageSize = ref(10)
 const configRef = ref<InstanceType<typeof BacktestConfig>>()
 const chartRef = ref<InstanceType<typeof BacktestChart>>()
 const { formatCurrency, formatPercentage, formatNumber } = useFormatting()
@@ -140,7 +152,12 @@ async function fetchStrategies() {
 async function fetchHistory() {
   historyLoading.value = true
   try {
-    historyRecords.value = await getBacktestResults(50, 0)
+    const page = await getBacktestResults(
+      historyPageSize.value,
+      (historyPage.value - 1) * historyPageSize.value,
+    )
+    historyRecords.value = page.rows
+    historyTotal.value = page.total
   } catch {
     // Silently fail
   } finally {
@@ -150,11 +167,25 @@ async function fetchHistory() {
 
 async function viewHistoryDetail(id: number) {
   try {
-    backtestResult.value = await getBacktestResult(id)
-    activeTab.value = 'overview'
+    const result: BacktestResultWithTrades = await getBacktestResult(id)
+    backtestResult.value = result
+    tradeRecords.value = result.trades || []
+    // 直接切到「交易记录」标签，让用户在点击详情后立即看到成交明细。
+    activeTab.value = 'trades'
   } catch {
     ElMessage.error('获取回测详情失败')
   }
+}
+
+function onHistoryPageChange(p: number) {
+  historyPage.value = p
+  fetchHistory()
+}
+
+function onHistoryPageSizeChange(s: number) {
+  historyPageSize.value = s
+  historyPage.value = 1
+  fetchHistory()
 }
 
 async function deleteHistoryRecord(id: number) {
@@ -182,6 +213,7 @@ async function handleRun(config: BacktestConfigData) {
       config.commissionRate,
       config.slippage,
       symbols,
+      config.timeframe,
     )
     backtestResult.value = result
     tradeRecords.value = result.trades || []
@@ -256,6 +288,16 @@ defineExpose({
 </script>
 
 <style scoped>
+.trade-header {
+  display: flex;
+  gap: 24px;
+  padding: 10px 4px;
+  color: var(--color-text-regular);
+  font-size: 13px;
+}
+.trade-header .th-item strong {
+  color: var(--color-text-primary);
+}
 .backtest-system {
   padding: 20px;
 }

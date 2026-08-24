@@ -10,6 +10,7 @@ use tauri::State;
 pub async fn get_audit_logs(
     state: State<'_, AppState>,
     user_id: Option<i64>,
+    username: Option<String>,
     action: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
@@ -19,7 +20,7 @@ pub async fn get_audit_logs(
 
     state
         .audit_logger
-        .query_logs(user_id, None, action, limit, offset)
+        .query_logs(user_id, username, action, limit, offset)
         .await
         .map_err(|e| e.to_string())
 }

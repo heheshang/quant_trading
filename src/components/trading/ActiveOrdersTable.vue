@@ -4,6 +4,19 @@
       <div class="card-header">
         <span>活跃订单</span>
         <div class="card-header-controls">
+          <el-select
+            v-model="strategyFilter"
+            clearable
+            placeholder="按策略名称过滤"
+            style="width: 160px"
+          >
+            <el-option
+              v-for="name in strategyNameOptions"
+              :key="name"
+              :label="name"
+              :value="name"
+            />
+          </el-select>
           <SearchBar v-model="searchQuery" placeholder="搜索标的/ID" />
           <el-button @click="emit('refresh')">刷新</el-button>
           <el-button size="small" @click="exportCSV">导出CSV</el-button>
@@ -13,7 +26,16 @@
 
     <el-table v-if="paginatedOrders.length > 0" :data="paginatedOrders" style="width: 100%">
       <el-table-column prop="order_id" label="订单ID" width="200" />
-      <el-table-column prop="strategy_id" label="策略" width="120" />
+      <el-table-column label="策略" width="120">
+            <template #default="{ row }">
+      {{ row.strategy_id || '—' }}
+    </template>
+  </el-table-column>
+  <el-table-column label="策略名称" width="140">
+    <template #default="{ row }">
+      {{ strategyNameMap[row.strategy_id] || row.strategy_name || row.strategy_id || '—' }}
+    </template>
+  </el-table-column>
       <el-table-column prop="symbol" label="标的" width="120" />
       <el-table-column label="方向" width="80">
         <template #default="{ row }">
@@ -35,6 +57,16 @@
       </el-table-column>
       <el-table-column prop="quantity" label="数量" width="100" />
       <el-table-column prop="filled_quantity" label="已成交" width="100" />
+      <el-table-column label="盈亏金额" width="110">
+        <template #default="{ row }">
+          <span :class="pnlClass(row)">{{ formatCurrency(orderPnL(row)) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="盈亏率" width="90">
+        <template #default="{ row }">
+          <span :class="pnlClass(row)">{{ orderPnLRatio(row).toFixed(2) }}%</span>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="getOrderStatusType(row.status)" size="small">
@@ -76,16 +108,27 @@ import { useTradingUtils } from './useTradingUtils'
 import SearchBar from '@/components/common/SearchBar.vue'
 import Paginator from '@/components/common/Paginator.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import type { Order } from '@/services/types'
+import type { Order, StrategyParams } from '@/services/types'
 
 const props = withDefaults(
   defineProps<{
     orders: Order[]
+    strategies?: StrategyParams[]
+    prices?: Record<string, number>
   }>(),
   {
     orders: () => [],
+    strategies: () => [],
+    prices: () => ({}),
   },
 )
+
+/** 策略ID → 名称映射（响应式：strategies 加载后名称自动出现）。 */
+const strategyNameMap = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  for (const s of props.strategies) map[String(s.strategy_id)] = s.strategy_name
+  return map
+})
 
 const emit = defineEmits<{
   refresh: []
@@ -96,8 +139,46 @@ const { formatCurrency } = useFormatting()
 const { getOrderStatusType, getOrderStatusText } = useTradingUtils()
 
 const searchQuery = ref('')
+const strategyFilter = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
+/** 解析订单的策略名称显示值。 */
+function orderStrategyName(o: Order): string {
+  return strategyNameMap.value[o.strategy_id] || o.strategy_name || o.strategy_id || '—'
+}
+
+/** 标的当前价（价格 map 键为 Binance 无横杠格式，如 BTCUSDT）。 */
+function priceOf(symbol: string): number {
+  return props.prices[symbol.replace(/-/g, '')] || 0
+}
+
+/** 订单浮动盈亏金额：买单 (现价-成交价)*量，卖单反向。 */
+function orderPnL(row: Order): number {
+  if (row.price == null) return 0
+  const cur = priceOf(row.symbol)
+  if (!cur) return 0
+  const dir = row.side === 'Buy' ? 1 : -1
+  return (cur - row.price) * row.quantity * dir
+}
+
+/** 盈亏比率（%）。 */
+function orderPnLRatio(row: Order): number {
+  if (!row.price) return 0
+  const pnl = orderPnL(row)
+  return (pnl / (row.price * row.quantity)) * 100
+}
+
+function pnlClass(row: Order): string {
+  const pnl = orderPnL(row)
+  return pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''
+}
+
+/** 下拉选项：当前订单里实际出现的策略名称（含无策略的 —）。 */
+const strategyNameOptions = computed<string[]>(() => {
+  const names = new Set<string>()
+  for (const o of props.orders) names.add(orderStrategyName(o))
+  return Array.from(names)
+})
 
 const filteredOrders = computed(() => {
   let list = props.orders
@@ -108,6 +189,9 @@ const filteredOrders = computed(() => {
         String(o.order_id).toLowerCase().includes(q) ||
         o.symbol.toLowerCase().includes(q),
     )
+  }
+  if (strategyFilter.value) {
+    list = list.filter((o) => orderStrategyName(o) === strategyFilter.value)
   }
   return list
 })
@@ -127,10 +211,11 @@ function onPageSizeChange(size: number) {
 }
 
 function exportCSV() {
-  const headers = ['订单ID', '策略', '标的', '方向', '类型', '价格', '数量', '已成交', '状态']
+  const headers = ['订单ID', '策略', '策略名称', '标的', '方向', '类型', '价格', '数量', '已成交', '状态']
   const rows = props.orders.map((o) => [
     o.order_id,
-    o.strategy_id,
+    o.strategy_id || '—',
+    o.strategy_name || '—',
     o.symbol,
     o.side === 'Buy' ? '买入' : '卖出',
     o.order_type === 'Limit' ? '限价' : '市价',

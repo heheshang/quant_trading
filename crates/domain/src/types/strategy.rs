@@ -183,6 +183,8 @@ pub struct StrategyParams {
 pub enum StrategyType {
     TrendFollowing,
     MeanReversion,
+    Macd,
+    Rsi,
 }
 
 impl StrategyType {
@@ -193,6 +195,8 @@ impl StrategyType {
         match name {
             "TrendFollowing" => Some(TrendFollowing),
             "MeanReversion" => Some(MeanReversion),
+            "MACD" | "Macd" => Some(Macd),
+            "RSI" | "Rsi" => Some(Rsi),
             _ => None,
         }
     }
@@ -413,6 +417,8 @@ pub enum StrategyError {
 pub struct BacktestResult {
     pub id: Option<i64>,
     pub strategy_id: String,
+    #[serde(default)]
+    pub strategy_name: Option<String>,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
     pub initial_capital: Decimal,
@@ -427,6 +433,20 @@ pub struct BacktestResult {
     pub winning_trades: i32,
     pub losing_trades: i32,
     pub equity_curve: Vec<(DateTime<Utc>, Decimal)>,
+    #[serde(default)]
+    pub trades: Vec<BacktestTrade>,
+}
+/// A single executed trade recorded by the backtest engine.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BacktestTrade {
+    pub date: DateTime<Utc>,
+    pub symbol: String,
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub price: Decimal,
+    pub quantity: Decimal,
+    pub amount: Decimal,
+    pub commission: Decimal,
 }
 
 impl BacktestResult {

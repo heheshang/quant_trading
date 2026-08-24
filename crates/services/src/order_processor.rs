@@ -21,7 +21,7 @@ use crate::market_service::MarketService;
 use crate::risk_service::RiskService;
 use monitor_engine::LogBuffer;
 use quant_common::config::AppConfig;
-use quant_common::types::{LogEntry, MarketData, Order, OrderSide, OrderType};
+use quant_common::types::{LogEntry, MarketData, Order, OrderSide, OrderStatus, OrderType};
 use risk_engine::PreTradeRiskChecker;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -258,6 +258,9 @@ impl OrderProcessor {
             .await
             .map_err(|e| ServiceError::Other(e.to_string()))?;
         order.order_id = order_id;
+        // `submit_order(..)` 只修改内存副本；把提交后的状态同步回原订单，
+        // 否则 `persist_order` 会落库成入参的 `Pending`（待提交）。
+        order.status = OrderStatus::Submitted;
 
         // 4. Log submission.
         self.log_order(&order).await;
@@ -355,16 +358,43 @@ impl OrderProcessor {
     /// Run execution asynchronously; failures are logged, not surfaced (best-effort).
     fn spawn_execution(&self, engine: ExecutionEngine, order: Order, market_data: MarketData) {
         let log = self.log_buffer.clone();
+        let account_service = self.account_service.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            if let Err(e) = engine.execute_order(order, &market_data).await {
-                log.add_entry(LogEntry {
-                    timestamp: chrono::Utc::now(),
-                    level: "error".to_string(),
-                    message: format!("Order execution failed: {}", e),
-                    module: Some("trading".to_string()),
-                })
-                .await;
+            match engine.execute_order(order, &market_data).await {
+                Ok(result) => {
+                    // 回写订单终态到 DB（成交/部分成交等），
+                    // 否则重启后 OrderManager 清空、降级查 DB 仍显示提交状态。
+                    if let Err(e) = account_service
+                        .update_order_status(
+                            result.order_id,
+                            result.status,
+                            result.filled_quantity,
+                            result.commission,
+                        )
+                        .await
+                    {
+                        log.add_entry(LogEntry {
+                            timestamp: chrono::Utc::now(),
+                            level: "warn".to_string(),
+                            message: format!(
+                                "Order {} DB status update failed: {}",
+                                result.order_id, e
+                            ),
+                            module: Some("trading".to_string()),
+                        })
+                        .await;
+                    }
+                }
+                Err(e) => {
+                    log.add_entry(LogEntry {
+                        timestamp: chrono::Utc::now(),
+                        level: "error".to_string(),
+                        message: format!("Order execution failed: {}", e),
+                        module: Some("trading".to_string()),
+                    })
+                    .await;
+                }
             }
         });
     }

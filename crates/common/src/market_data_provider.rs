@@ -19,5 +19,6 @@ pub trait MarketDataProvider: Send + Sync {
         symbol: &str,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
+        timeframe: &str,
     ) -> Result<Vec<MarketData>, String>;
 }

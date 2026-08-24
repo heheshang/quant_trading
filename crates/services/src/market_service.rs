@@ -69,6 +69,16 @@ impl MarketService {
         }
     }
 
+    /// Distinct symbols available in the market_data store (dropdown source).
+    #[instrument(skip(self))]
+    pub async fn list_symbols(&self) -> ServiceResult<Vec<String>> {
+        let repo = self.repo_or_err("symbols not available (no database)")?;
+        repo.list_symbols().await.map_err(|e| {
+            error!("Failed to list symbols: {}", e);
+            ServiceError::Other(e.to_string())
+        })
+    }
+
     /// Read persisted ticker snapshots for an instrument.
     #[instrument(skip(self), fields(inst_id = %inst_id))]
     pub async fn get_ticker_snapshots(

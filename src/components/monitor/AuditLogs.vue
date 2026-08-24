@@ -2,6 +2,13 @@
   <div class="audit-logs">
     <div class="audit-toolbar">
       <el-input
+        v-model="filterUsername"
+        placeholder="按用户名过滤"
+        clearable
+        style="width: 200px"
+        @change="onFilterChange"
+      />
+      <el-input
         v-model="filterAction"
         placeholder="按动作过滤（如 Login / OrderSubmit）"
         clearable
@@ -54,6 +61,7 @@ import { getAuditLogs, type AuditLog } from '@/services/audit'
 const logs = ref<AuditLog[]>([])
 const loading = ref(false)
 const filterAction = ref('')
+const filterUsername = ref('')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -74,6 +82,7 @@ async function fetchLogs() {
   try {
     const offset = (currentPage.value - 1) * pageSize.value
     const data = await getAuditLogs({
+      username: filterUsername.value || undefined,
       action: filterAction.value || undefined,
       limit: pageSize.value,
       offset,

@@ -8,11 +8,26 @@
 use crate::error::{ServiceError, ServiceResult};
 use exchange_binance::types::*;
 use exchange_binance::ClientInterface;
+use rust_decimal::Decimal;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, instrument};
 
 type SharedBinanceClient = Arc<RwLock<Option<Arc<dyn ClientInterface + Send + Sync>>>>;
+/// 客户端错误 → ServiceError：限流/封禁（429/418）转为明确的 `RateLimited`，
+/// 其余保持 `BinanceApi`（含原始信息供排查）。
+fn map_binance_error(e: quant_common::Error) -> ServiceError {
+    match e {
+        quant_common::Error::RateLimited {
+            message,
+            retry_after_secs,
+        } => ServiceError::RateLimited(format!(
+            "Binance 限流，建议 {retry_after_secs}s 后重试：{message}"
+        )),
+        other => ServiceError::BinanceApi(other.to_string()),
+    }
+}
 
 /// Executes the body with the borrowed Binance client, or
 /// `Err(BinanceNotInitialized)` when the client is absent.
@@ -45,10 +60,19 @@ impl BinanceService {
             client
                 .get_account_balance()
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
+    /// Latest price for all symbols（用于持仓市值/最新价补全）。
+    pub async fn get_all_ticker_prices(&self) -> ServiceResult<HashMap<String, Decimal>> {
+        with_binance_client!(self, |client| {
+            client
+                .get_all_ticker_prices()
+                .await
+                .map_err(map_binance_error)
+        })
+    }
     /// Klines for a domain symbol (e.g. `BTC-USDT`).
     #[instrument(skip(self), fields(symbol = %symbol))]
     pub async fn get_candles(
@@ -62,7 +86,7 @@ impl BinanceService {
             client
                 .get_candles(&binance_symbol, interval, limit)
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -77,7 +101,7 @@ impl BinanceService {
             client
                 .get_order_book(&binance_symbol, limit)
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -94,7 +118,7 @@ impl BinanceService {
         with_binance_client!(self, |client| {
             client.place_order(&req).await.map_err(|e| {
                 error!("Place Binance order failed: {}", e);
-                ServiceError::BinanceApi(e.to_string())
+                map_binance_error(e)
             })
         })
     }
@@ -106,7 +130,7 @@ impl BinanceService {
             client
                 .cancel_order(&binance_symbol, order_id)
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -117,7 +141,7 @@ impl BinanceService {
             client
                 .get_positions(binance_symbol.as_deref())
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -128,7 +152,7 @@ impl BinanceService {
             client
                 .get_order(&binance_symbol, order_id)
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -139,7 +163,7 @@ impl BinanceService {
             client
                 .get_open_orders(binance_symbol.as_deref())
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -154,7 +178,7 @@ impl BinanceService {
             client
                 .get_all_orders(&binance_symbol, limit)
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 
@@ -164,7 +188,7 @@ impl BinanceService {
             client
                 .get_instruments()
                 .await
-                .map_err(|e| ServiceError::BinanceApi(e.to_string()))
+                .map_err(map_binance_error)
         })
     }
 

@@ -1,6 +1,6 @@
 use crate::strategy::Strategy;
 use chrono::{DateTime, Utc};
-use quant_common::types::{Account, BacktestResult, MarketData, Order, Position};
+use quant_common::types::{Account, BacktestResult, BacktestTrade, MarketData, Order, Position};
 use quant_common::utils::{
     calculate_annual_return, calculate_annualized_sharpe_ratio, calculate_max_drawdown,
 };
@@ -47,6 +47,8 @@ pub struct BacktestEngine {
     losing_trades: i32,
     total_profit: Decimal,
     total_loss: Decimal,
+    trades: Vec<BacktestTrade>,
+    fill_time: DateTime<Utc>,
 }
 
 impl BacktestEngine {
@@ -73,6 +75,8 @@ impl BacktestEngine {
             losing_trades: 0,
             total_profit: Decimal::ZERO,
             total_loss: Decimal::ZERO,
+            trades: Vec::new(),
+            fill_time: Utc::now(),
         }
     }
 
@@ -143,6 +147,9 @@ impl BacktestEngine {
         self.losing_trades = 0;
         self.total_profit = Decimal::ZERO;
         self.total_loss = Decimal::ZERO;
+        // Rolling window of bars seen so far, passed to the strategy so
+        // lookback-based indicators (SMA/σ) have history to work with.
+        let mut history: Vec<MarketData> = Vec::new();
 
         let deadline = options.timeout.map(|d| std::time::Instant::now() + d);
 
@@ -174,22 +181,25 @@ impl BacktestEngine {
             // 实践：信号用 t 收盘价生成，成交发生在 t+1 开盘价（而非 t 收盘价）。
             let carried = std::mem::take(&mut pending_orders);
             for order in carried {
+                self.fill_time = timestamp;
                 let fill_price = current_data
                     .iter()
                     .find(|d| d.symbol == order.symbol)
                     .map(|d| d.open)
                     .unwrap_or(Decimal::ZERO);
                 if fill_price > Decimal::ZERO {
-                    self.execute_order_at_price(order, fill_price)?;
-                    total_trades += 1;
+                    if self.execute_order_at_price(order, fill_price)? {
+                        total_trades += 1;
+                    }
                 }
             }
 
             // 生成交易信号（用本根 K 线收盘价），挂单留待下一根 K 线执行
+            history.extend(current_data.iter().cloned());
             let context = crate::strategy::StrategyContext {
                 current_time: timestamp,
                 positions: self.positions.values().cloned().collect(),
-                market_data: current_data.clone(),
+                market_data: history.clone(),
             };
 
             pending_orders = strategy.generate_signals(&context).await?;
@@ -256,6 +266,7 @@ impl BacktestEngine {
         Ok(BacktestResult {
             id: None,
             strategy_id: strategy.name().to_string(),
+            strategy_name: None,
             start_date,
             end_date,
             initial_capital: self.initial_capital,
@@ -276,6 +287,7 @@ impl BacktestEngine {
             winning_trades: self.winning_trades,
             losing_trades: self.losing_trades,
             equity_curve: self.equity_curve.clone(),
+            trades: self.trades.clone(),
         })
     }
 
@@ -294,11 +306,12 @@ impl BacktestEngine {
             })?;
 
         let price = order.price.unwrap_or(data.close);
-        self.execute_order_at_price(order, price)
+        let _ = self.execute_order_at_price(order, price)?;
+        Ok(())
     }
 
     /// 以指定成交价执行订单（回测中用下一根 K 线开盘价成交，避免前视偏差）
-    fn execute_order_at_price(&mut self, order: Order, price: Decimal) -> Result<()> {
+    fn execute_order_at_price(&mut self, order: Order, price: Decimal) -> Result<bool> {
         let total_cost = price * order.quantity;
         let commission = total_cost * self.commission_rate;
         let slippage_cost = total_cost * self.slippage;
@@ -329,6 +342,16 @@ impl BacktestEngine {
                     position.available_quantity += order.quantity;
                     position.avg_price =
                         (old_qty * position.avg_price + order.quantity * price) / position.quantity;
+                    self.trades.push(BacktestTrade {
+                        date: self.fill_time,
+                        symbol: order.symbol.clone(),
+                        r#type: "BUY".to_string(),
+                        price,
+                        quantity: order.quantity,
+                        amount: total_cost,
+                        commission,
+                    });
+                    return Ok(true);
                 }
             }
             quant_common::types::OrderSide::Sell => {
@@ -352,12 +375,23 @@ impl BacktestEngine {
                             self.losing_trades += 1;
                             self.total_loss += pnl.abs();
                         }
+
+                        self.trades.push(BacktestTrade {
+                            date: self.fill_time,
+                            symbol: order.symbol.clone(),
+                            r#type: "SELL".to_string(),
+                            price,
+                            quantity: order.quantity,
+                            amount: total_cost,
+                            commission,
+                        });
+                        return Ok(true);
                     }
                 }
             }
         }
 
-        Ok(())
+        Ok(false)
     }
 
     #[instrument(skip(self, market_data), fields(positions = self.positions.len()))]

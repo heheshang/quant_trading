@@ -1,6 +1,18 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { startBinanceMarketData, stopBinanceMarketData } from './binance'
-import type { BinanceWsTicker, BinanceWsTrade, BinanceWsDepth, BinanceWsKline } from './types'
+import {
+  startBinanceMarketData,
+  stopBinanceMarketData,
+  startBinanceUserDataStream,
+  stopBinanceUserDataStream,
+} from './binance'
+import type {
+  BinanceWsTicker,
+  BinanceWsTrade,
+  BinanceWsDepth,
+  BinanceWsKline,
+  BinanceWsAccountPosition,
+  BinanceWsOrderUpdate,
+} from './types'
 
 /** Payload shape of the `binance:status` event (backend emits `{ status }`). */
 export interface BinanceStreamStatus {
@@ -15,6 +27,8 @@ export interface BinanceEventHandlers {
   onCandle?: (data: BinanceWsKline) => void
   onStatus?: (status: BinanceStreamStatus) => void
   onError?: (error: string) => void
+  onAccount?: (data: BinanceWsAccountPosition) => void
+  onOrder?: (data: BinanceWsOrderUpdate) => void
 }
 
 /**
@@ -42,6 +56,16 @@ export async function listenToBinanceEvents(
     await listen<BinanceStreamStatus>('binance:status', (ev) => handlers.onStatus?.(ev.payload)),
   )
   unlisteners.push(await listen<string>('binance:error', (ev) => handlers.onError?.(ev.payload)))
+  unlisteners.push(
+    await listen<BinanceWsAccountPosition>('binance:account', (ev) =>
+      handlers.onAccount?.(ev.payload),
+    ),
+  )
+  unlisteners.push(
+    await listen<BinanceWsOrderUpdate>('binance:order', (ev) =>
+      handlers.onOrder?.(ev.payload),
+    ),
+  )
   return unlisteners
 }
 
@@ -53,4 +77,14 @@ export function startBinanceStream(): Promise<void> {
 /** Stop the backend Binance WebSocket. */
 export function stopBinanceStream(): Promise<void> {
   return stopBinanceMarketData()
+}
+
+/** Start the account user-data stream; returns the listenKey. */
+export function startUserDataStream(): Promise<string> {
+  return startBinanceUserDataStream()
+}
+
+/** Stop the account user-data stream. */
+export function stopUserDataStream(): Promise<void> {
+  return stopBinanceUserDataStream()
 }

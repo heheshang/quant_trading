@@ -6,6 +6,7 @@ import type {
   BinanceOrderBook,
   BinancePosition,
   BinanceStatus,
+  LiveTrade,
 } from './types'
 
 /**
@@ -32,7 +33,7 @@ export function getBinanceOrderBook(symbol: string, limit?: number): Promise<Bin
 }
 
 export function getBinancePositions(symbol?: string): Promise<BinancePosition[]> {
-  return call<BinancePosition[]>('get_binance_positions', { symbol })
+  return call<BinancePosition[]>('get_binance_positions', { symbol: symbol ?? null })
 }
 
 export function getBinanceOrders(
@@ -51,6 +52,16 @@ export function getBinanceInstruments(): Promise<unknown> {
   return call<unknown>('get_binance_instruments')
 }
 
+/** 本地记录的 live 单成交记录（策略关联 + 成交价/量）。 */
+export function getLiveTrades(): Promise<LiveTrade[]> {
+  return call<LiveTrade[]>('get_live_trades')
+}
+
+/** 全市场价格（`BTCUSDT → 77276.78`），用于持仓实时价格/市值补全。 */
+export function getBinanceTickerPrices(): Promise<Record<string, number>> {
+  return call<Record<string, number>>('get_binance_ticker_prices')
+}
+
 export function checkBinanceStatus(): Promise<BinanceStatus> {
   return call<BinanceStatus>('check_binance_status')
 }
@@ -63,6 +74,15 @@ export function startBinanceMarketData(): Promise<void> {
 
 export function stopBinanceMarketData(): Promise<void> {
   return call<void>('stop_binance_market_data')
+}
+
+/** 启动用户数据流（`@userDataStream`），返回 listenKey。 */
+export function startBinanceUserDataStream(): Promise<string> {
+  return call<string>('start_binance_user_data_stream')
+}
+
+export function stopBinanceUserDataStream(): Promise<void> {
+  return call<void>('stop_binance_user_data_stream')
 }
 
 export function subscribeBinanceCandle(symbol: string, interval: string): Promise<void> {

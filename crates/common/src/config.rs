@@ -95,6 +95,20 @@ pub struct BinanceConfig {
     pub api_secret: String,
     pub environment: String, // "spot" or "futures"
     pub enable: bool,
+    /// Optional REST base URL override (e.g. Spot Testnet `testnet.binance.vision`).
+    /// When unset, the environment-derived URL is used.
+    pub base_url: Option<String>,
+    /// Optional WebSocket base URL override (e.g. Spot Testnet stream).
+    /// When unset, the environment-derived stream URL is used.
+    pub ws_url: Option<String>,
+    /// Optional WebSocket-API base URL override (user data stream, e.g. Spot
+    /// Testnet `wss://ws-api.testnet.binance.vision/ws-api/v3`). When unset,
+    /// derived from the REST base/host.
+    pub ws_api_url: Option<String>,
+    /// Signing scheme: `"hmac"` (default) or `"ed25519"`.
+    pub key_type: String,
+    /// Path to the Ed25519 PKCS#8 PEM private key (used when `key_type="ed25519"`).
+    pub private_key_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,6 +367,11 @@ impl Default for AppConfig {
                 api_secret: String::new(),
                 environment: "spot".to_string(),
                 enable: false,
+                base_url: None,
+                ws_url: None,
+                ws_api_url: None,
+                key_type: "hmac".to_string(),
+                private_key_path: None,
             },
             data_puller: DataPullerConfig::default(),
             scheduler: SchedulerConfig::default(),

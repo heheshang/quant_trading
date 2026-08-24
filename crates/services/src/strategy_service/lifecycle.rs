@@ -2,7 +2,6 @@
 
 use crate::error::{ServiceError, ServiceResult};
 use quant_common::types::{BacktestResult, StrategyParams, StrategyStatus, StrategyType};
-use quant_repository::BacktestResultSummaryRow;
 use rust_decimal::Decimal;
 use std::time::Instant;
 use strategy_engine::backtest::BacktestOptions;
@@ -22,6 +21,7 @@ impl StrategyService {
         commission_rate: Decimal,
         slippage: Decimal,
         symbols: &[String],
+        timeframe: &str,
     ) -> ServiceResult<BacktestResult> {
         let start_time = Instant::now();
 
@@ -43,7 +43,7 @@ impl StrategyService {
                 ServiceError::DataSource("Market data provider not initialized".to_string())
             })?;
             provider
-                .get_historical_data(&symbol, start, end)
+                .get_historical_data(&symbol, start, end, timeframe)
                 .await
                 .map_err(|e| {
                     error!("Failed to fetch market data for {}: {}", symbol, e);
@@ -70,6 +70,7 @@ impl StrategyService {
         let backtest_result = BacktestResult {
             id: None,
             strategy_id: strategy_id.to_string(),
+            strategy_name: Some(params.strategy_name.clone()),
             ..result
         };
 
@@ -413,7 +414,12 @@ impl StrategyService {
         &self,
         params: &StrategyParams,
     ) -> ServiceResult<(String, Box<dyn Strategy>)> {
-        let type_str = format!("{:?}", params.strategy_type);
+        let type_str = match params.strategy_type {
+            StrategyType::TrendFollowing => "TrendFollowing",
+            StrategyType::MeanReversion => "MeanReversion",
+            StrategyType::Macd => "MACD",
+            StrategyType::Rsi => "RSI",
+        };
         let strategy: Box<dyn Strategy> = match self.registry.as_ref() {
             Some(reg) if reg.has_type(&type_str) => reg.create(&type_str, params.clone()).await?,
             _ => {
@@ -430,7 +436,7 @@ impl StrategyService {
                 Box::new(s)
             }
         };
-        Ok((type_str, strategy))
+        Ok((type_str.to_string(), strategy))
     }
 
     // ── Scheduler Queries ──────────────────────────────────────────────────
@@ -454,14 +460,14 @@ impl StrategyService {
         &self,
         limit: i64,
         offset: i64,
-    ) -> ServiceResult<Vec<BacktestResultSummaryRow>> {
+    ) -> ServiceResult<quant_repository::BacktestResultsPage> {
         let repo = self
             .backtest_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        repo.find_all(limit, offset)
-            .await
-            .map_err(ServiceError::from)
+        let rows = repo.find_all(limit, offset).await.map_err(ServiceError::from)?;
+        let total = repo.count().await.map_err(ServiceError::from)?;
+        Ok(quant_repository::BacktestResultsPage { rows, total })
     }
 
     /// Query a single backtest result by ID (includes equity_curve).

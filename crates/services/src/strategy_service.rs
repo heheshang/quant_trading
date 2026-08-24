@@ -425,7 +425,12 @@ impl StrategyService {
             ServiceError::NotFound(format!("Strategy '{}' not found", strategy_id))
         })?;
 
-        let type_str = format!("{:?}", params.strategy_type);
+        let type_str = match params.strategy_type {
+            StrategyType::TrendFollowing => "TrendFollowing",
+            StrategyType::MeanReversion => "MeanReversion",
+            StrategyType::Macd => "MACD",
+            StrategyType::Rsi => "RSI",
+        };
 
         // 通过注册中心创建策略实例，回退到硬编码
         let strategy: Box<dyn Strategy> = match self.registry.as_ref() {
@@ -445,7 +450,7 @@ impl StrategyService {
             }
         };
 
-        Ok((type_str, strategy, params))
+        Ok((type_str.to_string(), strategy, params))
     }
 
     /// 为参数优化准备输入：返回策略类型字符串与回测所需的市场数据。
@@ -473,7 +478,7 @@ impl StrategyService {
             ServiceError::DataSource("Market data provider not initialized".to_string())
         })?;
         let market_data = provider
-            .get_historical_data(&symbol, start, end)
+            .get_historical_data(&symbol, start, end, "1H")
             .await
             .map_err(ServiceError::DataSource)?;
         Ok((type_str, market_data))

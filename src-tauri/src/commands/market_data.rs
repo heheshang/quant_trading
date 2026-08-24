@@ -17,6 +17,20 @@ fn parse_ts(value: Option<String>) -> Result<Option<chrono::DateTime<chrono::Utc
     }
 }
 
+/// 查询行情数据中可用的标的列表（下拉数据源，来自数据库）。
+#[tauri::command]
+pub async fn get_symbols(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .market_service
+        .list_symbols()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// 查询行情快照（按标的 + 可选时间范围）。
 #[tauri::command]
 pub async fn get_ticker_snapshots(

@@ -45,6 +45,7 @@ impl MarketDataProvider for MockMarketDataProvider {
         _symbol: &str,
         _start: DateTime<Utc>,
         _end: DateTime<Utc>,
+        _timeframe: &str,
     ) -> Result<Vec<MarketData>, String> {
         if let Some(err) = &self.error {
             return Err(err.clone());
@@ -150,19 +151,22 @@ impl MarketDataProvider for RepositoryMarketDataProvider {
         symbol: &str,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
+        timeframe: &str,
     ) -> Result<Vec<MarketData>, String> {
-        // 1. Persistence-first: query Postgres `market_data` at the configured
-        //    default timeframe. A non-empty result wins.
+        let requested = if timeframe.is_empty() {
+            self.default_timeframe.as_str()
+        } else {
+            timeframe
+        };
+        // 1. Persistence-first: query Postgres `market_data` at the requested
+        //    timeframe. A non-empty result wins.
         if let Some(repo) = &self.repo {
-            match repo
-                .query_historical(symbol, &self.default_timeframe, start, end)
-                .await
-            {
+            match repo.query_historical(symbol, requested, start, end).await {
                 Ok(records) if !records.is_empty() => {
                     return Ok(records.into_iter().map(record_to_market_data).collect());
                 }
                 Ok(_) => {
-                    // No rows at the default timeframe → fall through to the live source.
+                    // No rows at the requested timeframe → fall through to the live source.
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -176,7 +180,7 @@ impl MarketDataProvider for RepositoryMarketDataProvider {
 
         // 2. Fall back to the configured live source (implements `MarketDataProvider`).
         match &self.live {
-            Some(source) => source.get_historical_data(symbol, start, end).await,
+            Some(source) => source.get_historical_data(symbol, start, end, timeframe).await,
             None => Err(format!("no market data source available for {}", symbol)),
         }
     }
@@ -236,7 +240,7 @@ mod tests {
         let data = make_mock_data(5);
         let provider = MockMarketDataProvider::new(data.clone());
         let result = provider
-            .get_historical_data("TEST", Utc::now(), Utc::now())
+            .get_historical_data("TEST", Utc::now(), Utc::now(), "1H")
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 5);
@@ -246,7 +250,7 @@ mod tests {
     async fn test_mock_provider_returns_error() {
         let provider = MockMarketDataProvider::with_error("network error");
         let result = provider
-            .get_historical_data("TEST", Utc::now(), Utc::now())
+            .get_historical_data("TEST", Utc::now(), Utc::now(), "1H")
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "network error");
@@ -256,7 +260,7 @@ mod tests {
     async fn test_mock_provider_empty_data() {
         let provider = MockMarketDataProvider::new(vec![]);
         let result = provider
-            .get_historical_data("TEST", Utc::now(), Utc::now())
+            .get_historical_data("TEST", Utc::now(), Utc::now(), "1H")
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -318,6 +322,7 @@ mod tests {
                 "BTC-USDT",
                 ts - chrono::Duration::hours(1),
                 ts + chrono::Duration::hours(1),
+                "1H",
             )
             .await;
         assert!(result.is_ok());
@@ -365,7 +370,7 @@ mod tests {
             as Arc<dyn MarketDataProvider>;
         let provider =
             RepositoryMarketDataProvider::new(Some(store), Some(binance), "1H".to_string());
-        let result = provider.get_historical_data("BTC-USDT", ts, ts).await;
+        let result = provider.get_historical_data("BTC-USDT", ts, ts, "1H").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);
     }
@@ -375,7 +380,7 @@ mod tests {
         let ts = Utc::now();
         let provider = RepositoryMarketDataProvider::new(None, None, "1H".to_string());
         let err = provider
-            .get_historical_data("BTC-USDT", ts, ts)
+            .get_historical_data("BTC-USDT", ts, ts, "1H")
             .await
             .unwrap_err();
         assert!(err.contains("no market data source available for BTC-USDT"));
@@ -390,7 +395,7 @@ mod tests {
         }) as Arc<dyn MarketDataStore>;
         let provider = RepositoryMarketDataProvider::new(Some(store), None, "1H".to_string());
         let err = provider
-            .get_historical_data("BTC-USDT", ts, ts)
+            .get_historical_data("BTC-USDT", ts, ts, "1H")
             .await
             .unwrap_err();
         assert!(err.contains("no market data source available for BTC-USDT"));

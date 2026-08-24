@@ -6,7 +6,7 @@ use quant_common::config::AppConfig;
 use quant_common::MarketDataProvider;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 mod commands;
 mod prometheus;
@@ -22,6 +22,27 @@ use quant_clients::RedisCache;
 use quant_services::AppServices;
 use state::AppState;
 use trading_layer::{BinanceExecutor, OrderManager};
+
+/// Resolve an Ed25519 private-key path relative to the process cwd, falling
+/// back to parent directories. The Tauri dev process often runs from
+/// `src-tauri/` while `.env` and the key live at the project root.
+fn read_private_key(path: Option<&str>) -> Option<String> {
+    let path = path?;
+    let as_path = std::path::Path::new(path);
+    if as_path.is_absolute() {
+        return std::fs::read_to_string(as_path).ok();
+    }
+    let mut dir = std::env::current_dir().ok()?;
+    for _ in 0..6 {
+        if let Ok(txt) = std::fs::read_to_string(dir.join(as_path)) {
+            return Some(txt);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
+}
 
 #[tokio::main]
 async fn main() {
@@ -157,39 +178,63 @@ async fn main() {
             config.binance.environment
         );
         let environment = BinanceEnvironment::parse(&config.binance.environment);
+        let private_key_pem = read_private_key(config.binance.private_key_path.as_deref());
+        info!(
+            "Binance config: env={} key_type={} base_url={} ws_url={} private_key_loaded={}{}",
+            config.binance.environment,
+            config.binance.key_type,
+            config.binance.base_url.as_deref().unwrap_or("<unset>"),
+            config.binance.ws_url.as_deref().unwrap_or("<unset>"),
+            private_key_pem.is_some(),
+            private_key_pem
+                .as_deref()
+                .map(|p| format!(" ({} bytes)", p.len()))
+                .unwrap_or_default(),
+        );
 
-        // Service-facing client (market data / balances).
-        let service_client: Arc<dyn BinanceClientInterface + Send + Sync> =
-            Arc::new(BinanceClient::new(
+        // Build the signed client; validate once and reuse the same params for
+        // the market-data and execution clients (identical args → same result).
+        let build_client = || {
+            BinanceClient::new(
                 config.binance.api_key.clone(),
                 config.binance.api_secret.clone(),
                 environment,
-            ));
-        // Market-data data source wraps its own Binance client (public market
-        // data needs no auth) so `BinanceDataSource` can fetch klines directly.
-        let market_data_client: Arc<RwLock<dyn BinanceClientInterface + Send + Sync>> =
-            Arc::new(RwLock::new(BinanceClient::new(
-                config.binance.api_key.clone(),
-                config.binance.api_secret.clone(),
-                environment,
-            )));
-        binance_client_shared = Arc::new(RwLock::new(Some(service_client)));
+                config.binance.base_url.clone(),
+                config.binance.key_type.clone(),
+                private_key_pem.clone(),
+            )
+        };
 
-        let binance_ds = Arc::new(BinanceDataSource::new(market_data_client));
-        market_data_source = Arc::new(RwLock::new(Some(binance_ds.clone() as Arc<dyn DataSource>)));
-        live_market_data_provider = Some(binance_ds.clone() as Arc<dyn MarketDataProvider>);
+        match build_client() {
+            Ok(client) => {
+                let service_client: Arc<dyn BinanceClientInterface + Send + Sync> =
+                    Arc::new(client);
+                let market_data_client: Arc<RwLock<dyn BinanceClientInterface + Send + Sync>> =
+                    Arc::new(RwLock::new(build_client().expect("Binance client built")));
+                binance_client_shared = Arc::new(RwLock::new(Some(service_client)));
 
-        // Order-execution executor (real order routing via `OrderProcessor`).
-        let executor_client = Arc::new(RwLock::new(BinanceClient::new(
-            config.binance.api_key.clone(),
-            config.binance.api_secret.clone(),
-            environment,
-        )));
-        let executor_client_trait: Arc<RwLock<dyn BinanceClientInterface + Send + Sync>> =
-            executor_client;
-        binance_executor_shared = Arc::new(RwLock::new(Some(Arc::new(BinanceExecutor::new(
-            executor_client_trait,
-        )))));
+                let binance_ds = Arc::new(BinanceDataSource::new(market_data_client));
+                market_data_source =
+                    Arc::new(RwLock::new(Some(binance_ds.clone() as Arc<dyn DataSource>)));
+                live_market_data_provider =
+                    Some(binance_ds.clone() as Arc<dyn MarketDataProvider>);
+
+                let executor_client = Arc::new(RwLock::new(
+                    build_client().expect("Binance client built"),
+                ));
+                binance_executor_shared = Arc::new(RwLock::new(Some(Arc::new(
+                    BinanceExecutor::new(executor_client),
+                ))));
+            }
+            Err(e) => {
+                error!("Binance client initialization failed: {e}");
+                info!("Binance integration disabled");
+                binance_client_shared = Arc::new(RwLock::new(None));
+                binance_executor_shared = Arc::new(RwLock::new(None));
+                market_data_source = Arc::new(RwLock::new(None));
+                live_market_data_provider = None;
+            }
+        }
     } else {
         info!("Binance integration disabled");
         binance_client_shared = Arc::new(RwLock::new(None));
@@ -283,6 +328,7 @@ async fn main() {
             commands::get_api_keys,
             commands::get_funding_rates,
             commands::get_mark_prices,
+            commands::get_symbols,
             commands::get_ticker_snapshots,
             commands::get_account_snapshots,
             commands::get_position_snapshots,
@@ -315,6 +361,8 @@ async fn main() {
             // Binance commands
             commands::get_binance_balance,
             commands::get_binance_candles,
+            commands::get_binance_ticker_prices,
+            commands::get_live_trades,
             commands::get_binance_order_book,
             commands::get_binance_positions,
             commands::get_binance_orders,
@@ -332,6 +380,8 @@ async fn main() {
             commands::subscribe_binance_orderbook,
             commands::stop_binance_market_data,
             commands::get_binance_subscriptions,
+            commands::start_binance_user_data_stream,
+            commands::stop_binance_user_data_stream,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

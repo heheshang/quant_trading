@@ -1,6 +1,7 @@
 use crate::error::{ServiceError, ServiceResult};
-use quant_common::types::{Account, Order, Position};
+use quant_common::types::{Account, Order, OrderStatus, Position};
 use quant_repository::PostgresClient;
+use rust_decimal::Decimal;
 use sqlx::Row;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -175,6 +176,43 @@ impl AccountService {
         .await
         .map_err(ServiceError::Database)?;
 
+        Ok(())
+    }
+
+    /// Cancel an order persisted in the database (sets status to 'Cancelled').
+    /// 订单执行完成回写终态（成交/部分成交等）；避免重启后 DB 停留在提交状态。
+    #[instrument(skip(self), fields(order_id = %order_id, status = ?status))]
+    pub async fn update_order_status(
+        &self,
+        order_id: i64,
+        status: OrderStatus,
+        filled_quantity: Decimal,
+        commission: Decimal,
+    ) -> ServiceResult<()> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+        let status_str = serde_json::to_value(&status)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "Submitted".to_string());
+        sqlx::query(
+            r#"
+            UPDATE orders
+            SET status = $1, filled_quantity = $2, commission = $3, updated_at = now()
+            WHERE order_id = $4
+            "#,
+        )
+        .bind(&status_str)
+        .bind(filled_quantity)
+        .bind(commission)
+        .bind(order_id)
+        .execute(pool)
+        .await
+        .map_err(ServiceError::Database)?;
+        info!(order_id = %order_id, status = %status_str, "Order status updated in DB");
         Ok(())
     }
 

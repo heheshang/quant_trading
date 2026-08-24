@@ -22,6 +22,7 @@ export interface AuditLog {
 
 export interface AuditLogQuery {
   userId?: number
+  username?: string
   action?: string
   limit?: number
   offset?: number
@@ -30,6 +31,7 @@ export interface AuditLogQuery {
 export function getAuditLogs(query: AuditLogQuery = {}): Promise<AuditLog[]> {
   const args: Record<string, unknown> = {}
   if (query.userId !== undefined) args.userId = query.userId
+  if (query.username !== undefined) args.username = query.username
   if (query.action !== undefined) args.action = query.action
   if (query.limit !== undefined) args.limit = query.limit
   if (query.offset !== undefined) args.offset = query.offset

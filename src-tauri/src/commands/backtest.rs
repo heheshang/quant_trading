@@ -14,6 +14,7 @@ pub async fn run_backtest(
     commission_rate: f64,
     slippage: f64,
     symbols: Vec<String>,
+    timeframe: String,
 ) -> Result<BacktestResult, String> {
     let services = state
         .app_services
@@ -45,6 +46,7 @@ pub async fn run_backtest(
             comm_rate,
             slip,
             &symbols,
+            &timeframe,
         )
         .await
         .map_err(|e| e.to_string())
@@ -56,7 +58,7 @@ pub async fn get_backtest_results(
     state: State<'_, AppState>,
     limit: i64,
     offset: i64,
-) -> Result<Vec<quant_repository::BacktestResultSummaryRow>, String> {
+) -> Result<quant_repository::BacktestResultsPage, String> {
     let services = state
         .app_services
         .as_ref()

@@ -13,6 +13,7 @@ pub mod auth_service;
 pub mod binance_service;
 pub mod config_service;
 pub mod error;
+pub mod live_trades_service;
 pub mod market_data_provider;
 pub mod market_service;
 pub mod optimizer;
@@ -28,6 +29,7 @@ pub use auth_service::{AuthService, Enable2faResult};
 pub use binance_service::BinanceService;
 pub use config_service::ConfigService;
 pub use error::{ServiceError, ServiceResult};
+pub use live_trades_service::LiveTradesService;
 pub use market_service::MarketService;
 pub use optimizer::{
     expand_grid, OptimizationAlgorithm, OptimizationMetric, OptimizationResult, ParamOptimizer,

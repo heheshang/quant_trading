@@ -71,7 +71,7 @@ impl From<AuditLogRecord> for AuditLog {
         Self {
             id: record.id,
             timestamp: record.created_at,
-            user_id: record.user_id.to_string(),
+            user_id: record.user_id.map(|id| id.to_string()).unwrap_or_default(),
             username: record.username,
             action: action_from_str(&record.action),
             resource: record.resource,
@@ -134,7 +134,10 @@ impl AuditLogger {
         // Persist to the repository (best-effort; failure is logged only).
         if let Some(repo) = self.repo.as_ref() {
             let new_log = NewAuditLog {
-                user_id: user_id.parse::<i64>().unwrap_or(0),
+                user_id: match user_id.parse::<i64>() {
+                    Ok(id) if id > 0 => Some(id),
+                    _ => None,
+                },
                 username: log.username.clone(),
                 action: action_to_str(&log.action),
                 resource: log.resource.clone(),

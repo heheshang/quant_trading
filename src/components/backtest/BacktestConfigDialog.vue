@@ -20,7 +20,15 @@
         <el-input-number v-model="form.slippage" :min="0" :max="0.1" :step="0.001" style="width: 100%" />
       </el-form-item>
       <el-form-item label="标的代码" prop="symbols">
-        <el-input v-model="form.symbols" placeholder="多个标的用逗号分隔" />
+        <el-select
+          v-model="selectedSymbols"
+          multiple
+          filterable
+          placeholder="选择标的代码"
+          style="width: 100%"
+        >
+          <el-option v-for="s in symbolList" :key="s" :label="s" :value="s" />
+        </el-select>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -31,9 +39,10 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, watch, computed, onMounted } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import { getSymbols } from '@/services/market'
 
 export interface BacktestRunParams {
   startDate: string
@@ -63,6 +72,15 @@ const emit = defineEmits<{
 
 const formRef = ref<FormInstance>()
 const form = reactive<BacktestRunParams>(defaultParams())
+const symbolList = ref<string[]>([])
+const selectedSymbols = computed<string[]>({
+  get: () => form.symbols.split(',').map((s) => s.trim()).filter(Boolean),
+  set: (v) => { form.symbols = v.join(',') },
+})
+
+onMounted(async () => {
+  try { symbolList.value = await getSymbols() } catch { symbolList.value = [] }
+})
 
 function defaultParams(): BacktestRunParams {
   const today = new Date()
@@ -91,7 +109,7 @@ const rules = {
     { required: true, message: '请输入滑点', trigger: 'blur' },
     { type: 'number', min: 0, max: 0.1, message: '滑点应在0-0.1之间', trigger: 'blur' },
   ],
-  symbols: [{ required: true, message: '请输入标的代码', trigger: 'blur' }],
+  symbols: [{ required: true, message: '请选择标的代码', trigger: 'change' }],
 }
 
 // Reset form params each time the dialog opens so a new run starts from defaults.

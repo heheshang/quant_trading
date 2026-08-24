@@ -4,11 +4,12 @@
 //! kline/depth/orderbook/ticker/trade messages to the UI via Tauri events.
 
 use exchange_binance::types::BinanceEnvironment;
-use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket};
+use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient};
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
+use tracing::debug;
 
 #[tauri::command]
 pub async fn start_binance_market_data(
@@ -19,11 +20,14 @@ pub async fn start_binance_market_data(
         return Err("Binance WebSocket already running".to_string());
     }
 
-    let environment = {
+    let (environment, ws_url) = {
         let config = state.config.read().await;
-        BinanceEnvironment::parse(&config.binance.environment)
+        (
+            BinanceEnvironment::parse(&config.binance.environment),
+            config.binance.ws_url.clone(),
+        )
     };
-    let ws = BinanceWebSocket::new(environment);
+    let ws = BinanceWebSocket::new(environment, ws_url);
 
     let _ = app.emit(
         "binance:status",
@@ -48,6 +52,7 @@ pub async fn start_binance_market_data(
         while let Some(msg) = rx.recv().await {
             match msg {
                 BinanceWsMessage::Kline(k) => {
+                    debug!(symbol = %k.symbol, interval = %k.interval, "Binance WS kline");
                     let _ = app_clone.emit("binance:kline", &k);
                 }
                 BinanceWsMessage::Depth(d) => {
@@ -62,10 +67,14 @@ pub async fn start_binance_market_data(
                 BinanceWsMessage::Trade(t) => {
                     let _ = app_clone.emit("binance:trade", &t);
                 }
+                // 用户数据流走独立 WS 连接，这里忽略（不影响市场流）。
+                BinanceWsMessage::AccountPosition(_) | BinanceWsMessage::OrderUpdate(_) => {}
                 BinanceWsMessage::ConnectionStatus(s) => {
+                    debug!("Binance WS status: {s}");
                     let _ = app_clone.emit("binance:status", serde_json::json!({ "status": s }));
                 }
                 BinanceWsMessage::Error(e) => {
+                    debug!("Binance WS error: {e}");
                     let _ = app_clone.emit("binance:error", &e);
                 }
             }
@@ -179,6 +188,79 @@ pub async fn get_binance_subscriptions(state: State<'_, AppState>) -> Result<Vec
     }
 }
 
+/// 启动用户数据流（`@userDataStream`，REST 限流/封禁时的实时账户/订单补充源）。
+///
+/// 独立 WS 连接，避免与市场数据流争抢单一 receiver。流程：获取 listenKey →
+/// 订阅 → 转发 `binance:account`/`binance:order` 事件 → 每 30 分钟 keepalive。
+#[tauri::command]
+pub async fn start_binance_user_data_stream(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    if state.binance_ws_state.user_data_running.load(Ordering::SeqCst) {
+        return Err("Binance user data stream already running".to_string());
+    }
+
+    // WebSocket-API 用户数据流（替换已弃用的 REST listenKey —— 410）。
+    let (ws_api_url, api_key) = {
+        let config = state.config.read().await;
+        (
+            config
+                .binance
+                .ws_api_url
+                .clone()
+                .unwrap_or_else(|| "wss://ws-api.binance.com/ws-api/v3".to_string()),
+            config.binance.api_key.clone(),
+        )
+    };
+
+    let client = UserDataStreamClient::new(ws_api_url, api_key);
+    let listen_key = client
+        .start()
+        .await
+        .map_err(|e| format!("Failed to start user data stream: {}", e))?;
+
+    let mut rx = client.get_receiver().await;
+    let app_clone = app.clone();
+    let running = state.binance_ws_state.user_data_running.clone();
+    running.store(true, Ordering::SeqCst);
+    tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                BinanceWsMessage::AccountPosition(p) => {
+                    let _ = app_clone.emit("binance:account", &p);
+                }
+                BinanceWsMessage::OrderUpdate(o) => {
+                    let _ = app_clone.emit("binance:order", &o);
+                }
+                BinanceWsMessage::Error(e) => {
+                    debug!("Binance user data WS error: {e}");
+                    let _ = app_clone.emit("binance:user_data_error", &e);
+                }
+                _ => {}
+            }
+        }
+        running.store(false, Ordering::SeqCst);
+    });
+
+    *state.binance_ws_state.user_data_ws.write().await = Some(client);
+    Ok(listen_key)
+}
+
+/// 停止用户数据流。
+#[tauri::command]
+pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> Result<(), String> {
+    let mut guard = state.binance_ws_state.user_data_ws.write().await;
+    if let Some(ws) = guard.take() {
+        ws.stop();
+    }
+    state
+        .binance_ws_state
+        .user_data_running
+        .store(false, Ordering::SeqCst);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +337,7 @@ mod tests {
         let state = make_test_state();
         *state.binance_ws_state.ws.write().await = Some(exchange_binance::BinanceWebSocket::new(
             exchange_binance::types::BinanceEnvironment::Spot,
+            None,
         ));
         state.binance_ws_state.running.store(true, Ordering::SeqCst);
         stop_binance_market_data(state_guard(&state)).await.unwrap();

@@ -75,7 +75,28 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="标的代码" prop="symbols">
-            <el-input v-model="formConfig.symbols" placeholder="多个标的用逗号分隔" />
+            <el-select
+              v-model="selectedSymbols"
+              multiple
+              filterable
+              placeholder="选择标的代码"
+              style="width: 100%"
+            >
+              <el-option v-for="s in symbolList" :key="s" :label="s" :value="s" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="K线周期" prop="timeframe">
+            <el-select v-model="formConfig.timeframe" style="width: 100%">
+              <el-option label="1小时 (1H)" value="1H" />
+              <el-option label="4小时 (4H)" value="4H" />
+              <el-option label="日线 (1D)" value="1D" />
+              <el-option label="周线 (1W)" value="1W" />
+            </el-select>
           </el-form-item>
         </el-col>
       </el-row>
@@ -102,11 +123,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import type { StrategyParams } from '@/services/types'
 import { ElMessage } from 'element-plus'
+import { getSymbols } from '@/services/market'
 
 export interface BacktestConfigData {
   strategyId: string
@@ -117,6 +139,7 @@ export interface BacktestConfigData {
   commissionRate: number
   slippage: number
   symbols: string
+  timeframe: string
 }
 
 export interface ConfigTemplate {
@@ -150,11 +173,23 @@ function defaultConfig(): BacktestConfigData {
     commissionRate: 0.001,
     slippage: 0.0005,
     symbols: 'BTC-USDT',
+    timeframe: '1H',
   }
 }
 
 const formRef = ref<FormInstance | undefined>()
 const formConfig = reactive<BacktestConfigData>(defaultConfig())
+/** 标的代码下拉数据源（来自数据库 market_data）。 */
+const symbolList = ref<string[]>([])
+/** 多选结果以逗号分隔写回 `formConfig.symbols`（保持后端字符串格式）。 */
+const selectedSymbols = computed<string[]>({
+  get: () => formConfig.symbols.split(',').map((s) => s.trim()).filter(Boolean),
+  set: (v) => { formConfig.symbols = v.join(',') },
+})
+
+onMounted(async () => {
+  try { symbolList.value = await getSymbols() } catch { symbolList.value = [] }
+})
 
 const rules = {
   strategyId: [{ required: true, message: '请选择策略', trigger: 'change' }],
@@ -172,7 +207,7 @@ const rules = {
     { required: true, message: '请输入滑点', trigger: 'blur' },
     { type: 'number', min: 0, max: 0.1, message: '滑点应在0-0.1之间', trigger: 'blur' },
   ],
-  symbols: [{ required: true, message: '请输入标的代码', trigger: 'blur' }],
+  symbols: [{ required: true, message: '请选择标的代码', trigger: 'change' }],
 }
 
 function onStrategyChange(strategyId: string) {

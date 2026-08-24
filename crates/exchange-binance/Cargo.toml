@@ -29,6 +29,8 @@ async-trait = "0.1"
 hmac = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["pkcs8"] }
 mockall = { version = "0.13", optional = true }
 
 [features]

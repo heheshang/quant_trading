@@ -32,10 +32,19 @@
 
         <el-col :xs="24" :span="12">
           <el-form-item label="标的代码" prop="symbol">
-            <el-input
+            <el-select
               v-model="formData.symbol"
-              placeholder="输入标的代码，如 600519.SH"
-            />
+              filterable
+              placeholder="选择标的代码"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="sym in symbols"
+                :key="sym"
+                :label="sym"
+                :value="sym"
+              />
+            </el-select>
           </el-form-item>
         </el-col>
       </el-row>
@@ -112,9 +121,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import type { FormInstance } from 'element-plus'
 import type { OrderSide, OrderType } from '@/services/types'
+import { getMarketData, getSymbols } from '@/services/market'
 
 interface Strategy {
   strategy_id: string | number
@@ -151,19 +161,50 @@ const formRef = ref<FormInstance>()
 function createDefaultFormData(): OrderFormData {
   return {
     strategy_id: '',
-    symbol: '600519.SH',
+    symbol: 'BTC-USDT',
     side: 'Buy',
     order_type: 'Limit',
-    price: 1685.00,
-    quantity: 100,
+    price: 50000,
+    quantity: 0.01,
   }
 }
 
 const formData = reactive<OrderFormData>(createDefaultFormData())
+/** 标的代码下拉数据源（来自数据库 market_data）。 */
+const symbols = ref<string[]>([])
+/** 用实时/最新行情价自动填充限价单价格（失败则保留当前值）。 */
+async function refreshPrice() {
+  const sym = formData.symbol?.trim()
+  if (!sym) return
+  try {
+    const md = await getMarketData(sym)
+    if (md && md.close > 0) {
+      formData.price = md.close
+    }
+  } catch {
+    // 行情失败时保留用户已填/默认价格
+  }
+}
+
+watch(
+  () => formData.symbol,
+  () => {
+    refreshPrice()
+  },
+)
+
+onMounted(async () => {
+  refreshPrice()
+  try {
+    symbols.value = await getSymbols()
+  } catch {
+    symbols.value = []
+  }
+})
 
 const formRules = {
   strategy_id: [{ required: true, message: '请选择策略', trigger: 'change' }],
-  symbol: [{ required: true, message: '请输入标的代码', trigger: 'blur' }],
+  symbol: [{ required: true, message: '请选择标的代码', trigger: 'change' }],
   side: [{ required: true, message: '请选择买卖方向', trigger: 'change' }],
   order_type: [{ required: true, message: '请选择订单类型', trigger: 'change' }],
   price: [{ required: true, message: '请输入价格', trigger: 'blur' }],

@@ -764,6 +764,7 @@ mod tests {
             result: Some(BacktestResult {
                 id: None,
                 strategy_id: "s".to_string(),
+                strategy_name: None,
                 start_date: chrono::Utc::now(),
                 end_date: chrono::Utc::now(),
                 initial_capital: Decimal::new(10000, 0),
@@ -778,6 +779,7 @@ mod tests {
                 winning_trades: 0,
                 losing_trades: 0,
                 equity_curve: Vec::new(),
+                trades: vec![],
             }),
         };
         let mut combos = vec![mk("a", 30), mk("b", 10), mk("c", 20)];

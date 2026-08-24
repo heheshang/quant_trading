@@ -194,6 +194,7 @@ async function handleBacktestConfigConfirmed(params: BacktestRunParams) {
       params.commissionRate,
       params.slippage,
       symbols,
+      '1H',
     );
     backtestResult.value = result as unknown as Record<string, unknown>;
     backtestDialogVisible.value = true;

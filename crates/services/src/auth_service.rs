@@ -115,6 +115,24 @@ impl AuthService {
         }
     }
 
+    /// Resolve a user's numeric id from their username (for audit attribution).
+    #[instrument(skip(self), fields(username = %username))]
+    pub async fn resolve_user_id(&self, username: &str) -> ServiceResult<Option<i64>> {
+        let Some(client) = &self.postgres else {
+            return Ok(None);
+        };
+        let pool = client.pool();
+        let row = sqlx::query("SELECT user_id FROM users WHERE username = $1")
+            .bind(username)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| {
+                error!(username = %username, error = %e, "Failed to resolve user id");
+                ServiceError::from(e)
+            })?;
+        Ok(row.map(|r| r.get("user_id")))
+    }
+
     pub async fn verify_token(&self, token: &str) -> bool {
         let cfg = self.config.read().await;
         let auth_service = self.make_auth_service(&cfg);

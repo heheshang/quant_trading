@@ -56,6 +56,17 @@
         </template>
       </el-table-column>
     </el-table>
+    <el-pagination
+      v-if="props.total > 0"
+      layout="prev, pager, next, sizes, total"
+      :total="props.total"
+      :page-sizes="[10, 20, 50, 100]"
+      :current-page="props.page"
+      :page-size="props.pageSize"
+      @current-change="(p: number) => emit('update:page', p)"
+      @size-change="(s: number) => emit('update:pageSize', s)"
+      style="justify-content: flex-end; margin-top: 8px"
+    />
     <EmptyState v-else-if="!historyLoading" title="暂无回测记录" description="请先运行回测来生成记录" />
   </el-card>
 
@@ -123,12 +134,17 @@ export interface HistoryRow extends BacktestResultSummaryRow {
 const props = defineProps<{
   historyRecords: HistoryRow[]
   historyLoading: boolean
+  total: number
+  page: number
+  pageSize: number
 }>()
 
 const emit = defineEmits<{
   viewDetail: [id: number]
   refresh: []
   deleteRecord: [id: number]
+  'update:page': [page: number]
+  'update:pageSize': [size: number]
 }>()
 
 const { formatPercentage, formatNumber, formatDate } = useFormatting()

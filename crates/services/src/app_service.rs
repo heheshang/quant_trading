@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use strategy_engine::registry::default_registry;
 use strategy_engine::scheduler::StrategyScheduler;
+use strategy_engine::PipelineExecutor;
 use tokio::sync::RwLock;
 use tracing::{info, instrument};
 use trading_engine::{BinanceExecutor, OrderManager};
@@ -31,6 +32,7 @@ use crate::account_service::AccountService;
 use crate::api_key_service::ApiKeyService;
 use crate::auth_service::AuthService;
 use crate::binance_service::BinanceService;
+use crate::live_trades_service::LiveTradesService;
 use crate::config_service::ConfigService;
 use crate::market_data_provider::{
     resolve_default_timeframe, MarketDataStore, RepositoryMarketDataProvider,
@@ -79,6 +81,7 @@ pub struct AppServices {
     pub market_service: Arc<MarketService>,
     pub strategy_service: StrategyService,
     pub binance_service: BinanceService,
+    pub live_trades: LiveTradesService,
     pub risk_service: Arc<RiskService>,
     pub api_key_service: ApiKeyService,
 
@@ -115,6 +118,9 @@ impl AppServices {
             default_timeframe,
         ));
         scheduler.set_market_data_provider(provider.clone());
+        // Wire the order pipeline so `trading_ready()` passes — without it the
+        // scheduler refuses to start a strategy ("signal pipeline not wired").
+        scheduler.set_pipeline(Arc::new(PipelineExecutor::new()));
         let mut strategy_service = StrategyService::new(
             postgres.clone(),
             Some(provider),
@@ -247,6 +253,10 @@ impl AppServices {
             .map(|c| c.security.encryption_key.clone())
             .ok();
         let api_key_service = ApiKeyService::new(encryption_key, api_key_repo);
+        let live_trades_repo = postgres.as_ref().map(|pg| {
+            Arc::new(data_layer::LiveTradesRepository::new(pg.pool().clone()))
+        });
+        let live_trades = LiveTradesService::new(live_trades_repo);
         let param_optimizer_config = config
             .try_read()
             .map(|c| c.param_optimizer.clone())
@@ -260,6 +270,7 @@ impl AppServices {
             market_service,
             strategy_service,
             binance_service: BinanceService::new(binance_client.clone()),
+            live_trades,
             risk_service,
             order_processor,
             api_key_service,

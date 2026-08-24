@@ -10,7 +10,7 @@ use crate::error::RepoError;
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
 pub struct AuditLogRecord {
     pub id: i64,
-    pub user_id: i64,
+    pub user_id: Option<i64>,
     pub username: String,
     pub action: String,
     pub resource: String,
@@ -24,7 +24,7 @@ pub struct AuditLogRecord {
 /// Insert payload for [`AuditRepository::insert`].
 #[derive(Debug, Clone)]
 pub struct NewAuditLog {
-    pub user_id: i64,
+    pub user_id: Option<i64>,
     pub username: String,
     pub action: String,
     pub resource: String,
@@ -70,7 +70,7 @@ impl PgAuditRepository {
 
 #[async_trait]
 impl AuditRepository for PgAuditRepository {
-    #[instrument(skip(self, row), fields(user_id = %row.user_id, action = %row.action))]
+    #[instrument(skip(self, row), fields(user_id = ?row.user_id, action = %row.action))]
     async fn insert(&self, row: &NewAuditLog) -> Result<i64, RepoError> {
         let id = sqlx::query_scalar::<_, i64>(
             r#"
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_new_audit_log_roundtrip() {
         let row = NewAuditLog {
-            user_id: 1,
+            user_id: Some(1),
             username: "admin".to_string(),
             action: "Login".to_string(),
             resource: "auth".to_string(),
