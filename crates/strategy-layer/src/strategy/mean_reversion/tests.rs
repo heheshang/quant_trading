@@ -2,7 +2,7 @@
 
 use super::*;
 use chrono::DateTime;
-use quant_common::types::MarketData;
+use quant_common::types::{MarketData, Position};
 
 fn make_market_data(close: Decimal) -> MarketData {
     MarketData {
@@ -139,7 +139,16 @@ async fn test_rsi_overbought_triggers_sell() {
     let data = build_regime_series(20, 15, 100, 199, "BTC/USDT");
     let context = StrategyContext {
         current_time: Utc::now(),
-        positions: vec![],
+        positions: vec![Position {
+            symbol: "BTC/USDT".to_string(),
+            quantity: Decimal::from(1),
+            available_quantity: Decimal::from(1),
+            avg_price: Decimal::from(100),
+            market_value: Decimal::from(100),
+            unrealized_pnl: Decimal::ZERO,
+            realized_pnl: Decimal::ZERO,
+            updated_at: Utc::now(),
+        }],
         market_data: data,
     };
     let orders = strategy.generate_signals(&context).await.unwrap();

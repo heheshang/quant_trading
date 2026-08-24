@@ -6,8 +6,9 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use quant_common::types::{MarketData, Order, ParameterSchema, Position, StrategyParams};
+use quant_common::types::{MarketData, Order, OrderSide, ParameterSchema, Position, StrategyParams};
 use quant_common::Result;
+use rust_decimal::Decimal;
 
 pub mod mean_reversion;
 pub mod trend_following;
@@ -24,6 +25,33 @@ pub struct StrategyContext {
     pub current_time: DateTime<Utc>,
     pub positions: Vec<Position>,
     pub market_data: Vec<MarketData>,
+}
+
+/// 计算下单量（净额，避免忽略已有持仓导致过度加仓/清仓卖错）：
+/// - 买入：`max_position/price` 目标量 − 当前持仓量（<=0 则不买）；
+/// - 卖出：清仓当前持仓量（无持仓则不卖）。
+pub fn net_quantity(
+    context: &StrategyContext,
+    symbol: &str,
+    side: OrderSide,
+    max_position: Decimal,
+    last_close: Decimal,
+) -> Decimal {
+    let current = context
+        .positions
+        .iter()
+        .find(|p| p.symbol == symbol)
+        .map(|p| p.quantity)
+        .unwrap_or(Decimal::ZERO);
+    match side {
+        OrderSide::Buy => {
+            if last_close.is_zero() {
+                return Decimal::ZERO;
+            }
+            (max_position / last_close - current).max(Decimal::ZERO)
+        }
+        OrderSide::Sell => current.max(Decimal::ZERO),
+    }
 }
 
 /// 策略接口

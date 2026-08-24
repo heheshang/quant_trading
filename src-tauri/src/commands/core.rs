@@ -158,6 +158,7 @@ pub async fn run_algorithmic_order(
 
 #[tauri::command]
 pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, String> {
+    state.require_auth().await?;
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_account_info().await {
             Ok(account) => {
@@ -192,6 +193,7 @@ pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, Str
 
 #[tauri::command]
 pub async fn get_positions(state: State<'_, AppState>) -> Result<Vec<Position>, String> {
+    state.require_auth().await?;
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_positions().await {
             Ok(positions) => Ok(positions),
@@ -208,6 +210,7 @@ pub async fn get_recent_orders(
     limit: Option<u32>,
     exchange: Option<String>,
 ) -> Result<Vec<Order>, String> {
+    state.require_auth().await?;
     let services = state
         .app_services
         .as_ref()
@@ -224,6 +227,7 @@ pub async fn get_active_orders(
     state: State<'_, AppState>,
     exchange: Option<String>,
 ) -> Result<Vec<Order>, String> {
+    state.require_auth().await?;
     // 活跃订单以数据库为准（持久化，重启后仍可读）；可按种类(paper/live/algorithm)过滤。
     if let Some(services) = state.app_services.as_ref() {
         match services.account_service.get_active_orders(exchange.as_deref()).await {

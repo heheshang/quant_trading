@@ -150,14 +150,20 @@ impl Strategy for TrendFollowingStrategy {
             "Signal triggered: {}", label
         );
 
+        let symbol = context.market_data[0].symbol.clone();
+        let quantity =
+            super::net_quantity(context, &symbol, side.clone(), self.params.max_position, last_close);
+        if quantity <= Decimal::ZERO {
+            return Ok(Vec::new());
+        }
         Ok(vec![Order {
             order_id: 0,
             strategy_id: self.params.strategy_id.clone(),
-            symbol: context.market_data[0].symbol.clone(),
+            symbol,
             order_type: OrderType::Limit,
             side,
             price: Some(last_close),
-            quantity: self.params.max_position / last_close,
+            quantity,
             filled_quantity: Decimal::ZERO,
             status: quant_common::types::OrderStatus::Pending,
             created_at: Utc::now(),
@@ -223,7 +229,7 @@ impl Strategy for TrendFollowingStrategy {
 mod tests {
     use super::*;
     use chrono::DateTime;
-    use quant_common::types::MarketData;
+    use quant_common::types::{MarketData, Position};
 
     fn make_market_data(close: Decimal) -> MarketData {
         MarketData {
@@ -353,7 +359,16 @@ mod tests {
         let data = build_crossover_series(false, "BTC/USDT");
         let context = StrategyContext {
             current_time: Utc::now(),
-            positions: vec![],
+            positions: vec![Position {
+                symbol: "BTC/USDT".to_string(),
+                quantity: Decimal::from(2),
+                available_quantity: Decimal::from(2),
+                avg_price: Decimal::from(90000),
+                market_value: Decimal::from(180000),
+                unrealized_pnl: Decimal::ZERO,
+                realized_pnl: Decimal::ZERO,
+                updated_at: Utc::now(),
+            }],
             market_data: data,
         };
         let orders = strategy.generate_signals(&context).await.unwrap();

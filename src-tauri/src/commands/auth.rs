@@ -106,39 +106,35 @@ pub async fn update_profile(
     state: State<'_, AppState>,
     profile_data: serde_json::Value,
 ) -> Result<bool, String> {
-    state.require_auth().await?;
+    let user = state.require_auth().await?;
     let services = state
         .app_services
         .as_ref()
         .ok_or("Application services not initialized")?;
 
-    // Use the username from the profile data, or default to "admin"
-    let username = profile_data
+    // 目标用户名：默认绑定到会话用户（忽略客户端指定）；仅 admin 可编辑他人。
+    let requested_username = profile_data
         .get("username")
         .and_then(|v| v.as_str())
-        .unwrap_or("admin");
+        .unwrap_or(&user.username);
+    if requested_username != user.username {
+        state.require_role("admin").await?;
+    }
+    let username = requested_username.to_string();
 
     let result = services
         .auth_service
-        .update_profile(username, &profile_data)
+        .update_profile(&username, &profile_data)
         .await
         .map_err(|e| e.to_string());
     let success = result.is_ok();
-    let audit_user_id = match state.app_services.as_ref() {
-        Some(s) => s
-            .auth_service
-            .resolve_user_id(username)
-            .await
-            .unwrap_or(None)
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "1".to_string()),
-        None => "1".to_string(),
-    };
+    // 审计记录操作者（会话用户），而非被修改者。
+    let audit_user_id = user.user_id.to_string();
     let _ = state
         .audit_logger
         .log(
             &audit_user_id,
-            username,
+            &user.username,
             security::audit::AuditAction::ConfigChange,
             "user_profile",
             profile_data.clone(),

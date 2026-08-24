@@ -15,6 +15,7 @@ pub async fn get_audit_logs(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<AuditLog>, String> {
+    state.require_role("admin").await?;
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 

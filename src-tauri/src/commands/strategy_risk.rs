@@ -10,6 +10,7 @@ use tauri::State;
 /// 获取所有策略
 #[tauri::command]
 pub async fn get_strategies(state: State<'_, AppState>) -> Result<Vec<StrategyParams>, String> {
+    state.require_auth().await?;
     let services = state
         .app_services
         .as_ref()
@@ -271,6 +272,7 @@ pub async fn create_strategy(
 /// 获取风险指标
 #[tauri::command]
 pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<String, f64>, String> {
+    state.require_auth().await?;
     // Prefer RiskService (DB-backed) for real VaR computation with historical returns
     if let Some(ref services) = state.app_services {
         match services.risk_service.get_risk_metrics().await {
@@ -321,6 +323,7 @@ pub async fn get_risk_metrics(state: State<'_, AppState>) -> Result<HashMap<Stri
 pub async fn get_risk_config(
     state: State<'_, AppState>,
 ) -> Result<quant_common::config::RiskConfig, String> {
+    state.require_role("admin").await?;
     if let Some(ref services) = state.app_services {
         match services.risk_service.get_risk_config().await {
             Ok(config) => {

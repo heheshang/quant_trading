@@ -95,37 +95,44 @@ impl Strategy for RsiStrategy {
         }
 
         let mut orders = Vec::new();
+        let symbol = context.market_data[0].symbol.clone();
         // Buy when RSI is oversold.
         if last_rsi < self.oversold {
             info!(strategy_id = %self.params.strategy_id, %last_rsi, "RSI buy signal (oversold)");
-            orders.push(Order { order_id: 0,
-            strategy_id: self.params.strategy_id.clone(),
-            symbol: context.market_data[0].symbol.clone(),
-            order_type: OrderType::Limit,
-            side: OrderSide::Buy,
-            price: Some(last_close),
-            quantity: self.params.max_position / last_close,
-            filled_quantity: Decimal::ZERO,
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO, exchange: "paper".to_string(), });
+            let quantity = super::net_quantity(context, &symbol, OrderSide::Buy, self.params.max_position, last_close);
+            if quantity > Decimal::ZERO {
+                orders.push(Order { order_id: 0,
+                    strategy_id: self.params.strategy_id.clone(),
+                    symbol: symbol.clone(),
+                    order_type: OrderType::Limit,
+                    side: OrderSide::Buy,
+                    price: Some(last_close),
+                    quantity,
+                    filled_quantity: Decimal::ZERO,
+                    status: quant_common::types::OrderStatus::Pending,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    commission: Decimal::ZERO,
+                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+            }
         } else if last_rsi > self.overbought {
             info!(strategy_id = %self.params.strategy_id, %last_rsi, "RSI sell signal (overbought)");
-            orders.push(Order { order_id: 0,
-            strategy_id: self.params.strategy_id.clone(),
-            symbol: context.market_data[0].symbol.clone(),
-            order_type: OrderType::Limit,
-            side: OrderSide::Sell,
-            price: Some(last_close),
-            quantity: self.params.max_position / last_close,
-            filled_quantity: Decimal::ZERO,
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO, exchange: "paper".to_string(), });
+            let quantity = super::net_quantity(context, &symbol, OrderSide::Sell, self.params.max_position, last_close);
+            if quantity > Decimal::ZERO {
+                orders.push(Order { order_id: 0,
+                    strategy_id: self.params.strategy_id.clone(),
+                    symbol: symbol.clone(),
+                    order_type: OrderType::Limit,
+                    side: OrderSide::Sell,
+                    price: Some(last_close),
+                    quantity,
+                    filled_quantity: Decimal::ZERO,
+                    status: quant_common::types::OrderStatus::Pending,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    commission: Decimal::ZERO,
+                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+            }
         }
 
         Ok(orders)

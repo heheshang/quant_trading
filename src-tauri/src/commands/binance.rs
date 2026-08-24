@@ -96,6 +96,7 @@ fn services<'a>(state: &'a State<'_, AppState>) -> Result<&'a quant_services::Ap
 pub async fn get_binance_balance(
     state: State<'_, AppState>,
 ) -> Result<Vec<exchange_binance::types::BinanceBalance>, String> {
+    state.require_auth().await?;
     services(&state)?
         .binance_service
         .get_balance()
@@ -208,6 +209,7 @@ pub async fn place_binance_order(
 pub async fn get_live_trades(
     state: State<'_, AppState>,
 ) -> Result<Vec<data_layer::LiveTrade>, String> {
+    state.require_auth().await?;
     services(&state)?
         .live_trades
         .list()
@@ -234,6 +236,7 @@ pub async fn get_binance_positions(
     state: State<'_, AppState>,
     symbol: Option<String>,
 ) -> Result<Vec<exchange_binance::types::BinancePosition>, String> {
+    state.require_auth().await?;
     services(&state)?
         .binance_service
         .get_positions(symbol.as_deref())
@@ -248,6 +251,7 @@ pub async fn get_binance_orders(
     history: Option<bool>,
     limit: Option<u32>,
 ) -> Result<Vec<exchange_binance::types::BinanceOrder>, String> {
+    state.require_auth().await?;
     if history.unwrap_or(false) {
         services(&state)?
             .binance_service
