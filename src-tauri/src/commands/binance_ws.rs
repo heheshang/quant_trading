@@ -407,6 +407,9 @@ pub async fn start_binance_user_data_stream(
         .await
         .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, format!("Failed to start user data stream: {}", e)))?;
 
+    let mut rx = client.get_receiver().await;
+    let app_clone = app.clone();
+    let running = state.binance_ws_state.user_data_running.clone();
     let market_repo = state.app_services.as_ref().and_then(|s| s.market_data.clone());
     running.store(true, Ordering::SeqCst);
     info!("binance user data stream started (listen_key obtained)");
@@ -433,25 +436,6 @@ pub async fn start_binance_user_data_stream(
                             }
                         }
                     }
-                }
-                BinanceWsMessage::OrderUpdate(o) => {
-                    let _ = app_clone.emit("binance:order", &o);
-                }
-                BinanceWsMessage::Error(e) => {
-                    debug!("Binance user data WS error: {e}");
-                    let _ = app_clone.emit("binance:user_data_error", &e);
-                }
-                _ => {}
-            }
-        }
-        running.store(false, Ordering::SeqCst);
-    });
-    running.store(true, Ordering::SeqCst);
-    tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            match msg {
-                BinanceWsMessage::AccountPosition(p) => {
-                    let _ = app_clone.emit("binance:account", &p);
                 }
                 BinanceWsMessage::OrderUpdate(o) => {
                     let _ = app_clone.emit("binance:order", &o);
