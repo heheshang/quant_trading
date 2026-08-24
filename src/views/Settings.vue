@@ -122,7 +122,16 @@ async function confirmReset() {
 
 function exportConfig() {
   const payload = buildAppPayload(config.value, systemInfo.value)
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  // 导出时强制抹除敏感字段（DB/Redis 密码、JWT/加密密钥、交易所密钥），
+  // 防止明文文件泄露 secret（防御于 get_config 脱敏之外）。
+  const redacted = {
+    ...payload,
+    database: { ...payload.database, password: '' },
+    redis: { ...payload.redis, password: '' },
+    security: { ...payload.security, jwt_secret: '', encryption_key: '' },
+    binance: { ...payload.binance, api_key: '', api_secret: '', passphrase: '' },
+  }
+  const blob = new Blob([JSON.stringify(redacted, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = `quant-trader-config-${new Date().toISOString().slice(0, 10)}.json`; a.click()

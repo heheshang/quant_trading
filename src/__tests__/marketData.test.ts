@@ -78,7 +78,6 @@ describe('marketData store', () => {
     expect(store.activeSymbol).toBe('BTC-USDT')
 
     // 概览只订阅轻量 ticker；重流(trade/orderbook/candle)仅活跃标的。
-    const cmds = mockInvoke.mock.calls.map(([cmd]) => cmd)
     for (const sym of DEFAULT_MARKET_SYMBOLS) {
       expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_ticker', { symbol: sym })
     }

@@ -5,6 +5,7 @@ import {
   getLiveTrades,
   getAccountSnapshots,
 } from '@/services/binance'
+import { computeRealizedPnl, type FilledFill } from '@/utils/pnl'
 import type { BinanceBalance, LiveTrade } from '@/services/types'
 
 const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
@@ -70,17 +71,22 @@ export function useBinanceAccountOverview() {
     return sum
   })
 
-  /** 今日已实现盈亏：当日 FILLED 卖单 minus 买单（按成交价 × 成交量）。 */
+  /** 今日已实现盈亏：当日已成交的 FIFO 已实现盈亏（买入日不再被当作亏损）。 */
   const dailyPnl = computed(() => {
     const startOfDay = Date.now() - (Date.now() % 86_400_000)
-    let pnl = 0
+    const fills: FilledFill[] = []
     for (const t of liveTrades.value) {
       if (t.status !== 'FILLED') continue
       if (new Date(t.updated_at).getTime() < startOfDay) continue
-      const notional = (t.price || 0) * (t.filled_quantity || 0)
-      pnl += t.side === 'SELL' ? notional : -notional
+      fills.push({
+        symbol: t.symbol,
+        side: t.side === 'BUY' ? 'Buy' : 'Sell',
+        price: t.price,
+        quantity: t.filled_quantity,
+        ts: new Date(t.updated_at).getTime(),
+      })
     }
-    return pnl
+    return computeRealizedPnl(fills)
   })
 
   /** 总盈亏 = 当日已实现 + 浮动。 */

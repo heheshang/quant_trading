@@ -283,10 +283,12 @@ export interface RiskMetrics {
   timestamp: string
   var_95: number
   var_99: number
-  portfolio_volatility: number
-  beta: number
-  concentration_risk: number
-  leverage: number
+  var_confidence_level: number
+  max_position_size: number
+  max_daily_loss: number
+  max_drawdown: number
+  max_concentration: number
+  [key: string]: number | string
 }
 
 export type AlertLevel = 'Info' | 'Warning' | 'Critical'

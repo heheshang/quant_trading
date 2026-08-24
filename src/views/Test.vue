@@ -110,22 +110,22 @@ void checkConnectivity();
 async function runSystemTests() {
   testing.value = true;
   testResults.value = [];
-
-  const tests = [
-    { name: 'API 接口测试', fn: testAPI },
-    { name: '数据库连接', fn: testDatabase },
-    { name: 'Redis 缓存', fn: testRedis },
-    { name: 'JWT 认证', fn: testAuth },
-  ];
-
-  for (const t of tests) {
-    const start = performance.now();
-    const { passed, detail } = await t.fn();
-    const duration = ((performance.now() - start) / 1000).toFixed(2) + 's';
-    testResults.value.push({ name: t.name, status: passed ? '通过' : '失败', duration, detail });
+  try {
+    const tests = [
+      { name: 'API 接口测试', fn: testAPI },
+      { name: '数据库连接', fn: testDatabase },
+      { name: 'Redis 缓存', fn: testRedis },
+      { name: 'JWT 认证', fn: testAuth },
+    ];
+    for (const t of tests) {
+      const start = performance.now();
+      const { passed, detail } = await t.fn();
+      const duration = ((performance.now() - start) / 1000).toFixed(2) + 's';
+      testResults.value.push({ name: t.name, status: passed ? '通过' : '失败', duration, detail });
+    }
+  } finally {
+    testing.value = false;
   }
-
-  testing.value = false;
 }
 
 async function testAPI(): Promise<{passed: boolean; detail?: string}> {

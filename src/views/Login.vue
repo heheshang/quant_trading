@@ -106,6 +106,7 @@ const loginRules = {
 
 async function handleLogin() {
   if (!loginFormRef.value) return;
+  if (auth.loading) return;
 
   // When 2FA is required the code field is mandatory before resubmitting.
   if (needs2FA.value && !loginForm.code.trim()) {

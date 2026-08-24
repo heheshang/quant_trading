@@ -172,12 +172,16 @@ function createDefaultFormData(): OrderFormData {
 const formData = reactive<OrderFormData>(createDefaultFormData())
 /** 标的代码下拉数据源（来自数据库 market_data）。 */
 const symbols = ref<string[]>([])
+/** 请求序号：快速切换标的时忽略过期响应，避免旧价覆盖当前标的。 */
+let priceReqSeq = 0
 /** 用实时/最新行情价自动填充限价单价格（失败则保留当前值）。 */
 async function refreshPrice() {
   const sym = formData.symbol?.trim()
   if (!sym) return
+  const seq = ++priceReqSeq
   try {
     const md = await getMarketData(sym)
+    if (seq !== priceReqSeq || md.symbol !== sym) return
     if (md && md.close > 0) {
       formData.price = md.close
     }
@@ -207,7 +211,30 @@ const formRules = {
   symbol: [{ required: true, message: '请选择标的代码', trigger: 'change' }],
   side: [{ required: true, message: '请选择买卖方向', trigger: 'change' }],
   order_type: [{ required: true, message: '请选择订单类型', trigger: 'change' }],
-  price: [{ required: true, message: '请输入价格', trigger: 'blur' }],
+  price: [
+    {
+      validator: (_r: unknown, value: number, cb: (e?: Error) => void) => {
+        if (formData.order_type === 'Limit' && (!value || value <= 0)) {
+          cb(new Error('限价单价格需 > 0'))
+        } else if (value != null && value <= 0) {
+          cb(new Error('价格需 > 0'))
+        } else {
+          cb()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  quantity: [
+    { required: true, message: '请输入数量', trigger: 'blur' },
+    {
+      validator: (_r: unknown, value: number, cb: (e?: Error) => void) => {
+        if (!value || value <= 0) cb(new Error('数量需 > 0'))
+        else cb()
+      },
+      trigger: 'blur',
+    },
+  ],
 }
 
 async function handleSubmit() {

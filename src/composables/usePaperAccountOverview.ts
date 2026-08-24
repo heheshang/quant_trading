@@ -4,7 +4,6 @@ import { getRecentOrders } from '@/services/order'
 import { computeRealizedPnl, type FilledFill } from '@/utils/pnl'
 import type { Order } from '@/services/types'
 
-const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
 const KEEPALIVE_MS = 30_000
 
 /**
@@ -20,16 +19,6 @@ export function usePaperAccountOverview(initialCash: number) {
   const loading = ref(false)
   let lastFetched = 0
 
-  function priceOf(sym: string): number {
-    // sym 形如 BTC-USDT；稳定币对按 1（此处为报价资产价值）。
-    const quote = sym?.split('-')[1] ?? 'USDT'
-    if (USD_STABLES.includes(quote)) {
-      // 对 USDT 计价标的，直接用其最新价；否则按 1 占位。
-      return prices.value[sym.replace(/-/g, '')] || 1
-    }
-    return 1
-  }
-
   const account = computed(() => {
     let cash = initialCash
     // 每标的持仓数量 + 累计成本（用于均价/浮动盈亏）。
@@ -41,7 +30,8 @@ export function usePaperAccountOverview(initialCash: number) {
     for (const o of sorted) {
       if (o.status !== 'Filled') continue
       const qty = o.filled_quantity || 0
-      const price = o.price ?? 0
+      // 市价单无挂单价：用当前行情价近似成交价（真实 fill 价未回写）。
+      const price = o.price ?? prices.value[o.symbol.replace(/-/g, '')] ?? 0
       const notional = price * qty
       const p = pos.get(o.symbol) ?? { qty: 0, cost: 0 }
       if (o.side === 'Buy') {
@@ -65,8 +55,9 @@ export function usePaperAccountOverview(initialCash: number) {
     const holdings = [...pos.entries()]
       .filter(([, pc]) => pc.qty > 0)
       .map(([sym, pc]) => {
-        const p = priceOf(sym)
+        // 无最新价 → 用持仓均价兜底（成本），避免回退 1 导致假市值/假盈亏。
         const avg = pc.qty > 0 ? pc.cost / pc.qty : 0
+        const p = prices.value[sym.replace(/-/g, '')] || avg
         const mv = pc.qty * p
         return {
           symbol: sym,

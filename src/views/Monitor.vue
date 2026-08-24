@@ -143,11 +143,14 @@ async function acknowledgeAlert(alertId: number) {
   } catch (error) { console.error('Failed to acknowledge alert:', error) }
 }
 
+let refreshInFlight = false
 async function refreshData() {
+  if (refreshInFlight) return
+  refreshInFlight = true
   loading.value = true
   try { await Promise.all([fetchMetrics(), fetchAlerts(), fetchLogs()]) }
   catch (error) { console.error('Error refreshing data:', error) }
-  finally { loading.value = false }
+  finally { loading.value = false; refreshInFlight = false }
 }
 
 onMounted(async () => {

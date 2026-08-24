@@ -114,11 +114,21 @@ watch(
   { immediate: true, deep: false },
 )
 
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
   initChart()
+  if (chartRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      chartInstance.value?.resize()
+    })
+    resizeObserver.observe(chartRef.value)
+  }
 })
 
 onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
   chartInstance.value?.dispose()
   chartInstance.value = null
 })

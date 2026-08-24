@@ -35,7 +35,7 @@ describe('auth store session restore', () => {
     expect(localStorage.getItem('authToken')).toBeNull()
   })
 
-  it('keeps the persisted session when token verification fails transiently', async () => {
+  it('clears the session when token verification fails (fail-closed)', async () => {
     localStorage.setItem('authToken', 'persisted-token')
     localStorage.setItem('isAuthenticated', 'true')
     localStorage.setItem('username', 'admin')
@@ -46,11 +46,11 @@ describe('auth store session restore', () => {
 
     const isValid = await authStore.restoreSession()
 
-    // fail-open：瞬时错误不应清除已持久化会话
-    expect(isValid).toBe(true)
-    expect(authStore.isAuthenticated).toBe(true)
-    expect(authStore.token).toBe('persisted-token')
-    expect(localStorage.getItem('authToken')).toBe('persisted-token')
+    // fail-closed：无法确认 token 有效 → 清除会话（安全，防留失效 token）
+    expect(isValid).toBe(false)
+    expect(authStore.isAuthenticated).toBe(false)
+    expect(authStore.token).toBeNull()
+    expect(localStorage.getItem('authToken')).toBeNull()
   })
 
   it('passes a provided 2FA code through to the login API', async () => {

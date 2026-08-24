@@ -472,7 +472,8 @@ function wsOrderToOrder(o: BinanceWsOrderUpdate): Order {
     order_id: o.order_id,
     strategy_id: '',
     strategy_name: '',
-    symbol: o.symbol,
+    // 与 REST 行一致：转换符号为域格式 + 标记为实盘单（避免被误判为纸面）。
+    symbol: toDomainSymbol(o.symbol),
     order_type: (o.order_type === 'MARKET' ? 'Market' : 'Limit') as OrderType,
     side: (o.side === 'SELL' ? 'Sell' : 'Buy') as OrderSide,
     price: o.price,
@@ -483,6 +484,7 @@ function wsOrderToOrder(o: BinanceWsOrderUpdate): Order {
     updated_at: new Date(o.event_time).toISOString(),
     commission: 0,
     slippage: 0,
+    exchange: 'live',
   }
 }
 async function ensureUserDataStream() {

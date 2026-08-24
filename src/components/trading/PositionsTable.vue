@@ -24,7 +24,7 @@
       <el-table-column prop="available_quantity" label="可用数量" width="120" />
       <el-table-column prop="avg_price" label="成本价" width="120">
         <template #default="{ row }">
-          ¥{{ row.avg_price.toFixed(2) }}
+          ¥{{ Number(row.avg_price || 0).toFixed(2) }}
         </template>
       </el-table-column>
       <el-table-column prop="market_value" label="市值" width="120">
