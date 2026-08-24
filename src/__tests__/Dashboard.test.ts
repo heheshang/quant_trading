@@ -91,6 +91,7 @@ vi.mock('@/composables/useFormatting', () => ({
       const map: Record<string, string> = { Pending: '待提交', Filled: '已成交' }
       return map[s] ?? s
     },
+    pnlColor: (v: number) => (v >= 0 ? 'var(--color-success)' : 'var(--color-danger)'),
   }),
 }))
 

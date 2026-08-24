@@ -45,7 +45,7 @@ const formattedValue = computed(() => {
   const v = props.value
   switch (props.format) {
     case 'currency':
-      return '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     case 'number':
       return Number(v).toLocaleString('zh-CN')
     case 'percentage':

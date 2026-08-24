@@ -161,16 +161,16 @@ const pageTitle = computed(() => {
 onMounted(async () => {
   const isValidSession = await auth.restoreSession();
   if (!isValidSession && route.path !== '/login') {
-    auth.setRedirectPath(route.path);
+    await auth.setRedirectPath(route.path);
     await router.push('/login');
   }
 });
 
 // Keep auth state in sync across route changes
 router.afterEach((to) => {
-  void auth.restoreSession().then((isValidSession) => {
+  void auth.restoreSession().then(async (isValidSession) => {
     if (!isValidSession && to.path !== '/login') {
-      auth.setRedirectPath(to.path);
+      await auth.setRedirectPath(to.path);
       void router.push('/login');
     }
   });
@@ -178,8 +178,8 @@ router.afterEach((to) => {
 
 // Logout
 const logout = () => {
-  auth.clearSession();
-  router.push('/login');
+  void auth.clearSession();
+  void router.push('/login');
 };
 </script>
 

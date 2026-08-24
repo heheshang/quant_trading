@@ -71,6 +71,16 @@ export function useFormatting() {
     return side === 'Buy' ? '买入' : side === 'Sell' ? '卖出' : side
   }
 
+  /**
+   * 盈亏颜色：中国习惯红涨绿跌，西方绿涨红跌（按 navigator.language 切换）。
+   */
+  function pnlColor(value: number): string {
+    const lang = typeof navigator !== 'undefined' ? navigator.language || '' : ''
+    const isCN = lang.toLowerCase().startsWith('zh')
+    if (value >= 0) return isCN ? 'var(--color-danger)' : 'var(--color-success)'
+    return isCN ? 'var(--color-success)' : 'var(--color-danger)'
+  }
+
   return {
     formatCurrency,
     formatNumber,
@@ -79,5 +89,6 @@ export function useFormatting() {
     formatOrderStatus,
     formatStrategyType,
     formatOrderSide,
+    pnlColor,
   }
 }

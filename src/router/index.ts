@@ -70,7 +70,7 @@ router.beforeEach((to) => {
   const auth = useAuthStore();
 
   if (to.path !== '/login' && !auth.isLoggedIn) {
-    auth.setRedirectPath(to.path);
+    void auth.setRedirectPath(to.path);
     return '/login';
   } else if (to.path === '/login' && auth.isLoggedIn) {
     return '/dashboard';

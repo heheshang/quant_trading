@@ -53,7 +53,7 @@ function initChart() {
       type: 'value',
       axisLabel: {
         color: theme.axisLabel,
-        formatter: (value: number) => '¥' + (value / 10000).toFixed(0) + '万',
+        formatter: (value: number) => (value / 10000).toFixed(0) + '万',
       },
       splitLine: { lineStyle: { color: theme.splitLine } },
     },

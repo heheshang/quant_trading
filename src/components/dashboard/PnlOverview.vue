@@ -34,11 +34,7 @@ defineProps<{
   unrealizedPnl: number
 }>()
 
-const { formatCurrency } = useFormatting()
-
-function pnlColor(value: number): string {
-  return value >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
-}
+const { formatCurrency, pnlColor } = useFormatting()
 </script>
 
 <style scoped>

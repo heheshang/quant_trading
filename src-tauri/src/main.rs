@@ -314,6 +314,7 @@ async fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(app_state)
         .setup(|app| {
             // 启动实盘订单状态监控（后台轮询 Binance + 同步 live_trades + 推事件）。

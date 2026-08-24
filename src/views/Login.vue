@@ -147,7 +147,7 @@ onMounted(async () => {
     return;
   }
 
-  const remembered = auth.getRememberedUsername();
+  const remembered = await auth.getRememberedUsername();
   if (remembered) {
     loginForm.username = remembered;
     loginForm.remember = true;

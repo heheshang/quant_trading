@@ -51,12 +51,12 @@
         </div>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="最大持仓（¥）" prop="max_position">
+            <el-form-item label="最大持仓（USDT）" prop="max_position">
               <el-input-number v-model="formData.max_position" :min="0" :step="10000" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="最大日亏损（¥）" prop="max_daily_loss">
+            <el-form-item label="最大日亏损（USDT）" prop="max_daily_loss">
               <el-input-number v-model="formData.max_daily_loss" :min="0" :step="1000" style="width: 100%" />
             </el-form-item>
           </el-col>

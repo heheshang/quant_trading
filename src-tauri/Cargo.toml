@@ -34,6 +34,7 @@ data-puller = { path = "../crates/data-puller" }
 
 # Tauri
 tauri = { workspace = true }
+tauri-plugin-store = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

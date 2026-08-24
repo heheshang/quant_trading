@@ -60,7 +60,7 @@ function initChart() {
         type: 'value',
         axisLabel: {
           color: theme.axisLabel,
-          formatter: (v: number) => '¥' + (v / 10000).toFixed(0) + '万',
+          formatter: (v: number) => (v / 10000).toFixed(0) + '万',
         },
         splitLine: { lineStyle: { color: theme.splitLine } },
       },

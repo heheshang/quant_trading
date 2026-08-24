@@ -103,7 +103,7 @@ async function handleChangePassword() {
         dialogVisible.value = false
         passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
         emit('passwordChanged')
-        authStore.clearSession()
+        void authStore.clearSession()
         setTimeout(() => {
           router.push('/login')
         }, 2000)
