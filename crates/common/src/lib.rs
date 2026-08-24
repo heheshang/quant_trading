@@ -1,3 +1,4 @@
+pub mod api;
 pub mod config;
 pub mod error;
 pub mod market_data_provider;

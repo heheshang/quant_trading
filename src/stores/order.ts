@@ -54,9 +54,10 @@ export const useOrderStore = defineStore('order', () => {
       await fetchActiveOrders(true)
       return orderId
     } catch (err) {
-      error.value = '提交订单失败'
+      // 保留后端真实错误信息（ApiError.message），供调用方展示。
+      error.value = (err as Error)?.message || '提交订单失败'
       console.error('Failed to submit order:', err)
-      return null
+      throw err
     }
   }
 

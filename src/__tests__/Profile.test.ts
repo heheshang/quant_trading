@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createPinia } from 'pinia'
 import Profile from '@/views/Profile.vue'
@@ -62,7 +62,7 @@ describe('Profile.vue - 按钮测试', () => {
   it('编辑信息按钮 - 切换到编辑模式', async () => {
     const wrapper: any = mount(Profile, { global: { plugins: [ElementPlus, createPinia()] } })
     await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.isEditing).toBe(false)

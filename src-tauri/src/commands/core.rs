@@ -100,16 +100,19 @@ pub async fn submit_order(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     order: Order,
-) -> Result<String, String> {
-    let user = state.require_auth().await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use quant_common::api::{code, err_result, ok_result};
+    let user = match state.require_auth().await {
+        Ok(u) => u,
+        Err(e) => return err_result(code::UNAUTHORIZED, e),
+    };
     // The order-placement pipeline (market data → risk check → submit →
     //   persist → emit → async execution) lives in `OrderProcessor` so the
     //   command stays a *thin adapter* (SRP) and never reaches into the
     //   domain / engine / infrastructure layers directly.
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or_else(|| "Order service not initialized (no database connection)".to_string())?;
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "下单服务未初始化（无数据库连接）");
+    };
 
     let symbol = order.symbol.clone();
     let side = format!("{:?}", order.side);
@@ -119,7 +122,7 @@ pub async fn submit_order(
         Ok(p) => p,
         Err(e) => {
             // 被拒/失败也审计（成功/失败 + 错误信息），避免失联的下单审计盲区。
-            let msg = e.to_string();
+            let (ace, amsg) = (e.api_code(), e.api_message());
             let _ = state
                 .audit_logger
                 .log_order_submit(
@@ -130,10 +133,10 @@ pub async fn submit_order(
                     &side,
                     &quantity,
                     false,
-                    Some(msg.clone()),
+                    Some(amsg.clone()),
                 )
                 .await;
-            return Err(msg);
+            return err_result(ace, amsg);
         }
     };
 
@@ -154,7 +157,7 @@ pub async fn submit_order(
     // Forward the UI event; the use-case already ran persistence + async execution.
     let _ = app.emit("order:submitted", placement.event);
 
-    Ok(placement.order_id.to_string())
+    ok_result(placement.order_id.to_string())
 }
 
 /// 运行算法订单（TWAP / VWAP / Iceberg）。
@@ -193,8 +196,13 @@ pub async fn run_algorithmic_order(
 }
 
 #[tauri::command]
-pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, String> {
-    state.require_auth().await?;
+pub async fn get_account_info(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Account>> {
+    use quant_common::api::{code, err_result, ok_result};
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_account_info().await {
             Ok(account) => {
@@ -203,10 +211,10 @@ pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, Str
                 monitor_layer::MetricsCollector::set_position_value(
                     account.market_value.to_f64().unwrap_or(0.0),
                 );
-                Ok(account)
+                ok_result(account)
             }
             Err(service_error) => {
-                let msg = format!("Account info unavailable: {}", service_error);
+                let msg = service_error.api_message();
                 state
                     .log_buffer
                     .add_entry(quant_common::types::LogEntry {
@@ -216,22 +224,27 @@ pub async fn get_account_info(state: State<'_, AppState>) -> Result<Account, Str
                         module: Some("commands".to_string()),
                     })
                     .await;
-                Err(msg)
+                service_error.to_api_result()
             }
         },
-        None => Err("Account service not initialized (no database connection)".to_string()),
+        None => err_result(code::NOT_INITIALIZED, "账户服务未初始化（无数据库连接）"),
     }
 }
 
 #[tauri::command]
-pub async fn get_positions(state: State<'_, AppState>) -> Result<Vec<Position>, String> {
-    state.require_auth().await?;
+pub async fn get_positions(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<Position>>> {
+    use quant_common::api::{code, err_result, ok_result};
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
     match state.app_services.as_ref() {
         Some(services) => match services.account_service.get_positions().await {
-            Ok(positions) => Ok(positions),
-            Err(e) => Err(format!("Positions unavailable: {}", e)),
+            Ok(positions) => ok_result(positions),
+            Err(e) => e.to_api_result(),
         },
-        None => Err("Account service not initialized (no database connection)".to_string()),
+        None => err_result(code::NOT_INITIALIZED, "持仓服务未初始化（无数据库连接）"),
     }
 }
 
@@ -241,17 +254,22 @@ pub async fn get_recent_orders(
     state: State<'_, AppState>,
     limit: Option<u32>,
     exchange: Option<String>,
-) -> Result<Vec<Order>, String> {
-    state.require_auth().await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<Order>>> {
+    use quant_common::api::{code, err_result, ok_result};
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "应用服务未初始化");
+    };
+    match services
         .account_service
         .get_recent_orders(limit.unwrap_or(50), exchange.as_deref())
         .await
-        .map_err(|e| e.to_string())
+    {
+        Ok(orders) => ok_result(orders),
+        Err(e) => e.to_api_result(),
+    }
 }
 
 #[tauri::command]
@@ -283,9 +301,16 @@ pub async fn cancel_order(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     order_id: i64,
-) -> Result<bool, String> {
-    let user = state.require_auth().await?;
-    let cancelled = cancel_order_core(state.inner(), order_id).await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use quant_common::api::{code, err_result, ok_result};
+    let user = match state.require_auth().await {
+        Ok(u) => u,
+        Err(e) => return err_result(code::UNAUTHORIZED, e),
+    };
+    let cancelled = match cancel_order_core(state.inner(), order_id).await {
+        Ok(c) => c,
+        Err(e) => return err_result(code::INTERNAL, e),
+    };
     if cancelled {
         let _ = app.emit("order:cancelled", order_id);
         let _ = state
@@ -302,7 +327,7 @@ pub async fn cancel_order(
             )
             .await;
     }
-    Ok(cancelled)
+    ok_result(cancelled)
 }
 
 pub(crate) async fn cancel_order_core(state: &AppState, order_id: i64) -> Result<bool, String> {

@@ -103,6 +103,47 @@ pub enum ServiceError {
     Repository(String),
 }
 
+impl ServiceError {
+    /// 映射到统一 API 业务码（`quant_common::api::code`）。
+    pub fn api_code(&self) -> i32 {
+        use quant_common::api::code;
+        match self {
+            Self::DatabaseNotConnected | Self::Database(_) | Self::Repository(_) => code::DATABASE,
+            Self::NotFound(_) => code::NOT_FOUND,
+            Self::InvalidCredentials | Self::TwoFactorRequired | Self::TwoFactorInvalid => {
+                code::UNAUTHORIZED
+            }
+            Self::InvalidParameter(_) | Self::Deserialization { .. } | Self::Serialization { .. } => {
+                code::INVALID_PARAM
+            }
+            Self::Validation { .. } => code::VALIDATION_FAILED,
+            Self::RateLimited(_) => code::RATE_LIMITED,
+            Self::ConcurrentModification { .. } | Self::Conflict(_) => code::CONFLICT,
+            Self::BinanceApi(_) => code::BINANCE_API,
+            Self::BinanceNotInitialized | Self::NotInitialized(_) => code::NOT_INITIALIZED,
+            Self::DataSource(_) => code::DATA_SOURCE,
+            Self::Strategy(_) => code::STRATEGY,
+            Self::Backtest(_) => code::BACKTEST,
+            _ => code::INTERNAL,
+        }
+    }
+
+    /// 映射到真实错误信息（供前端展示）。
+    pub fn api_message(&self) -> String {
+        self.to_string()
+    }
+
+    /// 转为统一 `ApiResponse::err(code, message)`。
+    pub fn to_api_err<T>(&self) -> quant_common::api::ApiResponse<T> {
+        quant_common::api::ApiResponse::err(self.api_code(), self.api_message())
+    }
+
+    /// 转为 Tauri `Result<ApiResponse<T>, ApiFailure>`（Err 序列化为 `{code,message}`）。
+    pub fn to_api_result<T>(&self) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<T>> {
+        Err(quant_common::api::ApiFailure::new(self.api_code(), self.api_message()))
+    }
+}
+
 impl From<quant_repository::RepoError> for ServiceError {
     /// Map repository-layer errors to typed service errors.
     ///

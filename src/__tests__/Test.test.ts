@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Test from '@/views/Test.vue'
 import { invoke } from '@tauri-apps/api/core'
@@ -79,10 +79,7 @@ describe('Test.vue - 按钮测试', () => {
     expect(mockInvoke).toHaveBeenCalledWith('check_redis_status')
 
     await wrapper.find('.el-button--primary').trigger('click')
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     const redisResult = wrapper.vm.testResults.find((r: any) => r.name === 'Redis 缓存')
     expect(redisResult.status).toBe('通过')

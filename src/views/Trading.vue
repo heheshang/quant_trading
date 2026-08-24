@@ -365,7 +365,10 @@ async function submitOrder(formData: OrderFormData = orderForm.value ?? {
         ElMessage.error('订单提交失败')
       }
     }
-  } catch { ElMessage.error('订单提交失败') }
+  } catch (e) {
+    // 展示后端真实错误信息（ApiError.message）。
+    ElMessage.error((e as Error)?.message || '订单提交失败')
+  }
   finally { submitting.value = false }
 }
 function resetOrderForm() {
