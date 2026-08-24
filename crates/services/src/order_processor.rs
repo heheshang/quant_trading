@@ -27,7 +27,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::RwLock;
 use tracing::instrument;
 use trading_engine::algorithms::{AlgorithmicOrderSlicer, TWAPParams, VWAPParams};
@@ -242,15 +242,8 @@ impl OrderProcessor {
                 .map_err(|e| ServiceError::Other(format!("Risk check failed: {}", e)))?;
         }
 
-        // 3. Build the execution engine (paper vs Binance chosen by config) and
-        //    submit to the in-memory order manager.
-        let binance_executor = self.binance_executor.read().await.clone();
-        let execution_engine = ExecutionEngine::new_binance(
-            self.order_manager.clone(),
-            trading_config,
-            binance_executor,
-        );
-
+        // 3. 提交到内存 OrderManager（Paper 由后台调度器在到期后撮合；现场由
+        //    execution engine 在 `place_order` 之外处理）。这里只记录为 Submitted。
         let mut order = order;
         let order_id = self
             .order_manager
@@ -280,9 +273,6 @@ impl OrderProcessor {
             status: "Submitted".to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
-
-        // 7. Dispatch execution on a background task.
-        self.spawn_execution(execution_engine, order, market_data);
 
         Ok(OrderPlacement { order_id, event })
     }
@@ -356,44 +346,76 @@ impl OrderProcessor {
     }
 
     /// Run execution asynchronously; failures are logged, not surfaced (best-effort).
-    fn spawn_execution(&self, engine: ExecutionEngine, order: Order, market_data: MarketData) {
-        let log = self.log_buffer.clone();
+    /// 启动纸面订单执行调度器（后台定时任务）。
+    ///
+    /// 周期性扫描 `orders` 表中已到期（`created_at + simulation_delay_ms <= now`）
+    /// 且未成交的纸面单，用 `ExecutionEngine::fill_order` 立即撮合并回写 DB。
+    /// 以 DB 为事实来源 → App 重启后可恢复处理，不再丢单。
+    pub async fn start_paper_execution_scheduler(&self) {
+        let trading = self.config.read().await.trading.clone();
+        let delay_ms = trading.simulation_delay_ms;
+        let engine = ExecutionEngine::new_binance(
+            self.order_manager.clone(),
+            trading,
+            self.binance_executor.read().await.clone(),
+        );
         let account_service = self.account_service.clone();
+        let market_service = self.market_service.clone();
+        let log = self.log_buffer.clone();
+
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            match engine.execute_order(order, &market_data).await {
-                Ok(result) => {
-                    // 回写订单终态到 DB（成交/部分成交等），
-                    // 否则重启后 OrderManager 清空、降级查 DB 仍显示提交状态。
-                    if let Err(e) = account_service
-                        .update_order_status(
-                            result.order_id,
-                            result.status,
-                            result.filled_quantity,
-                            result.commission,
-                        )
-                        .await
-                    {
-                        log.add_entry(LogEntry {
-                            timestamp: chrono::Utc::now(),
-                            level: "warn".to_string(),
-                            message: format!(
-                                "Order {} DB status update failed: {}",
-                                result.order_id, e
-                            ),
-                            module: Some("trading".to_string()),
-                        })
-                        .await;
+            let interval = std::time::Duration::from_secs(1);
+            loop {
+                tokio::time::sleep(interval).await;
+                let Ok(orders) = account_service.get_active_orders().await else {
+                    continue;
+                };
+                let now = chrono::Utc::now();
+                for order in orders {
+                    let due = order.created_at
+                        + chrono::Duration::milliseconds(delay_ms as i64)
+                        <= now;
+                    if !due {
+                        continue;
                     }
-                }
-                Err(e) => {
-                    log.add_entry(LogEntry {
-                        timestamp: chrono::Utc::now(),
-                        level: "error".to_string(),
-                        message: format!("Order execution failed: {}", e),
-                        module: Some("trading".to_string()),
-                    })
-                    .await;
+                    let market_data = match market_service.get_realtime_data(&order.symbol).await
+                    {
+                        Ok(md) => md,
+                        Err(e) => {
+                            log.add_entry(LogEntry {
+                                timestamp: chrono::Utc::now(),
+                                level: "warn".to_string(),
+                                message: format!(
+                                    "Scheduler skip order {} (market data): {}",
+                                    order.order_id, e
+                                ),
+                                module: Some("trading".to_string()),
+                            })
+                            .await;
+                            continue;
+                        }
+                    };
+                    match engine.fill_order(order, &market_data).await {
+                        Ok(result) => {
+                            let _ = account_service
+                                .update_order_status(
+                                    result.order_id,
+                                    result.status,
+                                    result.filled_quantity,
+                                    result.commission,
+                                )
+                                .await;
+                        }
+                        Err(e) => {
+                            log.add_entry(LogEntry {
+                                timestamp: chrono::Utc::now(),
+                                level: "error".to_string(),
+                                message: format!("Order execution failed: {}", e),
+                                module: Some("trading".to_string()),
+                            })
+                            .await;
+                        }
+                    }
                 }
             }
         });

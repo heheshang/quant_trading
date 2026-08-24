@@ -116,4 +116,13 @@ impl ExecutionEngine {
 
         result
     }
+
+    /// 立即撮合（跳过模拟延迟），供纸面调度器在订单到期时调用。
+    pub async fn fill_order(
+        &self,
+        order: Order,
+        market_data: &MarketData,
+    ) -> Result<ExecutionResult> {
+        self.strategy.fill_now(order, market_data).await
+    }
 }

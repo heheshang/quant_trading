@@ -261,6 +261,12 @@ async fn main() {
         log_buffer: log_buffer.clone(),
     };
     let app_services = AppServices::new(infra);
+    // 启动纸面订单执行调度器（后台定时任务）：按模拟延迟撮合已到期纸面单，
+    // 以 DB 为事实来源，重启后可恢复。
+    app_services
+        .order_processor
+        .start_paper_execution_scheduler()
+        .await;
     // Capture the Prometheus monitoring config before `config_arc` is moved
     // into `AppState` below.
     let prometheus_cfg = config_arc.read().await.monitoring.clone();

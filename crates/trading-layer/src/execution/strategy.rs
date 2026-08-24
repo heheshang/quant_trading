@@ -27,6 +27,11 @@ use super::ExecutionResult;
 pub trait ExecutionStrategy: Send + Sync {
     /// 执行一笔订单，返回执行结果。
     async fn execute(&self, order: Order, market_data: &MarketData) -> Result<ExecutionResult>;
+
+    /// 立即执行（跳过模拟延迟）：由纸面调度器在订单到期时调用。默认走 `execute`。
+    async fn fill_now(&self, order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
+        self.execute(order, market_data).await
+    }
 }
 
 /// 模拟盘执行策略。
@@ -70,12 +75,17 @@ impl PaperExecutionStrategy {
 #[async_trait::async_trait]
 impl ExecutionStrategy for PaperExecutionStrategy {
     #[instrument(skip(self, market_data), fields(order_id = %order.order_id, symbol = %order.symbol, side = ?order.side, strategy = "paper"))]
-    async fn execute(&self, mut order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
+    async fn execute(&self, order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
         let delay_ms = self.config.simulation_delay_ms;
         if delay_ms > 0 {
             tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
         }
+        self.fill_now(order, market_data).await
+    }
 
+    /// 立即撮合（跳过模拟延迟）——调度器在订单到期时调用。
+    #[instrument(skip(self, market_data), fields(order_id = %order.order_id, symbol = %order.symbol, strategy = "paper"))]
+    async fn fill_now(&self, mut order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
         let execution_price = self.calculate_execution_price(&order, market_data)?;
 
         let total_value = execution_price * order.quantity;
@@ -103,10 +113,7 @@ impl ExecutionStrategy for PaperExecutionStrategy {
             executed_at: Utc::now(),
         };
 
-        info!(
-            "Order {} filled at price {}",
-            order.order_id, execution_price
-        );
+        info!("Order {} filled at price {}", order.order_id, execution_price);
         Ok(result)
     }
 }
