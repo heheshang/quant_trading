@@ -226,9 +226,10 @@ impl OrderProcessor {
                     e
                 ))
             })?;
-            let positions = self.account_service.get_positions().await.map_err(|e| {
+            // 纸面账号：持仓从已成交单净额推导（positions 表是静态账本，纸面成交不更新）。
+            let positions = self.account_service.get_paper_positions().await.map_err(|e| {
                 ServiceError::Other(format!(
-                    "Pre-trade risk check failed: unable to fetch positions (fail-closed): {}",
+                    "Pre-trade risk check failed: unable to fetch paper positions (fail-closed): {}",
                     e
                 ))
             })?;

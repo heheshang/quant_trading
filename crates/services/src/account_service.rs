@@ -511,6 +511,65 @@ impl AccountService {
         info!(count = positions.len(), "Positions retrieved");
         Ok(positions)
     }
+
+    /// 纸面持仓：由 `orders` 表已成交单净额推导（买 − 卖），供纸面卖单风控校验。
+    ///
+    /// `positions` 表是静态账本，纸面成交不会更新它；为避免裸卖空误判，纸面
+    /// 持仓需从真实成交记录聚合。
+    #[instrument(skip_all)]
+    pub async fn get_paper_positions(&self) -> ServiceResult<Vec<Position>> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+
+        let rows = sqlx::query(
+            r#"
+            SELECT symbol,
+                   SUM(CASE WHEN side = 'Buy' THEN filled_quantity ELSE -filled_quantity END) AS net_qty,
+                   SUM(CASE WHEN side = 'Buy' THEN COALESCE(price, 0) * filled_quantity ELSE 0 END) AS buy_cost,
+                   SUM(CASE WHEN side = 'Buy' THEN filled_quantity ELSE 0 END) AS buy_qty
+            FROM orders
+            WHERE status = 'Filled'
+            GROUP BY symbol
+            "#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch paper positions: {}", e);
+            ServiceError::from(e)
+        })?;
+
+        let mut positions = Vec::new();
+        for r in &rows {
+            let net: Decimal = r.get("net_qty");
+            if net <= Decimal::ZERO {
+                continue;
+            }
+            let buy_cost: Decimal = r.get("buy_cost");
+            let buy_qty: Decimal = r.get("buy_qty");
+            let avg = if buy_qty > Decimal::ZERO {
+                buy_cost / buy_qty
+            } else {
+                Decimal::ZERO
+            };
+            positions.push(Position {
+                symbol: r.get("symbol"),
+                quantity: net,
+                available_quantity: net,
+                avg_price: avg,
+                market_value: Decimal::ZERO,
+                unrealized_pnl: Decimal::ZERO,
+                realized_pnl: Decimal::ZERO,
+                updated_at: chrono::Utc::now(),
+            });
+        }
+
+        info!(count = positions.len(), "Paper positions derived");
+        Ok(positions)
+    }
 }
 
 #[cfg(test)]
