@@ -3,27 +3,33 @@
     <el-row :gutter="20" class="header">
       <el-col :span="24">
         <h2>交易执行</h2>
-        <el-radio-group v-model="tradeMode" size="small" style="margin-top: 8px" @change="onTradeModeChange">
-          <el-radio-button value="paper">纸面交易</el-radio-button>
-          <el-radio-button value="live">实盘（Binance 测试网）</el-radio-button>
-        </el-radio-group>
+        <div class="trade-tabs-header">
+          <el-tabs v-model="activeTradeTab" class="trade-tabs" @tab-change="onTradeModeChange">
+            <el-tab-pane label="纸面交易" name="paper" />
+            <el-tab-pane label="实盘交易" name="live" />
+            <el-tab-pane label="策略/算法" name="algorithm" />
+          </el-tabs>
+          <el-tag :type="tradeTabBadgeType" size="small" class="trade-tab-badge">{{ tradeTabBadge }}</el-tag>
+        </div>
       </el-col>
     </el-row>
 
-    <el-tabs v-model="activeTradeTab" class="trade-tabs">
-      <el-tab-pane label="模拟交易" name="paper">
-        <PaperAccountCard v-if="tradeMode === 'paper'" :account="paperAccount" />
-        <AssetBalanceTable
-          v-else
-          :balances="binanceBalances"
-          title="Binance 测试网余额"
-          @refresh="fetchAccountInfo"
-        />
-        <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
-        <PositionsTable :positions="displayPositions" />
-        <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
-      </el-tab-pane>
-    </el-tabs>
+    <template v-if="activeTradeTab === 'paper'">
+      <PaperAccountCard :account="paperAccount" />
+      <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+      <PositionsTable :positions="displayPositions" />
+      <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
+    </template>
+    <template v-else-if="activeTradeTab === 'live'">
+      <AssetBalanceTable :balances="binanceBalances" title="Binance 测试网余额" @refresh="fetchAccountInfo" />
+      <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+      <PositionsTable :positions="displayPositions" />
+      <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
+    </template>
+    <template v-else>
+      <div class="algo-tab-hint">算法单（TWAP / VWAP / Iceberg）由策略调度器产生，按 exchange='algorithm' 单独展示。</div>
+      <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
+    </template>
 
     <ConfirmDialog
       v-model:visible="cancelDialogVisible"
@@ -71,10 +77,18 @@ import PositionsTable from '@/components/trading/PositionsTable.vue'
 import ActiveOrdersTable from '@/components/trading/ActiveOrdersTable.vue'
 import type { OrderFormData } from '@/components/trading/PaperOrderForm.vue'
 
-const activeTradeTab = ref('paper')
+const activeTradeTab = ref<'paper' | 'live' | 'algorithm'>('paper')
 const cancelDialogVisible = ref(false)
 const orderIdToCancel = ref<number | null>(null)
-const tradeMode = ref<'paper' | 'live'>('paper')
+// 交易模式 = 当前 tab（paper/live/algorithm），供下单/取数/撤单分支使用。
+const tradeMode = computed<'paper' | 'live' | 'algorithm'>(() => activeTradeTab.value)
+const TRADE_TAB_META: Record<'paper' | 'live' | 'algorithm', { label: string; badgeType: string }> = {
+  paper: { label: '纸面交易', badgeType: 'warning' },
+  live: { label: '实盘交易', badgeType: 'success' },
+  algorithm: { label: '策略/算法', badgeType: 'info' },
+}
+const tradeTabBadge = computed(() => TRADE_TAB_META[tradeMode.value].label)
+const tradeTabBadgeType = computed(() => TRADE_TAB_META[tradeMode.value].badgeType as 'warning' | 'success' | 'info')
 const binanceBalances = ref<BinanceBalance[]>([])
 /** 全市场价格（供持仓市值/盈亏、订单盈亏复算，一次拉取复用）。 */
 const tickerPrices = ref<Record<string, number>>({})
@@ -374,8 +388,14 @@ async function fetchActiveOrders() {
         }
         throw e
       }
+    } else if (tradeMode.value === 'algorithm') {
+      // 算法单（TWAP/VWAP/Iceberg）独立展示。
+      activeOrders.value = (await getActiveOrders('algorithm')).map((o) => ({
+        ...o,
+        strategy_name: strategyName(o.strategy_id),
+      }))
     } else {
-      // 纸面页只展示纸面单（algorithm 为独立种类，可在持仓/策略页查看）。
+      // 纸面页只展示纸面单。
       activeOrders.value = (await getActiveOrders('paper')).map((o) => ({
         ...o,
         strategy_name: strategyName(o.strategy_id),
@@ -411,8 +431,8 @@ async function submitOrder(formData: OrderFormData = orderForm.value ?? {
       quantity: formData.quantity, filled_quantity: 0, status: 'Pending',
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       commission: 0, slippage: 0,
-      // 下单带入订单类型：纸面/实盘（实盘由 placeBinanceOrder 走 Binance，镜像落库为 live）。
-      exchange: tradeMode.value === 'live' ? 'live' : 'paper',
+      // 下单带入订单类型：纸面/实盘/算法。
+      exchange: tradeMode.value === 'live' ? 'live' : tradeMode.value === 'algorithm' ? 'algorithm' : 'paper',
     }
     if (tradeMode.value === 'live') {
       const placed = await placeBinanceOrder({
@@ -605,7 +625,10 @@ defineExpose({
 <style scoped>
 .trading-system { padding: 20px; }
 .header { margin-bottom: 20px; }
-.trade-tabs { margin-bottom: 20px; }
+.trade-tabs { margin-bottom: 0; }
+.trade-tabs-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.trade-tab-badge { margin-left: 8px; white-space: nowrap; }
+.algo-tab-hint { color: var(--color-text-secondary); padding: 8px 12px; margin-bottom: 12px; }
 .balance-card-header {
   display: flex;
   justify-content: space-between;
