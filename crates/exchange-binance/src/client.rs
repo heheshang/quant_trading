@@ -21,6 +21,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// Exchange-level symbol filters (from `/api/v3/exchangeInfo`), used to round
+/// order quantity/price to the symbol's step before placing (avoids
+/// `-1013 Filter failure: LOT_SIZE / PRICE_FILTER`).
+#[derive(Debug, Clone, Default)]
+pub struct SymbolFilters {
+    pub tick_size: rust_decimal::Decimal,
+    pub step_size: rust_decimal::Decimal,
+    pub min_qty: rust_decimal::Decimal,
+    pub min_notional: rust_decimal::Decimal,
+}
+
 /// HMAC-SHA256 signature for a raw query string (hex-encoded).
 pub(crate) fn sign(secret: &str, query: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key");
@@ -125,6 +136,8 @@ pub struct Client {
     api_key: Option<String>,
     signer: SigningScheme,
     environment: BinanceEnvironment,
+    /// Per-symbol exchange filters cache (avoids refetching exchangeInfo).
+    filters: parking_lot::RwLock<std::collections::HashMap<String, SymbolFilters>>,
 }
 
 impl Client {
@@ -148,6 +161,7 @@ impl Client {
             },
             signer,
             environment,
+            filters: parking_lot::RwLock::new(std::collections::HashMap::new()),
         })
     }
 
@@ -160,6 +174,71 @@ impl Client {
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok())
+    }
+
+    /// Fetch (and cache) exchange filters for a symbol. Best-effort: on error
+    /// returns `SymbolFilters::default()` so order placement still proceeds.
+    async fn symbol_filters(&self, symbol: &str) -> SymbolFilters {
+        if let Some(f) = self.filters.read().get(symbol) {
+            return f.clone();
+        }
+        let v: serde_json::Value = match self
+            .get_json("/api/v3/exchangeInfo", &[("symbol", symbol.to_string())])
+            .await
+        {
+            Ok(v) => v,
+            Err(_) => return SymbolFilters::default(),
+        };
+        let si = v.get("symbols").and_then(|a| a.get(0)).cloned();
+        let mut f = SymbolFilters::default();
+        if let Some(filters) = si
+            .and_then(|s| s.get("filters").cloned())
+            .and_then(|a| a.as_array().cloned())
+        {
+            for filt in filters {
+                match filt.get("filterType").and_then(|t| t.as_str()) {
+                    Some("LOT_SIZE") => {
+                        f.step_size =
+                            parse_decimal(filt.get("stepSize").and_then(|v| v.as_str()).unwrap_or("1"));
+                        f.min_qty =
+                            parse_decimal(filt.get("minQty").and_then(|v| v.as_str()).unwrap_or("0"));
+                    }
+                    Some("PRICE_FILTER") => {
+                        f.tick_size = parse_decimal(
+                            filt.get("tickSize")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("0.00000001"),
+                        );
+                    }
+                    Some("NOTIONAL") | Some("MIN_NOTIONAL") => {
+                        f.min_notional =
+                            parse_decimal(filt.get("minNotional").and_then(|v| v.as_str()).unwrap_or("0"));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let _ = self
+            .filters
+            .write()
+            .insert(symbol.to_string(), f.clone());
+        f
+    }
+
+    /// Round a quantity DOWN to the symbol's lot step (safe: never over-buys).
+    fn round_down(value: Decimal, step: Decimal) -> Decimal {
+        if step <= Decimal::ZERO {
+            return value;
+        }
+        ((value / step).floor()) * step
+    }
+
+    /// Round a price to the nearest symbol tick.
+    fn round_tick(value: Decimal, tick: Decimal) -> Decimal {
+        if tick <= Decimal::ZERO {
+            return value;
+        }
+        ((value / tick).round()) * tick
     }
 
     /// Send a request, retrying transient 429 (rate limit) with exponential
@@ -366,13 +445,36 @@ impl ClientInterface for Client {
     }
 
     async fn place_order(&self, request: &BinancePlaceOrderRequest) -> Result<BinanceOrder> {
+        // Round quantity/price to the symbol's exchange rules so Binance does
+        // not reject with `-1013 Filter failure: LOT_SIZE / PRICE_FILTER`.
+        let f = self.symbol_filters(&request.symbol).await;
+        let quantity = Self::round_down(request.quantity, f.step_size);
+        if quantity < f.min_qty {
+            return Err(Error::Validation(format!(
+                "Quantity {} invalid for {}: min {} step {}",
+                request.quantity, request.symbol, f.min_qty, f.step_size
+            )));
+        }
+        let price = request.price.map(|p| Self::round_tick(p, f.tick_size));
+        // MIN_NOTIONAL: for LIMIT orders the notional (qty × price) must meet the
+        // exchange minimum, otherwise Binance rejects with `-1013 NOTIONAL`.
+        if let (Some(p), false) = (price, f.min_notional <= Decimal::ZERO) {
+            if quantity * p < f.min_notional {
+                return Err(Error::Validation(format!(
+                    "Order notional {} below min {} for {}",
+                    quantity * p,
+                    f.min_notional,
+                    request.symbol
+                )));
+            }
+        }
         let mut params: Vec<(&str, String)> = vec![
             ("symbol", request.symbol.clone()),
             ("side", format!("{:?}", request.side).to_uppercase()),
             ("type", format!("{:?}", request.order_type).to_uppercase()),
-            ("quantity", request.quantity.to_string()),
+            ("quantity", quantity.to_string()),
         ];
-        if let Some(price) = request.price {
+        if let Some(price) = price {
             params.push(("price", price.to_string()));
         }
         // Binance requires `timeInForce` for LIMIT orders.
