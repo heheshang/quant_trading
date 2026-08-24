@@ -4,8 +4,56 @@
 //! They never touch the Binance client or data layers directly (layering/DIP).
 
 use crate::state::AppState;
-use exchange_binance::types::BinancePlaceOrderRequest;
+use exchange_binance::types::{BinanceOrder, BinancePlaceOrderRequest};
+use quant_common::types::{Order, OrderSide, OrderStatus, OrderType};
+use rust_decimal::Decimal;
 use tauri::State;
+
+/// 把 Binance 实盘单映射为 App `Order`（域格式 symbol / PascalCase 状态）。
+fn binance_order_to_app_order(o: &BinanceOrder, strategy_id: Option<&str>) -> Order {
+    let side = if o.side == "SELL" { OrderSide::Sell } else { OrderSide::Buy };
+    let order_type = if o.order_type == "MARKET" { OrderType::Market } else { OrderType::Limit };
+    let status = match o.status.as_str() {
+        "NEW" => OrderStatus::Submitted,
+        "PARTIALLY_FILLED" => OrderStatus::PartiallyFilled,
+        "FILLED" => OrderStatus::Filled,
+        "CANCELED" => OrderStatus::Cancelled,
+        "REJECTED" => OrderStatus::Rejected,
+        "EXPIRED" => OrderStatus::Expired,
+        _ => OrderStatus::Pending,
+    };
+    let from_ms = |ms: i64| chrono::DateTime::from_timestamp_millis(ms).unwrap_or_else(chrono::Utc::now);
+    Order {
+        order_id: o.order_id,
+        strategy_id: strategy_id.unwrap_or("").to_string(),
+        symbol: exchange_binance::from_binance_symbol(&o.symbol),
+        order_type,
+        side,
+        price: Some(o.price),
+        quantity: o.orig_qty,
+        filled_quantity: o.executed_qty,
+        status,
+        created_at: from_ms(o.time),
+        updated_at: from_ms(o.update_time),
+        commission: Decimal::ZERO,
+        slippage: Decimal::ZERO,
+    }
+}
+
+/// 把实盘单镜像写入 `orders` 表（活跃单统一从 DB 读）。
+async fn mirror_live_order(
+    services: &quant_services::AppServices,
+    o: &BinanceOrder,
+    strategy_id: Option<&str>,
+) {
+    if let Ok(account) = services.account_service.get_account_info().await {
+        let app_order = binance_order_to_app_order(o, strategy_id);
+        let _ = services
+            .account_service
+            .persist_order(&app_order, &account.account_id)
+            .await;
+    }
+}
 
 fn services<'a>(state: &'a State<'_, AppState>) -> Result<&'a quant_services::AppServices, String> {
     state
@@ -89,6 +137,8 @@ pub async fn place_binance_order(
             &order.status,
         )
         .await;
+    // 镜像写入 orders 表（活跃单统一从 DB 读）。
+    mirror_live_order(services, &order, request.strategy_id.as_deref()).await;
     Ok(order)
 }
 

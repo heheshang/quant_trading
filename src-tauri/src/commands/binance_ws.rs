@@ -322,14 +322,22 @@ pub fn start_monitor_metrics(app_services: &quant_services::AppServices) {
 pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::AppServices) {
     let binance = app_services.binance_service.clone();
     let live_trades = app_services.live_trades.clone();
+    let account_service = app_services.account_service.clone();
     tokio::spawn(async move {
+        use quant_common::types::OrderStatus;
+        use std::collections::HashMap;
+        // 上一轮仍开放的单（order_id → 域 symbol），用于检测终态回写。
+        let mut last_open: HashMap<i64, String> = HashMap::new();
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             let Ok(open) = binance.get_open_orders(None).await else {
                 continue;
             };
+            let mut current: HashMap<i64, String> = HashMap::new();
             let mut changed = false;
-            for o in open {
+            for o in &open {
+                let sym = exchange_binance::from_binance_symbol(&o.symbol);
+                current.insert(o.order_id, sym);
                 if live_trades
                     .update_status(o.order_id, &o.status, o.executed_qty)
                     .await
@@ -337,7 +345,51 @@ pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::A
                 {
                     changed = true;
                 }
+                // 同步 orders 表状态（活跃单统一从 DB 读）。
+                let status = match o.status.as_str() {
+                    "PARTIALLY_FILLED" => OrderStatus::PartiallyFilled,
+                    "NEW" => OrderStatus::Submitted,
+                    _ => continue,
+                };
+                let _ = account_service
+                    .update_order_status(
+                        o.order_id,
+                        status,
+                        o.executed_qty,
+                        rust_decimal::Decimal::ZERO,
+                    )
+                    .await;
             }
+            // 之前开放、现在不再开放的单 → 终态（按 Binance 实际状态回写 orders/live_trades）。
+            for (order_id, sym) in last_open.iter() {
+                if current.contains_key(order_id) {
+                    continue;
+                }
+                if let Ok(o) = binance.get_order(sym, *order_id).await {
+                    let terminal = match o.status.as_str() {
+                        "FILLED" => Some(OrderStatus::Filled),
+                        "CANCELED" => Some(OrderStatus::Cancelled),
+                        "REJECTED" => Some(OrderStatus::Rejected),
+                        "EXPIRED" => Some(OrderStatus::Expired),
+                        _ => None,
+                    };
+                    if let Some(status) = terminal {
+                        let _ = account_service
+                            .update_order_status(
+                                *order_id,
+                                status,
+                                o.executed_qty,
+                                rust_decimal::Decimal::ZERO,
+                            )
+                            .await;
+                        let _ = live_trades
+                            .update_status(*order_id, &o.status, o.executed_qty)
+                            .await;
+                        changed = true;
+                    }
+                }
+            }
+            last_open = current;
             if changed {
                 let _ = app.emit("binance:live_orders_updated", ());
             }
