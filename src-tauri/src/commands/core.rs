@@ -14,6 +14,24 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String>
     Ok(config.redacted())
 }
 
+/// 用后端 ENCRYPTION_KEY 加密任意字符串（用于把会话 token 等敏感值加密后落盘）。
+#[tauri::command]
+pub async fn secure_encrypt(state: State<'_, AppState>, value: String) -> Result<String, String> {
+    state.require_auth().await?;
+    let key = state.config.read().await.security.encryption_key.clone();
+    let de = security::DataEncryption::from_key_string(&key).map_err(|e| format!("加密初始化失败: {}", e))?;
+    de.encrypt_string(&value).map_err(|e| format!("加密失败: {}", e))
+}
+
+/// 用后端 ENCRYPTION_KEY 解密（配合 `secure_encrypt`）。
+#[tauri::command]
+pub async fn secure_decrypt(state: State<'_, AppState>, value: String) -> Result<String, String> {
+    state.require_auth().await?;
+    let key = state.config.read().await.security.encryption_key.clone();
+    let de = security::DataEncryption::from_key_string(&key).map_err(|e| format!("解密初始化失败: {}", e))?;
+    de.decrypt_string(&value).map_err(|e| format!("解密失败: {}", e))
+}
+
 /// 更新系统配置
 #[tauri::command]
 pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Result<bool, String> {

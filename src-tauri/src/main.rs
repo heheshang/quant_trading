@@ -331,6 +331,8 @@ async fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::update_config,
+            commands::secure_encrypt,
+            commands::secure_decrypt,
             commands::get_market_data,
             commands::submit_order,
             commands::run_algorithmic_order,
