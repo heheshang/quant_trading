@@ -4,7 +4,6 @@ import {
   getBinanceTickerPrices,
   getLiveTrades,
   getAccountSnapshots,
-  recordAccountSnapshot,
 } from '@/services/binance'
 import type { BinanceBalance, LiveTrade } from '@/services/types'
 
@@ -142,15 +141,7 @@ export function useBinanceAccountOverview() {
       prices.value = p
       liveTrades.value = t
       lastFetched = Date.now()
-      // 记录当前权益快照（资产曲线随时间增长）。
-      const eq = Number(totalAssets.value) || 0
-      if (eq > 0) {
-        try {
-          await recordAccountSnapshot(eq)
-        } catch {
-          // 记录失败忽略
-        }
-      }
+      // 权益由后台快照写入器记录（每 60s）；这里只拉历史供曲线展示。
       const rows = await getAccountSnapshots('USDT', 200)
       equityHistory.value = rows
         .map((r) => [String(r.ts), Number(r.eq ?? 0)] as [string, number])

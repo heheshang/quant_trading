@@ -266,6 +266,39 @@ pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> Result
 /// 每 5s 拉取开放订单，把状态/成交量同步进 `live_trades`（保留策略关联），
 /// 有变化时推送 `binance:live_orders_updated`，前端自动刷新。这是 WS 用户流
 /// 不可用（测试网 -1099）时的 REST 兜底，保证实盘单状态自动更新。
+/// 启动资产曲线后台快照写入器。
+///
+/// 每 60s 拉取实盘余额 + 全市场价格，计算 USDT 总权益并写入 `account_snapshots`。
+/// 独立于前端刷新运行，使资产曲线随时间持续增长。
+pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) {
+    let binance = app_services.binance_service.clone();
+    let account_service = app_services.account_service.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            let (Ok(balances), Ok(prices)) = (binance.get_balance().await, binance.get_all_ticker_prices().await)
+            else {
+                continue;
+            };
+            let mut equity = rust_decimal::Decimal::ZERO;
+            for b in balances {
+                let asset = b.asset.as_str();
+                let qty = b.free + b.locked;
+                let price = if matches!(asset, "USDT" | "USDC" | "TUSD" | "BUSD" | "FDUSD" | "DAI") {
+                    rust_decimal::Decimal::ONE
+                } else {
+                    prices
+                        .get(&format!("{asset}USDT"))
+                        .copied()
+                        .unwrap_or(rust_decimal::Decimal::ZERO)
+                };
+                equity += qty * price;
+            }
+            let _ = account_service.record_equity_snapshot(equity).await;
+        }
+    });
+}
+
 pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::AppServices) {
     let binance = app_services.binance_service.clone();
     let live_trades = app_services.live_trades.clone();

@@ -316,6 +316,8 @@ async fn main() {
             let state = app.state::<state::AppState>();
             if let Some(services) = state.app_services.as_ref() {
                 commands::binance_ws::start_live_order_monitor(app.handle().clone(), services);
+                // 资产曲线后台快照写入器（独立于前端刷新，每 60s 记录权益）。
+                commands::binance_ws::start_equity_snapshot_writer(services);
             }
             Ok(())
         })
