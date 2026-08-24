@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listen } from '@tauri-apps/api/event'
 import {
@@ -19,6 +19,7 @@ import { getSymbols } from '@/services/market'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import Paginator from '@/components/common/Paginator.vue'
 import type {
   BinanceBalance,
   BinanceStatus,
@@ -44,6 +45,8 @@ const symbols = ref<string[]>([])
 // ── 账户余额优化：总市值 + 可筛选标的下拉 ──
 const balancePrices = ref<Record<string, number>>({})
 const balanceAssetFilter = ref('')
+const balancePage = ref(1)
+const balancePageSize = ref(10)
 const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
 const balancePriceOf = (asset: string) =>
   USD_STABLES.includes(asset) ? 1 : balancePrices.value[asset + 'USDT'] || 0
@@ -62,6 +65,13 @@ const filteredBalances = computed(() =>
     ? balances.value.filter((b) => b.asset === balanceAssetFilter.value)
     : balances.value.filter((b) => Number(b.free) > 0 || Number(b.locked) > 0),
 )
+/** 当前页切片（最多 10 条/页）。 */
+const paginatedBalances = computed(() => {
+  const start = (balancePage.value - 1) * balancePageSize.value
+  return filteredBalances.value.slice(start, start + balancePageSize.value)
+})
+// 筛选变化时回到第一页，避免页码越界。
+watch(balanceAssetFilter, () => { balancePage.value = 1 })
 
 const form = ref({
   symbol: 'BTC-USDT',
@@ -247,11 +257,19 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
           </div>
         </div>
       </template>
-      <el-table :data="filteredBalances" v-loading="loading" size="small">
+      <el-table :data="paginatedBalances" v-loading="loading" size="small">
         <el-table-column prop="asset" label="资产" />
         <el-table-column prop="free" label="可用" />
         <el-table-column prop="locked" label="锁定" />
       </el-table>
+      <Paginator
+        v-if="filteredBalances.length > 0"
+        :total="filteredBalances.length"
+        :page="balancePage"
+        :page-size="balancePageSize"
+        @update:page="balancePage = $event"
+        @update:pageSize="balancePageSize = $event; balancePage = 1"
+      />
     </el-card>
 
     <el-card class="section">
