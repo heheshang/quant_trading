@@ -94,7 +94,7 @@ export function usePaperAccountOverview(initialCash: number) {
     if (!force && Date.now() - lastFetched < KEEPALIVE_MS && orders.value.length > 0) return
     loading.value = true
     try {
-      const [ord, pr] = await Promise.all([getRecentOrders(100), getBinanceTickerPrices()])
+      const [ord, pr] = await Promise.all([getRecentOrders(100, 'paper'), getBinanceTickerPrices()])
       orders.value = Array.isArray(ord) ? ord : []
       prices.value = pr && typeof pr === 'object' ? pr : {}
       lastFetched = Date.now()

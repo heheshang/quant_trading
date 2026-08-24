@@ -116,6 +116,7 @@ function liveTradeToOrder(t: LiveTrade): Order {
     updated_at: t.updated_at,
     commission: 0,
     slippage: 0,
+    exchange: 'live',
   }
 }
 /** live 单关联的策略（Binance 不返回 strategy_id，按 order_id 本地记录本会话内的）。 */
@@ -178,6 +179,7 @@ function binanceOrderToOrder(o: BinanceOrder): Order {
     updated_at: new Date(o.update_time ?? Date.now()).toISOString(),
     commission: 0,
     slippage: 0,
+    exchange: 'live',
   }
 }
 
@@ -349,8 +351,13 @@ async function fetchActiveOrders() {
       if (Object.keys(tickerPrices.value).length === 0) await fetchTickerPrices()
       // 加载本地持久化的 live 单记录（跨会话策略关联）。
       await fetchLiveTrades()
-      // 显示最近订单历史（含已成交/已撤/未成交），否则市价单或已成交单在
-      // 「活跃订单」里永远看不到。
+      // 实盘活跃单从 DB 读（exchange='live'，由 place_binance_order 镜像 + 后台状态同步），
+      // 与纸面单分离。DB 无实盘单时降级到 Binance 实时订单。
+      const dbLive = await getActiveOrders('live')
+      if (dbLive.length > 0) {
+        activeOrders.value = dbLive.map((o) => ({ ...o, strategy_name: strategyName(o.strategy_id) }))
+        return
+      }
       const sym = orderForm.value?.symbol?.trim() || 'BTC-USDT'
       try {
         activeOrders.value = (await getBinanceOrders(sym, true, 50))
@@ -404,6 +411,8 @@ async function submitOrder(formData: OrderFormData = orderForm.value ?? {
       quantity: formData.quantity, filled_quantity: 0, status: 'Pending',
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       commission: 0, slippage: 0,
+      // 下单带入订单类型：纸面/实盘（实盘由 placeBinanceOrder 走 Binance，镜像落库为 live）。
+      exchange: tradeMode.value === 'live' ? 'live' : 'paper',
     }
     if (tradeMode.value === 'live') {
       const placed = await placeBinanceOrder({
