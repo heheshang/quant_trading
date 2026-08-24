@@ -129,6 +129,85 @@ impl AccountService {
         Ok(orders)
     }
 
+    /// 最近订单（含已成交/撤单/拒绝），供「最近交易」等按时间倒序展示。
+    pub async fn get_recent_orders(&self, limit: u32) -> ServiceResult<Vec<Order>> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+
+        let rows = sqlx::query(
+            r#"
+            SELECT order_id, strategy_id, symbol, order_type, side, price,
+                   quantity, filled_quantity, commission, slippage, status,
+                   created_at, updated_at
+            FROM orders
+            ORDER BY created_at DESC
+            LIMIT $1
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch recent orders: {}", e);
+            ServiceError::from(e)
+        })?;
+
+        let orders = Self::map_order_rows(&rows)?;
+        info!(count = orders.len(), "Recent orders retrieved");
+        Ok(orders)
+    }
+
+    /// 把 `orders` 表行映射为 `Order`（共用逻辑，避免重复）。
+    fn map_order_rows(rows: &[sqlx::postgres::PgRow]) -> ServiceResult<Vec<Order>> {
+        rows.iter()
+            .map(|row| -> ServiceResult<Order> {
+                let status_str: String = row.get("status");
+                let otype_str: String = row.get("order_type");
+                let side_str: String = row.get("side");
+
+                let status =
+                    serde_json::from_value(serde_json::Value::String(status_str)).map_err(
+                        |e| ServiceError::Deserialization {
+                            field: "status",
+                            source: e,
+                        },
+                    )?;
+                let order_type =
+                    serde_json::from_value(serde_json::Value::String(otype_str)).map_err(
+                        |e| ServiceError::Deserialization {
+                            field: "order_type",
+                            source: e,
+                        },
+                    )?;
+                let side = serde_json::from_value(serde_json::Value::String(side_str)).map_err(
+                    |e| ServiceError::Deserialization {
+                        field: "side",
+                        source: e,
+                    },
+                )?;
+
+                Ok(Order {
+                    order_id: row.get("order_id"),
+                    strategy_id: row.get("strategy_id"),
+                    symbol: row.get("symbol"),
+                    order_type,
+                    side,
+                    price: row.get("price"),
+                    quantity: row.get("quantity"),
+                    filled_quantity: row.get("filled_quantity"),
+                    commission: row.get("commission"),
+                    slippage: row.get("slippage"),
+                    status,
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                })
+            })
+            .collect()
+    }
+
     pub async fn persist_order(&self, order: &Order, account_id: &i64) -> ServiceResult<()> {
         let client = self
             .postgres

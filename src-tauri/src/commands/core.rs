@@ -201,6 +201,23 @@ pub async fn get_positions(state: State<'_, AppState>) -> Result<Vec<Position>, 
     }
 }
 
+/// 最近订单（含已成交/撤单/拒绝），按时间倒序，供「最近交易」等展示。
+#[tauri::command]
+pub async fn get_recent_orders(
+    state: State<'_, AppState>,
+    limit: Option<u32>,
+) -> Result<Vec<Order>, String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .account_service
+        .get_recent_orders(limit.unwrap_or(50))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_active_orders(state: State<'_, AppState>) -> Result<Vec<Order>, String> {
     // 优先从 OrderManager 内存获取真实活跃订单（Submitted / PartiallyFilled）

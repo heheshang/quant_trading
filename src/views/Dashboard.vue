@@ -158,7 +158,7 @@ function computeRiskLevel(metrics: Record<string, number>): string {
 const riskLevel = computed(() => computeRiskLevel(riskMetrics.value))
 
 const recentTrades = computed(() =>
-  orderStore.activeOrders.map((order) => ({
+  orderStore.recentOrders.map((order) => ({
     time: formatDate(order.created_at),
     symbol: order.symbol,
     side: formatOrderSide(order.side),
@@ -169,7 +169,11 @@ const recentTrades = computed(() =>
 )
 
 async function refreshData() {
-  await Promise.all([accountStore.refreshAll(), orderStore.fetchActiveOrders(true)])
+  await Promise.all([
+    accountStore.refreshAll(),
+    orderStore.fetchActiveOrders(true),
+    orderStore.fetchRecentOrders(true),
+  ])
 }
 async function fetchRiskLevel() {
   riskLevelLoading.value = true
@@ -188,6 +192,7 @@ onMounted(async () => {
   await accountStore.fetchAccountInfo(true)
   await accountStore.fetchPositions(true)
   await orderStore.fetchActiveOrders(true)
+  await orderStore.fetchRecentOrders(true)
   fetchRiskLevel()
   refreshInterval = setInterval(() => refreshData(), 30_000)
   await marketStore.start()

@@ -15,6 +15,11 @@ export function getActiveOrders(): Promise<Order[]> {
   return call<Order[]>('get_active_orders')
 }
 
+/** 最近订单（含已成交/撤单/拒绝），按时间倒序。 */
+export function getRecentOrders(limit = 50): Promise<Order[]> {
+  return call<Order[]>('get_recent_orders', { limit })
+}
+
 /**
  * Cancel an in-progress order (paper / OrderManager), identified by its
  * internal `order_id`.

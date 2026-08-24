@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getActiveOrders, submitOrder } from '@/services/order'
+import { getActiveOrders, getRecentOrders, submitOrder } from '@/services/order'
 import type { Order } from '@/services/types'
 
 const CACHE_TTL_MS = 30_000
 
 export const useOrderStore = defineStore('order', () => {
   const activeOrders = ref<Order[]>([])
+  const recentOrders = ref<Order[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
   let lastFetched = 0
@@ -38,6 +39,15 @@ export const useOrderStore = defineStore('order', () => {
     }
   }
 
+  async function fetchRecentOrders(force = false) {
+    if (!force && recentOrders.value.length > 0 && !isStale.value) return
+    try {
+      recentOrders.value = await getRecentOrders(50)
+    } catch {
+      // 忽略：历史拉取失败不阻塞页面
+    }
+  }
+
   async function placeOrder(order: Order): Promise<string | null> {
     try {
       const orderId = await submitOrder(order)
@@ -52,6 +62,7 @@ export const useOrderStore = defineStore('order', () => {
 
   return {
     activeOrders,
+    recentOrders,
     loading,
     error,
     isStale,
@@ -59,6 +70,7 @@ export const useOrderStore = defineStore('order', () => {
     pendingOrders,
     filledOrders,
     fetchActiveOrders,
+    fetchRecentOrders,
     placeOrder,
   }
 })

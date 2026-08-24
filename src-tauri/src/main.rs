@@ -328,6 +328,7 @@ async fn main() {
             commands::get_account_info,
             commands::get_positions,
             commands::get_active_orders,
+            commands::get_recent_orders,
             commands::cancel_order,
             commands::run_backtest,
             commands::get_backtest_results,
