@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listen } from '@tauri-apps/api/event'
 import {
   getBinanceBalance,
   getBinancePositions,
@@ -15,7 +14,7 @@ import {
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
 import AssetBalanceTable from '@/components/trading/AssetBalanceTable.vue'
 import { useTradingUtils } from '@/components/trading/useTradingUtils'
-import { getSymbols } from '@/services/market'
+import { getKlines, getOrderbook, getSymbols } from '@/services/market'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -27,6 +26,8 @@ import type {
   BinanceWsDepth,
   BinancePosition,
   BinanceOrder,
+  MarketDataRecord,
+  OrderbookSnapshotRecord,
 } from '@/services/types'
 
 const balances = ref<BinanceBalance[]>([])
@@ -74,6 +75,39 @@ const streamSymbol = ref('BTC-USDT')
 const liveKlines = ref<BinanceWsKline[]>([])
 const liveDepth = ref<BinanceWsDepth | null>(null)
 const unlisten: Array<() => void> = []
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+/** DB 行情映射：remote WS 已导入 DB，前端读 DB（removed 依赖 binance:* WS 事件）。 */
+function dbKlineToWs(r: MarketDataRecord): BinanceWsKline {
+  return {
+    symbol: r.instrument_id,
+    interval: r.timeframe,
+    open_time: new Date(r.timestamp).getTime(),
+    open: r.open,
+    high: r.high,
+    low: r.low,
+    close: r.close,
+    volume: r.volume,
+    is_closed: true,
+  }
+}
+function dbOrderbookToWs(r: OrderbookSnapshotRecord): BinanceWsDepth {
+  return { symbol: r.symbol, bids: JSON.parse(r.bids), asks: JSON.parse(r.asks) }
+}
+async function pollLiveData() {
+  try {
+    const rows = await getKlines(streamSymbol.value, '1m', 60)
+    liveKlines.value = rows.map(dbKlineToWs)
+  } catch {
+    // 忽略：下次轮询重试
+  }
+  try {
+    const r = await getOrderbook(streamSymbol.value)
+    liveDepth.value = r ? dbOrderbookToWs(r) : null
+  } catch {
+    // 忽略
+  }
+}
 
 const QUOTES = ['USDT', 'USDC', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 
@@ -103,9 +137,13 @@ function fmtKlineTime(row: BinanceWsKline): string {
 
 async function startStream() {
   try {
+    // 启动后端 WS 并订阅（驱动 remote WS → DB 导入），显示改由 DB 轮询。
     await startBinanceMarketData()
     await subscribeBinanceCandle(streamSymbol.value, '1m')
     await subscribeBinanceDepth(streamSymbol.value)
+    await pollLiveData()
+    if (pollTimer) clearInterval(pollTimer)
+    pollTimer = setInterval(pollLiveData, 5000)
     wsRunning.value = true
   } catch (e) {
     ElMessage.error(`启动实时行情失败: ${e}`)
@@ -114,6 +152,10 @@ async function startStream() {
 
 async function stopStream() {
   try {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
     await stopBinanceMarketData()
     wsRunning.value = false
   } catch (e) {
@@ -197,16 +239,16 @@ onMounted(async () => {
   await loadBalance()
   await loadPositions()
   await loadOrders()
-  unlisten.push(await listen<BinanceWsKline>('binance:kline', (ev) => {
-    const existing = liveKlines.value.findIndex((k) => k.open_time === ev.payload.open_time)
-    if (existing >= 0) liveKlines.value[existing] = ev.payload
-    else liveKlines.value.push(ev.payload)
-    if (liveKlines.value.length > 60) liveKlines.value.shift()
-  }))
-  unlisten.push(await listen<BinanceWsDepth>('binance:depth', (ev) => { liveDepth.value = ev.payload }))
+  // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
 })
 
-onUnmounted(() => { unlisten.forEach((u) => u()) })
+onUnmounted(() => {
+  unlisten.forEach((u) => u())
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
 </script>
 
 <template>
