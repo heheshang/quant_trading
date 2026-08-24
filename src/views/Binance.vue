@@ -14,6 +14,7 @@ import {
 } from '@/services/binance'
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
 import AssetBalanceTable from '@/components/trading/AssetBalanceTable.vue'
+import { useTradingUtils } from '@/components/trading/useTradingUtils'
 import { getSymbols } from '@/services/market'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
@@ -29,6 +30,7 @@ import type {
 } from '@/services/types'
 
 const balances = ref<BinanceBalance[]>([])
+const { getOrderTypeText } = useTradingUtils()
 const positions = ref<BinancePosition[]>([])
 const orders = ref<BinanceOrder[]>([])
 const status = ref<BinanceStatus | null>(null)
@@ -296,7 +298,9 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
           <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
         </el-table-column>
         <el-table-column prop="side" label="方向" />
-        <el-table-column prop="order_type" label="类型" />
+        <el-table-column label="类型">
+          <template #default="{ row }">{{ getOrderTypeText(row.order_type) }}</template>
+        </el-table-column>
         <el-table-column prop="price" label="价格" />
         <el-table-column label="数量">
           <template #default="{ row }">{{ fmtNumber(row.orig_qty ?? row.executed_qty) }}</template>

@@ -30,5 +30,19 @@ export function useTradingUtils() {
     return map[status] || status
   }
 
-  return { formatCurrency, formatNumber, formatDate, formatTimestamp, getOrderStatusType, getOrderStatusText }
+  /** 订单交易类型中文标签（限价/市价/止损/算法等）。大小写不敏感（兼容 Binance 大写）。 */
+  function getOrderTypeText(orderType: string): string {
+    const map: Record<string, string> = {
+      MARKET: '市价',
+      LIMIT: '限价',
+      STOPLOSS: '止损',
+      STOPLIMIT: '止损限价',
+      TWAP: 'TWAP算法',
+      VWAP: 'VWAP算法',
+      ICEBERG: '冰山算法',
+    }
+    return map[orderType.toUpperCase()] || orderType
+  }
+
+  return { formatCurrency, formatNumber, formatDate, formatTimestamp, getOrderStatusType, getOrderStatusText, getOrderTypeText }
 }

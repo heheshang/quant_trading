@@ -49,10 +49,8 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="类型" width="80">
-        <template #default="{ row }">
-          {{ row.order_type === 'Limit' ? '限价' : '市价' }}
-        </template>
+      <el-table-column label="类型" width="90">
+        <template #default="{ row }">{{ getOrderTypeText(row.order_type) }}</template>
       </el-table-column>
       <el-table-column label="种类" width="80">
         <template #default="{ row }">{{ exchangeText(row.exchange) }}</template>
@@ -144,7 +142,7 @@ const emit = defineEmits<{
 }>()
 
 const { formatCurrency } = useFormatting()
-const { getOrderStatusType, getOrderStatusText } = useTradingUtils()
+const { getOrderStatusType, getOrderStatusText, getOrderTypeText } = useTradingUtils()
 
 const searchQuery = ref('')
 const strategyFilter = ref('')
@@ -241,7 +239,7 @@ function exportCSV() {
     o.strategy_name || '—',
     o.symbol,
     o.side === 'Buy' ? '买入' : '卖出',
-    o.order_type === 'Limit' ? '限价' : '市价',
+    getOrderTypeText(o.order_type),
     o.price ?? '-',
     o.quantity,
     o.filled_quantity,
