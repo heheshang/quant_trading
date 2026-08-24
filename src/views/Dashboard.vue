@@ -92,6 +92,7 @@ import { useRouter } from 'vue-router'
 import { TrendCharts, Promotion, Tickets, Warning } from '@element-plus/icons-vue'
 import { useAccountStore } from '@/stores/account'
 import { useBinanceAccountOverview } from '@/composables/useBinanceAccountOverview'
+import { computeRealizedPnl, type FilledFill } from '@/utils/pnl'
 import { useOrderStore } from '@/stores/order'
 import { getRiskMetrics } from '@/services/risk'
 import { useFormatting } from '@/composables/useFormatting'
@@ -134,17 +135,33 @@ const error = computed(() => accountStore.error || orderStore.error)
 // 实盘账户概览（Balances×价格=总资产；live_trades 均价=盈亏）。
 const binanceOverview = useBinanceAccountOverview()
 const totalAssets = computed(() => binanceOverview.totalAssets.value)
-// 今日收益 = 实盘已成交（live_trades 当日 FILLED） + 纸面已成交（当日 Filled 订单）。
+// 今日收益 = 当日已成交的真实已实现盈亏（平均成本法，纸面 + 实盘）。
 const dailyPnl = computed(() => {
   const startOfDay = Date.now() - (Date.now() % 86_400_000)
-  let pnl = binanceOverview.dailyPnl.value
+  const fills: FilledFill[] = []
   for (const o of orderStore.recentOrders) {
     if (o.status !== 'Filled') continue
     if (new Date(o.created_at).getTime() < startOfDay) continue
-    const notional = (o.price ?? 0) * (o.filled_quantity || 0)
-    pnl += o.side === 'Sell' ? notional : -notional
+    fills.push({
+      symbol: o.symbol,
+      side: o.side as 'Buy' | 'Sell',
+      price: o.price ?? 0,
+      quantity: o.filled_quantity || 0,
+      ts: new Date(o.created_at).getTime(),
+    })
   }
-  return pnl
+  for (const t of binanceOverview.liveTrades.value) {
+    if (t.status !== 'FILLED') continue
+    if (new Date(t.updated_at).getTime() < startOfDay) continue
+    fills.push({
+      symbol: t.symbol,
+      side: t.side === 'BUY' ? 'Buy' : 'Sell',
+      price: t.price,
+      quantity: t.filled_quantity,
+      ts: new Date(t.updated_at).getTime(),
+    })
+  }
+  return computeRealizedPnl(fills)
 })
 const totalPnl = computed(() => binanceOverview.totalPnl.value)
 const unrealizedPnl = computed(() => binanceOverview.unrealizedPnl.value)
