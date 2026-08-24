@@ -84,7 +84,7 @@ impl AccountService {
                    quantity, filled_quantity, commission, slippage, status,
                    created_at, updated_at
             FROM orders
-            WHERE status NOT IN ('Filled', 'Cancelled', 'Rejected')
+            WHERE status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
             ORDER BY created_at DESC
             "#,
         )

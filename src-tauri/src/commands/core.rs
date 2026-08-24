@@ -220,21 +220,18 @@ pub async fn get_recent_orders(
 
 #[tauri::command]
 pub async fn get_active_orders(state: State<'_, AppState>) -> Result<Vec<Order>, String> {
-    // 优先从 OrderManager 内存获取真实活跃订单（Submitted / PartiallyFilled）
-    let manager_orders = state.order_manager.get_active_orders().await;
-    if !manager_orders.is_empty() {
-        return Ok(manager_orders);
-    }
-
-    // 内存无活跃订单时，降级查询数据库
+    // 活跃订单以数据库为准（持久化，重启后仍可读）。
     if let Some(services) = state.app_services.as_ref() {
-        if let Ok(orders) = services.account_service.get_active_orders().await {
-            return Ok(orders);
+        match services.account_service.get_active_orders().await {
+            Ok(orders) => return Ok(orders),
+            Err(_) => {
+                // DB 不可用时降级到内存 OrderManager（保证不阻塞页面）。
+            }
         }
     }
 
-    // 无任何数据源可用 → 返回空列表（不再返回硬编码 mock 假数据）
-    Ok(Vec::new())
+    // DB 不可用 → 内存 OrderManager 兜底。
+    Ok(state.order_manager.get_active_orders().await)
 }
 
 /// 撤销订单（paper / OrderManager 订单）
