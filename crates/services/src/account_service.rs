@@ -525,6 +525,97 @@ impl AccountService {
         Ok(positions)
     }
 
+    /// 解析当前账户 id（与 `get_account_info` 一致：取最近更新的账户）。
+    #[instrument(skip_all)]
+    async fn current_account_id(&self) -> ServiceResult<i64> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+        let row = sqlx::query("SELECT account_id FROM accounts ORDER BY updated_at DESC LIMIT 1")
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to resolve account: {}", e);
+                ServiceError::from(e)
+            })?
+            .ok_or_else(|| {
+                error!("No account found");
+                ServiceError::NotFound("No account found".into())
+            })?;
+        Ok(row.get("account_id"))
+    }
+
+    /// 币安持仓同步写库。
+    ///
+    /// 以币安余额/价格为输入，`upsert` 到 `positions` 表（按 `account_id+symbol`）：
+    /// - 自动补 `instruments`（币安持仓可能含未预置的币种，FK 需先落标）；
+    /// - 已平仓（不在本次快照中）的 symbol 一并删除，保持库与币安一致。
+    #[instrument(skip_all)]
+    pub async fn upsert_positions(&self, positions: &[Position]) -> ServiceResult<()> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+        let account_id = self.current_account_id().await?;
+        let mut tx = pool.begin().await.map_err(ServiceError::Database)?;
+
+        for p in positions {
+            sqlx::query(
+                "INSERT INTO instruments (symbol, exchange, instrument_type, tick_size)
+                 VALUES ($1, 'BINANCE', 'Spot', 0.01)
+                 ON CONFLICT (symbol) DO NOTHING",
+            )
+            .bind(&p.symbol)
+            .execute(&mut *tx)
+            .await
+            .map_err(ServiceError::Database)?;
+
+            sqlx::query(
+                "INSERT INTO positions (account_id, symbol, quantity, available_quantity,
+                        avg_price, market_value, unrealized_pnl, realized_pnl, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+                 ON CONFLICT (account_id, symbol) DO UPDATE SET
+                        quantity = EXCLUDED.quantity,
+                        available_quantity = EXCLUDED.available_quantity,
+                        avg_price = EXCLUDED.avg_price,
+                        market_value = EXCLUDED.market_value,
+                        unrealized_pnl = EXCLUDED.unrealized_pnl,
+                        realized_pnl = EXCLUDED.realized_pnl,
+                        updated_at = now()",
+            )
+            .bind(account_id)
+            .bind(&p.symbol)
+            .bind(p.quantity)
+            .bind(p.available_quantity)
+            .bind(p.avg_price)
+            .bind(p.market_value)
+            .bind(p.unrealized_pnl)
+            .bind(p.realized_pnl)
+            .execute(&mut *tx)
+            .await
+            .map_err(ServiceError::Database)?;
+        }
+
+        // 清理该账户下已不在币安持仓中的 symbol，保持库与币安一致。
+        let symbols: Vec<String> = positions.iter().map(|p| p.symbol.clone()).collect();
+        sqlx::query(
+            "DELETE FROM positions
+             WHERE account_id = $1
+               AND NOT (symbol = ANY($2::text[]))",
+        )
+        .bind(account_id)
+        .bind(&symbols)
+        .execute(&mut *tx)
+        .await
+        .map_err(ServiceError::Database)?;
+
+        tx.commit().await.map_err(ServiceError::Database)?;
+        Ok(())
+    }
+
     /// 纸面持仓：由 `orders` 表已成交单净额推导（买 − 卖），供纸面卖单风控校验。
     ///
     /// `positions` 表是静态账本，纸面成交不会更新它；为避免裸卖空误判，纸面

@@ -3,9 +3,14 @@
 //! Manages the [`BinanceWebSocket`] lifecycle and forwards parsed
 //! kline/depth/orderbook/ticker/trade messages to the UI via Tauri events.
 
-use exchange_binance::types::BinanceEnvironment;
+use chrono::Utc;
+use data_layer::LiveTrade;
+use exchange_binance::types::{BinanceBalance, BinanceEnvironment};
 use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient};
+use quant_common::types::Position;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
 
@@ -305,6 +310,7 @@ pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> quant_
 pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) {
     let binance = app_services.binance_service.clone();
     let account_service = app_services.account_service.clone();
+    let live_trades = app_services.live_trades.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
@@ -313,7 +319,7 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                 continue;
             };
             let mut equity = rust_decimal::Decimal::ZERO;
-            for b in balances {
+            for b in &balances {
                 let asset = b.asset.as_str();
                 let qty = b.free + b.locked;
                 let price = if matches!(asset, "USDT" | "USDC" | "TUSD" | "BUSD" | "FDUSD" | "DAI") {
@@ -327,10 +333,78 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                 equity += qty * price;
             }
             let _ = account_service.record_equity_snapshot(equity).await;
+
+            // 币安持仓同步写库（positions 表），前端「持仓信息」从 DB 读取。
+            let fills = live_trades.list().await.unwrap_or_default();
+            let positions = build_positions(&balances, &prices, &fills);
+            let _ = account_service.upsert_positions(&positions).await;
         }
     });
 }
 
+/// 从币安余额 + 全市场价格 + 本地 live_trades 成交构造持仓快照。
+///
+/// - 稳定币余额视为现金，不算持仓；
+/// - `avg_price` 取该 symbol 的 FILLED 买单加权均价，无成交则取现价（浮盈 0）；
+/// - 未在行情表中命中的资产以现价 0 记录（不抛错，避免单资产阻塞整批同步）。
+fn build_positions(
+    balances: &[BinanceBalance],
+    prices: &HashMap<String, Decimal>,
+    fills: &[LiveTrade],
+) -> Vec<Position> {
+    // 每域名 symbol（如 BTC-USDT）的 FILLED 买单成本聚合：累计成本/数量。
+    let mut cost: HashMap<String, (Decimal, Decimal)> = HashMap::new();
+    for t in fills {
+        if !t.status.eq_ignore_ascii_case("FILLED") {
+            continue;
+        }
+        let e = cost
+            .entry(t.symbol.clone())
+            .or_insert((Decimal::ZERO, Decimal::ZERO));
+        if t.side.eq_ignore_ascii_case("BUY") {
+            e.0 += t.price * t.filled_quantity;
+            e.1 += t.filled_quantity;
+        }
+    }
+
+    let now = Utc::now();
+    let mut positions = Vec::new();
+    for b in balances {
+        let asset = b.asset.as_str();
+        let qty = b.free + b.locked;
+        if qty <= Decimal::ZERO || is_stablecoin(asset) {
+            continue;
+        }
+        let domain = format!("{asset}-USDT");
+        let price = prices.get(&format!("{asset}USDT")).copied().unwrap_or(Decimal::ZERO);
+        let (buy_cost, buy_qty) = cost
+            .get(&domain)
+            .copied()
+            .unwrap_or((Decimal::ZERO, Decimal::ZERO));
+        // 市价单可能以 price=0 入账，成本不可信时回落现价（避免浮盈=全市值误导）。
+        let avg = if buy_qty > Decimal::ZERO && buy_cost > Decimal::ZERO {
+            buy_cost / buy_qty
+        } else {
+            price
+        };
+        positions.push(Position {
+            symbol: domain,
+            quantity: qty,
+            available_quantity: b.free,
+            avg_price: avg,
+            market_value: qty * price,
+            unrealized_pnl: (price - avg) * qty,
+            realized_pnl: Decimal::ZERO,
+            updated_at: now,
+        });
+    }
+    positions
+}
+
+/// 稳定币（视为现金，不算持仓）。
+fn is_stablecoin(asset: &str) -> bool {
+    matches!(asset, "USDT" | "USDC" | "TUSD" | "BUSD" | "FDUSD" | "DAI")
+}
 /// 每 5s 用真实权益快照刷新监控指标 Gauge（余额/持仓市值/当日盈亏），
 /// 使 Prometheus 端点与 Monitor「指标监控」一致（账户值来自后台快照写入器）。
 pub fn start_monitor_metrics(app_services: &quant_services::AppServices) {
