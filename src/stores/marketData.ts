@@ -12,8 +12,15 @@ import {
   subscribeBinanceTrades,
   subscribeBinanceOrderbook,
   subscribeBinanceCandle,
+  getBinanceCandles,
 } from '@/services/binance'
-import type { BinanceWsTicker, BinanceWsTrade, BinanceWsDepth, BinanceWsKline } from '@/services/types'
+import type {
+  BinanceWsTicker,
+  BinanceWsTrade,
+  BinanceWsDepth,
+  BinanceWsKline,
+  BinanceKline,
+} from '@/services/types'
 
 /** Default symbols tracked by the realtime stream. */
 export const DEFAULT_MARKET_SYMBOLS = ['BTC-USDT', 'ETH-USDT']
@@ -54,6 +61,34 @@ export const useMarketDataStore = defineStore('marketData', () => {
       candles.value = { ...candles.value, [k.symbol]: next }
     } else {
       candles.value = { ...candles.value, [k.symbol]: [...list, k].slice(-120) }
+    }
+  }
+
+  /** REST 历史 K 线 → WS K 线（首屏预取，避免 chart 全空等 WS）。 */
+  function binanceKlineToWs(k: BinanceKline, symbol: string): BinanceWsKline {
+    return {
+      symbol,
+      interval: '1m',
+      open_time: k.open_time,
+      open: k.open,
+      high: k.high,
+      low: k.low,
+      close: k.close,
+      volume: k.volume,
+      is_closed: k.close_time <= Date.now(),
+    }
+  }
+
+  /** 预取某标的近 100 根历史 1m K 线，先填 chart，WS 再实时增量更新。 */
+  async function prefetchCandles(sym: string) {
+    try {
+      const rows = await getBinanceCandles(sym, '1m', 100)
+      candles.value = {
+        ...candles.value,
+        [sym]: rows.map((k) => binanceKlineToWs(k, sym)),
+      }
+    } catch {
+      // 预取失败忽略：等 WS 实时事件填充
     }
   }
 
@@ -101,6 +136,8 @@ export const useMarketDataStore = defineStore('marketData', () => {
       unlisteners = await listenToBinanceEvents(handlers)
       await ensureSubscribed(syms)
       activeSymbol.value = syms[0] ?? activeSymbol.value
+      // 首屏预取历史 K 线，避免 chart 空白等 WS 首批事件。
+      await prefetchCandles(activeSymbol.value)
       running.value = true
       status.value = 'connected'
     } catch {
@@ -121,7 +158,10 @@ export const useMarketDataStore = defineStore('marketData', () => {
   }
 
   function setActiveSymbol(sym: string) {
-    if (symbols.value.includes(sym)) activeSymbol.value = sym
+    if (symbols.value.includes(sym)) {
+      activeSymbol.value = sym
+      prefetchCandles(sym)
+    }
   }
 
   return {
