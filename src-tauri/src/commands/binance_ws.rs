@@ -22,7 +22,7 @@ use tokio::sync::mpsc;
 
 use crate::state::AppState;
 use quant_common::api::{ok_result, ApiFailure};
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 /// 后台导入管线的消息：WS 数据 → DB。
 enum MarketImport {
@@ -97,32 +97,49 @@ async fn market_import_writer(
     repo: Arc<MarketDataRepository>,
     mut rx: mpsc::Receiver<MarketImport>,
 ) {
+    info!("market import writer started (repo attached)");
+    let mut total: u64 = 0;
+    let mut klines: u64 = 0;
+    let mut tickers: u64 = 0;
+    let mut trades: u64 = 0;
+    let mut books: u64 = 0;
     while let Some(msg) = rx.recv().await {
+        total += 1;
         match msg {
             MarketImport::Kline(k) => {
+                klines += 1;
                 if let Err(e) = repo.upsert_kline(&k).await {
-                    debug!(error = %e, "kline import failed");
+                    warn!(error = %e, symbol = %k.instrument_id, "kline import failed");
                 }
             }
             MarketImport::Ticker(t) => {
+                tickers += 1;
                 if let Err(e) = repo.upsert_ticker_snapshot(&t).await {
-                    debug!(error = %e, "ticker import failed");
+                    warn!(error = %e, symbol = %t.instrument_id, "ticker import failed");
                 }
             }
             MarketImport::Trade(t) => {
+                trades += 1;
                 if let Err(e) = repo.insert_stream_trade(&t).await {
-                    debug!(error = %e, "trade import failed");
+                    warn!(error = %e, symbol = %t.symbol, "trade import failed");
                 }
             }
             MarketImport::OrderBook(d) => {
+                books += 1;
                 if let Err(e) = repo.upsert_orderbook_snapshot(&d).await {
-                    debug!(error = %e, "orderbook import failed");
+                    warn!(error = %e, symbol = %d.symbol, "orderbook import failed");
                 }
             }
         }
+        if total % 200 == 0 {
+            info!(
+                total, klines, tickers, trades, books,
+                "market import progress (last 200 msg window)"
+            );
+        }
     }
+    info!(total, klines, tickers, trades, books, "market import writer stopped");
 }
-
 #[tauri::command]
 pub async fn start_binance_market_data(
     app: AppHandle,
@@ -171,6 +188,11 @@ pub async fn start_binance_market_data(
         tokio::spawn(market_import_writer(repo, import_rx));
     }
     let import_enabled = market_repo.is_some();
+    if import_enabled {
+        info!("binance market WS import pipeline enabled (repo attached, channel 256)");
+    } else {
+        warn!("binance market WS import pipeline DISABLED (no market_data repo / DB not connected)");
+    }
 
     let _ = app_clone.emit(
         "binance:status",
@@ -473,26 +495,35 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                         locked: b.locked,
                     })
                     .collect();
-                if let Err(e) = repo.upsert_balances(&new_balances).await {
-                    debug!(error = %e, "balances import failed");
+                match repo.upsert_balances(&new_balances).await {
+                    Ok(n) => info!(assets = new_balances.len(), rows = n, "[snapshot] balances persisted"),
+                    Err(e) => warn!(error = %e, "[snapshot] balances import failed"),
                 }
+                let mut lp_ok = 0u64;
                 for (sym, price) in &prices {
-                    if let Err(e) = repo
+                    match repo
                         .upsert_last_price(&data_layer::NewLastPrice {
                             symbol: sym.clone(),
                             price: *price,
                         })
                         .await
                     {
-                        debug!(error = %e, symbol = %sym, "last_price import failed");
+                        Ok(_) => lp_ok += 1,
+                        Err(e) => warn!(error = %e, symbol = %sym, "[snapshot] last_price import failed"),
                     }
                 }
+                info!(prices = prices.len(), wrote = lp_ok, "[snapshot] last_prices persisted");
+            } else {
+                warn!("[snapshot] market_data repo unavailable; balances/last_prices NOT imported");
             }
 
             // 币安持仓同步写库（positions 表），前端「持仓信息」从 DB 读取。
             let fills = live_trades.list().await.unwrap_or_default();
             let positions = build_positions(&balances, &prices, &fills);
-            let _ = account_service.upsert_positions(&positions).await;
+            match account_service.upsert_positions(&positions).await {
+                Ok(_) => info!(count = positions.len(), "[snapshot] positions persisted"),
+                Err(e) => warn!(error = %e, "[snapshot] positions upsert failed"),
+            }
         }
     });
 }
