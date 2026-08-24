@@ -739,6 +739,19 @@ impl MarketDataRepository {
         .map_err(|e| Error::Database(format!("Failed to query last_prices: {}", e)))?;
         Ok(records)
     }
+
+    /// Latest price for a single symbol, read from DB.
+    #[instrument(skip(self), fields(symbol = %symbol))]
+    pub async fn query_latest_price(&self, symbol: &str) -> Result<Option<LastPriceRecord>> {
+        let record = sqlx::query_as::<_, LastPriceRecord>(
+            r#"SELECT symbol, price, ts, created_at FROM last_prices WHERE symbol = $1"#,
+        )
+        .bind(symbol)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query last_price: {}", e)))?;
+        Ok(record)
+    }
 }
 
 /// Input struct for inserting new K-line data

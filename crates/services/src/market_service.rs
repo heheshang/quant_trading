@@ -6,6 +6,7 @@ use data_layer::{
     StreamTradeRecord, TickerSnapshotRecord,
 };
 use quant_common::types::MarketData;
+use rust_decimal::Decimal;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, instrument};
@@ -146,6 +147,62 @@ impl MarketService {
                 error!("Failed to read last_prices from DB: {}", e);
                 ServiceError::Other(e.to_string())
             })
+    }
+
+    /// Point-in-time行情快照，从 DB 读（优先最新 `ticker_snapshots`，缺失时回退 `last_prices` 取价）。
+    ///
+    /// remote WS 导入的行情入库后，前端不再直连币安 REST。
+    #[instrument(skip(self), fields(symbol = %symbol))]
+    pub async fn get_market_data_from_db(&self, symbol: &str) -> ServiceResult<MarketData> {
+        let repo = self.repo_or_err("market data not available (no database)")?;
+        let rows = repo
+            .query_ticker_snapshots(symbol, None, None, Some(1))
+            .await
+            .map_err(|e| {
+                error!("Failed to read ticker snapshot from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })?;
+        if let Some(r) = rows.into_iter().next() {
+            return Ok(MarketData {
+                symbol: r.instrument_id,
+                timestamp: r.ts,
+                open: r.open_24h.unwrap_or(Decimal::ZERO),
+                high: r.high_24h.unwrap_or(Decimal::ZERO),
+                low: r.low_24h.unwrap_or(Decimal::ZERO),
+                close: r.last_px.unwrap_or(Decimal::ZERO),
+                volume: r.vol_24h.unwrap_or(Decimal::ZERO),
+                turnover: r.vol_ccy_24h.unwrap_or(Decimal::ZERO),
+                open_interest: None,
+                bid_prices: vec![],
+                bid_volumes: vec![],
+                ask_prices: vec![],
+                ask_volumes: vec![],
+            });
+        }
+        // 无 ticker 快照（未订阅）：回退 last_prices 取现价，OHLC 均记现值。
+        let lp = repo
+            .query_latest_price(symbol)
+            .await
+            .map_err(|e| {
+                error!("Failed to read last_price from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })?
+            .ok_or_else(|| ServiceError::NotFound(format!("No market data for {}", symbol)))?;
+        Ok(MarketData {
+            symbol: symbol.to_string(),
+            timestamp: lp.ts,
+            open: lp.price,
+            high: lp.price,
+            low: lp.price,
+            close: lp.price,
+            volume: Decimal::ZERO,
+            turnover: Decimal::ZERO,
+            open_interest: None,
+            bid_prices: vec![],
+            bid_volumes: vec![],
+            ask_prices: vec![],
+            ask_volumes: vec![],
+        })
     }
 
     /// Read persisted ticker snapshots for an instrument.

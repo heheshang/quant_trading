@@ -111,7 +111,7 @@ pub async fn get_market_data(
         .app_services
         .as_ref()
         .ok_or_else(|| not_init_err("行情服务未初始化"))?;
-    let data = services.market_service.get_realtime_data(&symbol).await?;
+    let data = services.market_service.get_market_data_from_db(&symbol).await?;
     ok_result(data)
 }
 
