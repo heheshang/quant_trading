@@ -13,38 +13,12 @@
     <el-tabs v-model="activeTradeTab" class="trade-tabs">
       <el-tab-pane label="模拟交易" name="paper">
         <PaperAccountCard v-if="tradeMode === 'paper'" :account="paperAccount" />
-        <el-card v-else class="binance-balance-card">
-          <template #header>
-            <div class="balance-card-header">
-              <span>Binance 测试网余额（{{ filteredBalances.length }}）</span>
-              <div class="balance-card-controls">
-                <el-select
-                  v-model="balanceAssetFilter"
-                  filterable
-                  clearable
-                  placeholder="资产下拉搜索"
-                  style="width: 160px"
-                >
-                  <el-option v-for="a in balanceAssetOptions" :key="a" :label="a" :value="a" />
-                </el-select>
-                <el-input v-model="balanceSearch" placeholder="搜索资产" clearable style="width: 150px" />
-              </div>
-            </div>
-          </template>
-          <el-table :data="paginatedBalances" size="small">
-            <el-table-column prop="asset" label="资产" width="120" />
-            <el-table-column prop="free" label="可用" />
-            <el-table-column prop="locked" label="锁定" />
-          </el-table>
-          <Paginator
-            v-if="filteredBalances.length > 0"
-            :total="filteredBalances.length"
-            :page="balancePage"
-            :page-size="balancePageSize"
-            @update:page="balancePage = $event"
-            @update:pageSize="balancePageSize = $event; balancePage = 1"
-          />
-        </el-card>
+        <AssetBalanceTable
+          v-else
+          :balances="binanceBalances"
+          title="Binance 测试网余额"
+          @refresh="fetchAccountInfo"
+        />
         <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
         <PositionsTable :positions="displayPositions" />
         <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
@@ -90,7 +64,7 @@ import type {
   StrategyParams,
 } from '@/services/types'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import Paginator from '@/components/common/Paginator.vue'
+import AssetBalanceTable from '@/components/trading/AssetBalanceTable.vue'
 import PaperAccountCard from '@/components/trading/PaperAccountCard.vue'
 import PaperOrderForm from '@/components/trading/PaperOrderForm.vue'
 import PositionsTable from '@/components/trading/PositionsTable.vue'
@@ -144,28 +118,6 @@ function liveTradeToOrder(t: LiveTrade): Order {
     slippage: 0,
   }
 }
-/** 余额卡：搜索/下拉过滤 + 分页（最多 10 条/页）。 */
-const balanceSearch = ref('')
-const balanceAssetFilter = ref('')
-const balancePage = ref(1)
-const balancePageSize = ref(10)
-
-const balanceAssetOptions = computed(() => binanceBalances.value.map((b) => b.asset))
-const filteredBalances = computed(() => {
-  let list = binanceBalances.value
-  if (balanceSearch.value) {
-    const q = balanceSearch.value.toLowerCase()
-    list = list.filter((b) => b.asset.toLowerCase().includes(q))
-  }
-  if (balanceAssetFilter.value) {
-    list = list.filter((b) => b.asset === balanceAssetFilter.value)
-  }
-  return list
-})
-const paginatedBalances = computed(() => {
-  const start = (balancePage.value - 1) * balancePageSize.value
-  return filteredBalances.value.slice(start, start + balancePageSize.value)
-})
 /** live 单关联的策略（Binance 不返回 strategy_id，按 order_id 本地记录本会话内的）。 */
 const liveOrderStrategy = new Map<number, string>()
 

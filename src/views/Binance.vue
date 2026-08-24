@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listen } from '@tauri-apps/api/event'
 import {
   getBinanceBalance,
-  getBinanceTickerPrices,
   getBinancePositions,
   getBinanceOrders,
   checkBinanceStatus,
@@ -14,7 +13,7 @@ import {
   subscribeBinanceDepth,
 } from '@/services/binance'
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
-import { useFormatting } from '@/composables/useFormatting'
+import AssetBalanceTable from '@/components/trading/AssetBalanceTable.vue'
 import { getSymbols } from '@/services/market'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
@@ -30,7 +29,6 @@ import type {
 } from '@/services/types'
 
 const balances = ref<BinanceBalance[]>([])
-const { formatCurrency } = useFormatting()
 const positions = ref<BinancePosition[]>([])
 const orders = ref<BinanceOrder[]>([])
 const status = ref<BinanceStatus | null>(null)
@@ -38,40 +36,21 @@ const loading = ref(false)
 const submitting = ref(false)
 const positionsLoading = ref(false)
 const ordersLoading = ref(false)
+const positionsPage = ref(1)
+const positionsPageSize = ref(10)
+const ordersPage = ref(1)
+const ordersPageSize = ref(10)
+const paginatedPositions = computed(() => {
+  const start = (positionsPage.value - 1) * positionsPageSize.value
+  return positions.value.slice(start, start + positionsPageSize.value)
+})
+const paginatedOrders = computed(() => {
+  const start = (ordersPage.value - 1) * ordersPageSize.value
+  return orders.value.slice(start, start + ordersPageSize.value)
+})
 const ordersHistory = ref(false)
 const ordersSymbol = ref('BTC-USDT')
 const symbols = ref<string[]>([])
-
-// ── 账户余额优化：总市值 + 可筛选标的下拉 ──
-const balancePrices = ref<Record<string, number>>({})
-const balanceAssetFilter = ref('')
-const balancePage = ref(1)
-const balancePageSize = ref(10)
-const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
-const balancePriceOf = (asset: string) =>
-  USD_STABLES.includes(asset) ? 1 : balancePrices.value[asset + 'USDT'] || 0
-/** 总市值（USDT 计）。 */
-const totalBalanceValue = computed(() =>
-  balances.value.reduce((s, b) => s + ((Number(b.free) || 0) + (Number(b.locked) || 0)) * balancePriceOf(b.asset), 0),
-)
-const balanceOptions = computed(() =>
-  balances.value
-    .filter((b) => Number(b.free) > 0 || Number(b.locked) > 0)
-    .map((b) => b.asset),
-)
-/** 按下拉筛选后的余额。 */
-const filteredBalances = computed(() =>
-  balanceAssetFilter.value
-    ? balances.value.filter((b) => b.asset === balanceAssetFilter.value)
-    : balances.value.filter((b) => Number(b.free) > 0 || Number(b.locked) > 0),
-)
-/** 当前页切片（最多 10 条/页）。 */
-const paginatedBalances = computed(() => {
-  const start = (balancePage.value - 1) * balancePageSize.value
-  return filteredBalances.value.slice(start, start + balancePageSize.value)
-})
-// 筛选变化时回到第一页，避免页码越界。
-watch(balanceAssetFilter, () => { balancePage.value = 1 })
 
 const form = ref({
   symbol: 'BTC-USDT',
@@ -79,6 +58,12 @@ const form = ref({
   order_type: 'Limit' as 'Market' | 'Limit',
   price: 0,
   quantity: 0,
+})
+/** 下单预计金额：限价 = 价格 × 数量；市价（无定价）显示 0。 */
+const orderTotal = computed(() => {
+  if (!form.value.quantity) return 0
+  if (form.value.order_type === 'Limit') return (form.value.price || 0) * form.value.quantity
+  return 0
 })
 
 // ── Realtime stream ──
@@ -139,12 +124,6 @@ async function loadBalance() {
   try {
     balances.value = await getBinanceBalance()
     status.value = await checkBinanceStatus()
-    // 拉全市场价格用于总市值（失败不影响余额显示）。
-    try {
-      balancePrices.value = await getBinanceTickerPrices()
-    } catch {
-      balancePrices.value = {}
-    }
   } catch (e) {
     ElMessage.error(`获取币安余额失败: ${e}`)
   } finally {
@@ -239,38 +218,7 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
       :closable="false"
     />
 
-    <el-card class="section">
-      <template #header>
-        <div class="card-header">
-          <span>账户余额（总市值 ¥{{ formatCurrency(totalBalanceValue) }}）</span>
-          <div class="header-controls">
-            <el-select
-              v-model="balanceAssetFilter"
-              filterable
-              clearable
-              placeholder="资产下拉搜索"
-              style="width: 180px"
-            >
-              <el-option v-for="a in balanceOptions" :key="a" :label="a" :value="a" />
-            </el-select>
-            <el-button size="small" @click="loadBalance">刷新</el-button>
-          </div>
-        </div>
-      </template>
-      <el-table :data="paginatedBalances" v-loading="loading" size="small">
-        <el-table-column prop="asset" label="资产" />
-        <el-table-column prop="free" label="可用" />
-        <el-table-column prop="locked" label="锁定" />
-      </el-table>
-      <Paginator
-        v-if="filteredBalances.length > 0"
-        :total="filteredBalances.length"
-        :page="balancePage"
-        :page-size="balancePageSize"
-        @update:page="balancePage = $event"
-        @update:pageSize="balancePageSize = $event; balancePage = 1"
-      />
-    </el-card>
+    <AssetBalanceTable :balances="balances" title="账户余额" :loading="loading" @refresh="loadBalance" />
 
     <el-card class="section">
       <template #header>实时行情（WebSocket）</template>
@@ -297,8 +245,8 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
     <BinanceKlineChart />
 
     <el-card class="section">
-      <template #header>持仓</template>
-      <el-table :data="positions" v-loading="positionsLoading" size="small">
+      <template #header>持仓（{{ positions.length }}）</template>
+      <el-table :data="paginatedPositions" v-loading="positionsLoading" size="small">
         <el-table-column label="交易对">
           <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
         </el-table-column>
@@ -313,13 +261,21 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
         <el-table-column prop="position_side" label="方向" />
       </el-table>
       <EmptyState v-if="!positionsLoading && positions.length === 0" title="暂无持仓" description="当前账户没有 Binance 持仓" />
+      <Paginator
+        v-if="positions.length > 0"
+        :total="positions.length"
+        :page="positionsPage"
+        :page-size="positionsPageSize"
+        @update:page="positionsPage = $event"
+        @update:pageSize="positionsPageSize = $event; positionsPage = 1"
+      />
       <el-button class="mt" size="small" @click="loadPositions">刷新</el-button>
     </el-card>
 
     <el-card class="section">
       <template #header>
         <div class="orders-header">
-          <span>订单</span>
+          <span>订单（{{ orders.length }}）</span>
           <div class="orders-controls">
             <el-select v-model="ordersSymbol" filterable size="small" style="width: 160px">
               <el-option v-for="s in symbols" :key="s" :label="s" :value="s" />
@@ -332,7 +288,7 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
           </div>
         </div>
       </template>
-      <el-table :data="orders" v-loading="ordersLoading" size="small">
+      <el-table :data="paginatedOrders" v-loading="ordersLoading" size="small">
         <el-table-column label="时间">
           <template #default="{ row }">{{ row.time ? fmtTime(row.time) : '-' }}</template>
         </el-table-column>
@@ -354,6 +310,14 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
         </el-table-column>
       </el-table>
       <EmptyState v-if="!ordersLoading && orders.length === 0" title="暂无订单" description="当前没有匹配的订单" />
+      <Paginator
+        v-if="orders.length > 0"
+        :total="orders.length"
+        :page="ordersPage"
+        :page-size="ordersPageSize"
+        @update:page="ordersPage = $event"
+        @update:pageSize="ordersPageSize = $event; ordersPage = 1"
+      />
     </el-card>
 
     <el-card class="section">
@@ -382,6 +346,10 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
         <el-form-item label="数量">
           <el-input-number v-model="form.quantity" :min="0" :precision="6" />
         </el-form-item>
+        <div class="order-total">
+          <span v-if="form.order_type === 'Limit'">预计金额（USDT）：{{ fmtNumber(orderTotal) }}</span>
+          <span v-else>市价单：按下单时实时价成交</span>
+        </div>
         <el-button type="primary" :loading="submitting" @click="submitOrder">
           提交下单
         </el-button>
@@ -397,7 +365,6 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
 .ws-controls { display: flex; gap: 8px; margin-bottom: 12px; }
 .hint { color: var(--color-text-secondary); padding: 8px 0; }
 .orders-header { display: flex; justify-content: space-between; align-items: center; }
-.card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.header-controls { display: flex; align-items: center; gap: 8px; }
 .orders-controls { display: flex; gap: 8px; align-items: center; }
+.order-total { color: var(--color-text-secondary); margin: 4px 0 12px; font-size: 13px; }
 </style>

@@ -10,6 +10,7 @@ declare module 'vue' {
     AccountSummary: typeof import('./src/components/profile/AccountSummary.vue')['default']
     ActiveOrdersTable: typeof import('./src/components/trading/ActiveOrdersTable.vue')['default']
     AlertPanel: typeof import('./src/components/monitor/AlertPanel.vue')['default']
+    AssetBalanceTable: typeof import('./src/components/trading/AssetBalanceTable.vue')['default']
     AuditLogs: typeof import('./src/components/monitor/AuditLogs.vue')['default']
     BacktestChart: typeof import('./src/components/backtest/BacktestChart.vue')['default']
     BacktestConfig: typeof import('./src/components/backtest/BacktestConfig.vue')['default']
