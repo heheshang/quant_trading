@@ -1,5 +1,6 @@
 import { call } from './transport'
 import type {
+  AccountSnapshotRecord,
   BinanceBalance,
   BinanceKline,
   BinanceOrder,
@@ -64,6 +65,19 @@ export function getBinanceTickerPrices(): Promise<Record<string, number>> {
 
 export function checkBinanceStatus(): Promise<BinanceStatus> {
   return call<BinanceStatus>('check_binance_status')
+}
+
+/** 账户权益快照历史（资产曲线）。 */
+export function getAccountSnapshots(
+  ccy: string,
+  limit = 200,
+): Promise<AccountSnapshotRecord[]> {
+  return call<AccountSnapshotRecord[]>('get_account_snapshots', { ccy, limit })
+}
+
+/** 记录当前账户权益快照（资产曲线的点）。 */
+export function recordAccountSnapshot(eq: number): Promise<void> {
+  return call<void>('record_account_snapshot', { eq })
 }
 
 // ── WebSocket real-time (SoC: transport lifecycle in this module) ──

@@ -130,6 +130,8 @@ vi.mock('@/composables/useBinanceAccountOverview', () => {
       unrealizedPnl: binanceOverviewState.unrealizedPnl,
       dailyPnl: binanceOverviewState.dailyPnl,
       totalPnl: binanceOverviewState.totalPnl,
+      holdings: ref([]),
+      equityHistory: ref([]),
       refresh: vi.fn(),
     }),
   }

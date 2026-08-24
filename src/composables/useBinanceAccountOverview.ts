@@ -1,5 +1,11 @@
 import { ref, computed } from 'vue'
-import { getBinanceBalance, getBinanceTickerPrices, getLiveTrades } from '@/services/binance'
+import {
+  getBinanceBalance,
+  getBinanceTickerPrices,
+  getLiveTrades,
+  getAccountSnapshots,
+  recordAccountSnapshot,
+} from '@/services/binance'
 import type { BinanceBalance, LiveTrade } from '@/services/types'
 
 const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
@@ -81,6 +87,30 @@ export function useBinanceAccountOverview() {
   /** 总盈亏 = 当日已实现 + 浮动。 */
   const totalPnl = computed(() => dailyPnl.value + unrealizedPnl.value)
 
+  /** 持仓分布（余额×价格），供 pie 图。 */
+  const holdings = computed(() =>
+    balances.value
+      .map((b) => {
+        const qty = (Number(b.free) || 0) + (Number(b.locked) || 0)
+        const price = priceOf(b.asset)
+        const mv = qty * price
+        const cost = avgCost(b.asset)
+        return {
+          symbol: b.asset,
+          quantity: qty,
+          available_quantity: qty,
+          avg_price: cost || price,
+          market_value: mv,
+          unrealized_pnl: cost > 0 ? (price - cost) * qty : 0,
+          realized_pnl: 0,
+          updated_at: new Date().toISOString(),
+        }
+      })
+      .filter((p) => p.market_value > 0),
+  )
+
+  const equityHistory = ref<[string, number][]>([])
+
   async function refresh(force = false) {
     if (!force && Date.now() - lastFetched < KEEPALIVE_MS && balances.value.length > 0) return
     loading.value = true
@@ -90,6 +120,19 @@ export function useBinanceAccountOverview() {
       prices.value = p
       liveTrades.value = t
       lastFetched = Date.now()
+      // 记录当前权益快照（资产曲线随时间增长）。
+      const eq = Number(totalAssets.value) || 0
+      if (eq > 0) {
+        try {
+          await recordAccountSnapshot(eq)
+        } catch {
+          // 记录失败忽略
+        }
+      }
+      const rows = await getAccountSnapshots('USDT', 200)
+      equityHistory.value = rows
+        .map((r) => [String(r.ts), Number(r.eq ?? 0)] as [string, number])
+        .sort((a, b) => a[0].localeCompare(b[0]))
     } catch {
       // 限流/失败时保留上次数据（降级）
     } finally {
@@ -97,5 +140,17 @@ export function useBinanceAccountOverview() {
     }
   }
 
-  return { balances, prices, liveTrades, loading, totalAssets, unrealizedPnl, dailyPnl, totalPnl, refresh }
+  return {
+    balances,
+    prices,
+    liveTrades,
+    loading,
+    totalAssets,
+    unrealizedPnl,
+    dailyPnl,
+    totalPnl,
+    holdings,
+    equityHistory,
+    refresh,
+  }
 }

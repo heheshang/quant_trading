@@ -347,6 +347,7 @@ async fn main() {
             commands::get_symbols,
             commands::get_ticker_snapshots,
             commands::get_account_snapshots,
+            commands::record_account_snapshot,
             commands::get_position_snapshots,
             commands::get_strategies,
             commands::save_strategy,

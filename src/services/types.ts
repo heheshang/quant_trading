@@ -430,6 +430,17 @@ export interface BinanceOrder {
   update_time?: number
 }
 
+/** 账户权益快照（`account_snapshots`）。 */
+export interface AccountSnapshotRecord {
+  ccy: string
+  ts: string
+  eq: number | null
+  cash_bal?: number | null
+  avail_eq?: number | null
+  frozen_bal?: number | null
+  created_at: string
+}
+
 /** 本地持久化的 live 单成交记录（策略关联 + 成交价/量）。 */
 export interface LiveTrade {
   id: number

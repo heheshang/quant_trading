@@ -130,6 +130,23 @@ impl AccountService {
     }
 
     /// 最近订单（含已成交/撤单/拒绝），供「最近交易」等按时间倒序展示。
+    /// 记录当前账户权益快照（供资产曲线展示）。
+    pub async fn record_equity_snapshot(&self, eq: Decimal) -> ServiceResult<()> {
+        let client = self
+            .postgres
+            .as_ref()
+            .ok_or(ServiceError::DatabaseNotConnected)?;
+        let pool = client.pool();
+        sqlx::query(
+            "INSERT INTO account_snapshots (ccy, ts, eq) VALUES ('USDT', now(), $1)",
+        )
+        .bind(eq)
+        .execute(pool)
+        .await
+        .map_err(ServiceError::Database)?;
+        Ok(())
+    }
+
     pub async fn get_recent_orders(&self, limit: u32) -> ServiceResult<Vec<Order>> {
         let client = self
             .postgres

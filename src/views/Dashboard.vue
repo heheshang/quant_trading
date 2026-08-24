@@ -45,10 +45,10 @@
 
       <el-row :gutter="20" style="margin-top: 20px">
         <el-col :xs="24" :lg="16">
-          <EquityChart :equity-history="accountStore.accountInfo?.equity_history" />
+          <EquityChart :equity-history="binanceEquityHistory" />
         </el-col>
         <el-col :xs="24" :lg="8">
-          <PositionChart :positions="accountStore.positions" />
+          <PositionChart :positions="binanceHoldings" />
         </el-col>
       </el-row>
       <el-row :gutter="20" style="margin-top: 20px">
@@ -137,6 +137,9 @@ const totalAssets = computed(() => binanceOverview.totalAssets.value)
 const dailyPnl = computed(() => binanceOverview.dailyPnl.value)
 const totalPnl = computed(() => binanceOverview.totalPnl.value)
 const unrealizedPnl = computed(() => binanceOverview.unrealizedPnl.value)
+// 组合对象里的 ref 不会在模板自动解包，这里再包一层。
+const binanceHoldings = computed(() => binanceOverview.holdings.value)
+const binanceEquityHistory = computed(() => binanceOverview.equityHistory.value)
 const riskMetrics = ref<Record<string, number>>({})
 const riskLevelLoading = ref(false)
 

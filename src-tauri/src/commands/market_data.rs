@@ -53,6 +53,23 @@ pub async fn get_ticker_snapshots(
         .map_err(|e| e.to_string())
 }
 
+/// 记录当前账户权益快照（资产曲线的点）。
+#[tauri::command]
+pub async fn record_account_snapshot(
+    state: State<'_, AppState>,
+    eq: rust_decimal::Decimal,
+) -> Result<(), String> {
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or("Application services not initialized")?;
+    services
+        .account_service
+        .record_equity_snapshot(eq)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// 查询账户快照（按币种 + 可选时间范围）。
 #[tauri::command]
 pub async fn get_account_snapshots(
