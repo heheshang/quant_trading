@@ -300,10 +300,10 @@ async function fetchPositions() {
 }
 async function fetchActiveOrders() {
   try {
-    // 订单展示**全部状态**（含已成交/撤单/过期），由「种类」下拉筛选当前种类。
+    // 展示**当前 tab 种类**（纸面/实盘/算法）的**全部状态**订单（含已成交/撤单/过期）。
     if (Object.keys(tickerPrices.value).length === 0) await fetchTickerPrices()
     await fetchLiveTrades()
-    activeOrders.value = (await getRecentOrders(200)).map((o) => ({
+    activeOrders.value = (await getRecentOrders(200, tradeMode.value)).map((o) => ({
       ...o,
       strategy_name: strategyName(o.strategy_id),
     }))
