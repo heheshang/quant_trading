@@ -12,14 +12,15 @@ import {
   subscribeBinanceTrades,
   subscribeBinanceOrderbook,
   subscribeBinanceCandle,
-  getBinanceCandles,
 } from '@/services/binance'
+import { getKlines, getTickerSnapshots } from '@/services/market'
 import type {
   BinanceWsTicker,
   BinanceWsTrade,
   BinanceWsDepth,
   BinanceWsKline,
-  BinanceKline,
+  MarketDataRecord,
+  TickerSnapshotRecord,
 } from '@/services/types'
 
 /** Default symbols tracked by the realtime stream. */
@@ -28,12 +29,12 @@ export const DEFAULT_MARKET_SYMBOLS = ['BTC-USDT', 'ETH-USDT']
 export const MAX_SUBSCRIBE = 30
 
 /**
- * Realtime Binance market data store.
+ * Binance market data store (DB-first).
  *
- * Owns the Binance WebSocket lifecycle (idempotent start) and translates the
- * `binance:ticker` / `binance:trade` / `binance:orderbook` / `binance:kline`
- * events into reactive state. Data is keyed per symbol so the ticker panel can
- * show several instruments while charts/order book focus on the active symbol.
+ * 行情源按「remote WS → DB 导入 → 前端读 DB」：K 线 / ticker 经 DB 轮询
+ * （`get_klines` / `get_ticker_snapshots`）读取；逐笔成交与订单簿仍走
+ * `binance:trade` / `binance:orderbook` 实时事件（暂无对应 DB 表）。
+ * 数据按标的关键键，ticker 面板可展示多标的，图表/订单簿聚焦活跃标的。
  */
 export const useMarketDataStore = defineStore('marketData', () => {
   const running = ref(false)
@@ -48,57 +49,83 @@ export const useMarketDataStore = defineStore('marketData', () => {
 
   let unlisteners: UnlistenFn[] = []
   let handlers: BinanceEventHandlers | null = null
+  let dbPollTimer: ReturnType<typeof setInterval> | null = null
 
   const tickerList = computed(() => Object.values(tickers.value))
   const tradesForActive = computed(() => trades.value[activeSymbol.value] ?? [])
   const orderBookForActive = computed(() => orderBooks.value[activeSymbol.value] ?? null)
   const candlesForActive = computed(() => candles.value[activeSymbol.value] ?? [])
 
-  function upsertCandle(k: BinanceWsKline) {
-    const list = candles.value[k.symbol] ?? []
-    const idx = list.findIndex((c) => c.open_time === k.open_time)
-    if (idx >= 0) {
-      const next = [...list]
-      next[idx] = k
-      candles.value = { ...candles.value, [k.symbol]: next }
-    } else {
-      candles.value = { ...candles.value, [k.symbol]: [...list, k].slice(-120) }
-    }
-  }
-
-  /** REST 历史 K 线 → WS K 线（首屏预取，避免 chart 全空等 WS）。 */
-  function binanceKlineToWs(k: BinanceKline, symbol: string): BinanceWsKline {
+  /** DB K 线行 → chart 使用的 WS K 线（`timestamp`→`open_time`）。 */
+  function dbKlineToWs(r: MarketDataRecord): BinanceWsKline {
     return {
-      symbol,
-      interval: '1m',
-      open_time: k.open_time,
-      open: k.open,
-      high: k.high,
-      low: k.low,
-      close: k.close,
-      volume: k.volume,
-      is_closed: k.close_time <= Date.now(),
+      symbol: r.instrument_id,
+      interval: r.timeframe,
+      open_time: new Date(r.timestamp).getTime(),
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      volume: r.volume,
+      is_closed: true,
     }
   }
 
-  /** 预取某标的近 100 根历史 1m K 线，先填 chart，WS 再实时增量更新。 */
+  /** DB ticker 快照行 → WS ticker（`change_24h` 为绝对变动，按 open 折算百分比）。 */
+  function dbTickerToWs(r: TickerSnapshotRecord): BinanceWsTicker {
+    const last = r.last_px ?? 0
+    const open = r.open_24h ?? 0
+    const change = r.change_24h ?? 0
+    return {
+      symbol: r.instrument_id,
+      last_price: last,
+      price_change: change,
+      price_change_percent: open > 0 ? (change / open) * 100 : 0,
+      high: r.high_24h ?? 0,
+      low: r.low_24h ?? 0,
+      open,
+      volume: r.vol_24h ?? 0,
+      quote_volume: r.vol_ccy_24h ?? 0,
+      event_time: new Date(r.ts).getTime(),
+    }
+  }
+
+  /** 预取某标的近 100 根历史 1m K 线（从数据库），先填 chart。 */
   async function prefetchCandles(sym: string) {
     try {
-      const rows = await getBinanceCandles(sym, '1m', 100)
+      const rows = await getKlines(sym, '1m', 100)
       candles.value = {
         ...candles.value,
-        [sym]: rows.map((k) => binanceKlineToWs(k, sym)),
+        [sym]: rows.map(dbKlineToWs),
       }
     } catch {
-      // 预取失败忽略：等 WS 实时事件填充
+      // 预取失败忽略：等 DB 轮询填充
+    }
+  }
+
+  /** 从数据库拉取活跃标的 K 线 + 全部订阅标的的最新 ticker（纯 DB 读）。 */
+  async function pollDb() {
+    try {
+      const rows = await getKlines(activeSymbol.value, '1m', 120)
+      candles.value = { ...candles.value, [activeSymbol.value]: rows.map(dbKlineToWs) }
+    } catch {
+      // 忽略：下次轮询重试
+    }
+    const syms = symbols.value.length ? symbols.value : DEFAULT_MARKET_SYMBOLS
+    for (const sym of syms.slice(0, MAX_SUBSCRIBE)) {
+      try {
+        const rows = await getTickerSnapshots(sym, 1)
+        const last = rows[0]
+        if (last) tickers.value = { ...tickers.value, [sym]: dbTickerToWs(last) }
+      } catch {
+        // 忽略单标的失败
+      }
     }
   }
 
   async function buildHandlers(): Promise<BinanceEventHandlers> {
     return {
-      onTicker: (t) => {
-        tickers.value = { ...tickers.value, [t.symbol]: t }
-      },
+      // ticker / candle 改由 DB 轮询（pollDb）驱动，不经 WS 事件。
       onTrade: (t) => {
         const list = [t, ...(trades.value[t.symbol] ?? [])].slice(0, 100)
         trades.value = { ...trades.value, [t.symbol]: list }
@@ -106,7 +133,6 @@ export const useMarketDataStore = defineStore('marketData', () => {
       onOrderBook: (d) => {
         orderBooks.value = { ...orderBooks.value, [d.symbol]: d }
       },
-      onCandle: upsertCandle,
       onStatus: (s) => {
         status.value = s.status
       },
@@ -145,8 +171,11 @@ export const useMarketDataStore = defineStore('marketData', () => {
       unlisteners = await listenToBinanceEvents(handlers)
       await ensureSubscribed(syms)
       activeSymbol.value = syms[0] ?? activeSymbol.value
-      // 首屏预取历史 K 线，避免 chart 空白等 WS 首批事件。
+      // 首屏预取历史 K 线，避免 chart 空白等 DB 首批轮询。
       await prefetchCandles(activeSymbol.value)
+      await pollDb()
+      if (dbPollTimer) clearInterval(dbPollTimer)
+      dbPollTimer = setInterval(pollDb, 5000)
       running.value = true
       status.value = 'connected'
     } catch {
@@ -165,11 +194,15 @@ export const useMarketDataStore = defineStore('marketData', () => {
     symbols.value = []
   }
 
-  /** Stop the stream and detach all listeners. */
+    /** Stop the stream and detach all listeners. */
   async function stop() {
     if (!running.value) return
     unlisteners.forEach((u) => u())
     unlisteners = []
+    if (dbPollTimer) {
+      clearInterval(dbPollTimer)
+      dbPollTimer = null
+    }
     await stopBinanceStream()
     running.value = false
     status.value = 'idle'
@@ -180,6 +213,7 @@ export const useMarketDataStore = defineStore('marketData', () => {
     if (symbols.value.includes(sym)) {
       activeSymbol.value = sym
       prefetchCandles(sym)
+      void pollDb()
       // 切换标的时订阅其重流（后端去重，重复调用安全）。
       void subscribeHeavy(sym)
     }

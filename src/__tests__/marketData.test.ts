@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { listen } from '@tauri-apps/api/event'
 import { useMarketDataStore, DEFAULT_MARKET_SYMBOLS } from '@/stores/marketData'
-import { mockInvoke } from './mock-tauri'
-import type { BinanceWsTicker, BinanceWsTrade, BinanceWsDepth, BinanceWsKline } from '@/services/types'
+import { mockInvoke, mockTauriInvoke } from './mock-tauri'
+import type { BinanceWsTrade, BinanceWsDepth } from '@/services/types'
 
 type AnyHandler = (ev: { payload: unknown }) => void
 let capturedHandlers: Record<string, AnyHandler> = {}
@@ -21,18 +21,6 @@ function captureListen(): void {
   }) as typeof listen)
 }
 
-const sampleTicker: BinanceWsTicker = {
-  symbol: 'BTC-USDT',
-  last_price: 50000,
-  price_change: 500,
-  price_change_percent: 1.0,
-  high: 51000,
-  low: 49000,
-  open: 49500,
-  volume: 1200,
-  quote_volume: 60000000,
-  event_time: 1700000000000,
-}
 
 const sampleTrade: BinanceWsTrade = {
   symbol: 'BTC-USDT',
@@ -48,17 +36,6 @@ const sampleBook: BinanceWsDepth = {
   asks: [[50001, 2.5]],
 }
 
-const sampleCandle: BinanceWsKline = {
-  symbol: 'BTC-USDT',
-  interval: '1m',
-  open_time: 1700000000000,
-  open: 49900,
-  high: 50100,
-  low: 49800,
-  close: 50000,
-  volume: 100,
-  is_closed: false,
-}
 
 describe('marketData store', () => {
   beforeEach(() => {
@@ -87,14 +64,28 @@ describe('marketData store', () => {
     expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_candle', { symbol: active, interval: '1m' })
   })
 
-  it('routes binance:ticker into the ticker map', async () => {
+  it('loads latest ticker from DB (get_ticker_snapshots)', async () => {
+    mockTauriInvoke('get_ticker_snapshots', [
+      {
+        instrument_id: 'BTC-USDT',
+        ts: '2024-01-01T00:00:00Z',
+        last_px: 50000,
+        open_24h: 49500,
+        high_24h: 51000,
+        low_24h: 49000,
+        vol_24h: 1200,
+        vol_ccy_24h: 60000000,
+        change_24h: 500,
+        created_at: null,
+      },
+    ])
     const store = useMarketDataStore()
     await store.start()
 
-    fireEvent('binance:ticker', sampleTicker)
-    expect(store.tickers['BTC-USDT']).toEqual(sampleTicker)
-    expect(store.tickerList).toHaveLength(1)
-    expect(store.tickerList[0].last_price).toBe(50000)
+    expect(store.tickers['BTC-USDT']).toBeTruthy()
+    expect(store.tickers['BTC-USDT'].last_price).toBe(50000)
+    expect(store.tickers['BTC-USDT'].price_change_percent).toBeCloseTo((500 / 49500) * 100)
+    expect(store.tickerList.length).toBeGreaterThanOrEqual(1)
   })
 
   it('prepends binance:trade events for a symbol', async () => {
@@ -120,17 +111,16 @@ describe('marketData store', () => {
     expect(store.orderBookForActive).toEqual(sampleBook)
   })
 
-  it('upserts binance:kline candles by open_time', async () => {
+  it('loads candles from DB (get_klines)', async () => {
+    mockTauriInvoke('get_klines', [
+      { id: 1, instrument_id: 'BTC-USDT', timeframe: '1m', timestamp: '2024-01-01T00:00:00Z', open: 50000, high: 50050, low: 49900, close: 50020, volume: 1200, created_at: null },
+      { id: 2, instrument_id: 'BTC-USDT', timeframe: '1m', timestamp: '2024-01-01T00:01:00Z', open: 50020, high: 50100, low: 50010, close: 50050, volume: 800, created_at: null },
+    ])
     const store = useMarketDataStore()
     await store.start()
 
-    fireEvent('binance:kline', sampleCandle)
-    fireEvent('binance:kline', { ...sampleCandle, close: 50050 })
-    expect(store.candles['BTC-USDT']).toHaveLength(1)
-    expect(store.candles['BTC-USDT'][0].close).toBe(50050)
-
-    fireEvent('binance:kline', { ...sampleCandle, open_time: 1700000001000, close: 50100 })
     expect(store.candles['BTC-USDT']).toHaveLength(2)
+    expect(store.candles['BTC-USDT'][0].close).toBe(50020)
     expect(store.candlesForActive).toHaveLength(2)
   })
 

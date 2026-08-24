@@ -445,6 +445,34 @@ export interface AccountSnapshotRecord {
   created_at: string
 }
 
+/** 数据库 K 线行（`market_data`，remote WS 导入后前端从 DB 读）。 */
+export interface MarketDataRecord {
+  id: number
+  instrument_id: string
+  timeframe: string
+  timestamp: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  created_at: string | null
+}
+
+/** 数据库 ticker 快照行（`ticker_snapshots`）。 */
+export interface TickerSnapshotRecord {
+  instrument_id: string
+  ts: string
+  last_px: number | null
+  open_24h: number | null
+  high_24h: number | null
+  low_24h: number | null
+  vol_24h: number | null
+  vol_ccy_24h: number | null
+  change_24h: number | null
+  created_at: string | null
+}
+
 /** 本地持久化的 live 单成交记录（策略关联 + 成交价/量）。 */
 export interface LiveTrade {
   id: number
