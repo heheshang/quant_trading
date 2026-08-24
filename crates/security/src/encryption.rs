@@ -5,7 +5,7 @@ use aes_gcm::{
 use base64::{engine::general_purpose, Engine as _};
 use quant_common::{Error, Result};
 use rand::RngCore;
-use tracing::{error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 /// 数据加密服务
 pub struct DataEncryption {
@@ -119,8 +119,10 @@ impl DataEncryption {
     pub fn decrypt(&self, encrypted: &str) -> Result<Vec<u8>> {
         info!("decrypting data");
 
+        // 非密文（如迁移前的明文 JWT/占位值）会走到这里。调用方（secure_decrypt 命令 +
+        // 前端 dec 回退）会自行处理，不属于系统错误，按 debug 记录避免刷屏。
         let data = general_purpose::STANDARD.decode(encrypted).map_err(|e| {
-            error!(error = %e, "base64 decode failed");
+            debug!(error = %e, "base64 decode failed (input is not encrypted data)");
             Error::Internal(format!("Base64 decode failed: {}", e))
         })?;
 
