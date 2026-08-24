@@ -46,21 +46,19 @@ fn make_order(
     price: Decimal,
     quantity: Decimal,
 ) -> Order {
-    Order {
-        order_id: 0,
-        strategy_id: "test".to_string(),
-        symbol: symbol.to_string(),
-        order_type: quant_common::types::OrderType::Limit,
-        side,
-        price: Some(price),
-        quantity,
-        filled_quantity: Decimal::ZERO,
-        status: quant_common::types::OrderStatus::Pending,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: Decimal::ZERO,
-        slippage: Decimal::ZERO,
-    }
+    Order { order_id: 0,
+    strategy_id: "test".to_string(),
+    symbol: symbol.to_string(),
+    order_type: quant_common::types::OrderType::Limit,
+    side,
+    price: Some(price),
+    quantity,
+    filled_quantity: Decimal::ZERO,
+    status: quant_common::types::OrderStatus::Pending,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    commission: Decimal::ZERO,
+    slippage: Decimal::ZERO, exchange: "paper".to_string(), }
 }
 
 #[tokio::test]
@@ -266,6 +264,7 @@ async fn test_backtest_executes_at_next_bar_open() {
                 updated_at: Utc::now(),
                 commission: Decimal::ZERO,
                 slippage: Decimal::ZERO,
+                exchange: "paper".to_string(),
             }])
         }
 

@@ -59,21 +59,19 @@ impl Signal {
             SignalType::Hold => return None,
         };
 
-        Some(Order {
-            order_id: 0,
-            strategy_id: strategy_id.to_string(),
-            symbol: self.symbol.clone(),
-            order_type,
-            side,
-            price: self.price,
-            quantity: self.quantity.unwrap_or(Decimal::ZERO),
-            filled_quantity: Decimal::ZERO,
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO,
-        })
+        Some(Order { order_id: 0,
+        strategy_id: strategy_id.to_string(),
+        symbol: self.symbol.clone(),
+        order_type,
+        side,
+        price: self.price,
+        quantity: self.quantity.unwrap_or(Decimal::ZERO),
+        filled_quantity: Decimal::ZERO,
+        status: quant_common::types::OrderStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: Decimal::ZERO,
+        slippage: Decimal::ZERO, exchange: "paper".to_string(), })
     }
 }
 

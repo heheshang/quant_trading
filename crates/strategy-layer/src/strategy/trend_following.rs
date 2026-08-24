@@ -164,6 +164,7 @@ impl Strategy for TrendFollowingStrategy {
             updated_at: Utc::now(),
             commission: Decimal::ZERO,
             slippage: Decimal::ZERO,
+            exchange: "paper".to_string(),
         }])
     }
 

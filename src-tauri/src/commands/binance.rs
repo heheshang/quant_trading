@@ -37,6 +37,7 @@ fn binance_order_to_app_order(o: &BinanceOrder, strategy_id: Option<&str>) -> Or
         updated_at: from_ms(o.update_time),
         commission: Decimal::ZERO,
         slippage: Decimal::ZERO,
+        exchange: "live".to_string(),
     }
 }
 
@@ -50,7 +51,7 @@ async fn mirror_live_order(
         let app_order = binance_order_to_app_order(o, strategy_id);
         let _ = services
             .account_service
-            .persist_order(&app_order, &account.account_id)
+            .persist_order(&app_order, &account.account_id, "live")
             .await;
     }
 }

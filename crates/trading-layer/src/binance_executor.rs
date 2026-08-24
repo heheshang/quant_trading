@@ -213,21 +213,19 @@ mod tests {
         symbol: &str,
         price: Option<Decimal>,
     ) -> Order {
-        Order {
-            order_id: 1001,
-            strategy_id: "test".to_string(),
-            symbol: symbol.to_string(),
-            order_type,
-            side,
-            price,
-            quantity: dec!(2),
-            filled_quantity: Decimal::ZERO,
-            status: OrderStatus::Submitted,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO,
-        }
+        Order { order_id: 1001,
+        strategy_id: "test".to_string(),
+        symbol: symbol.to_string(),
+        order_type,
+        side,
+        price,
+        quantity: dec!(2),
+        filled_quantity: Decimal::ZERO,
+        status: OrderStatus::Submitted,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        commission: Decimal::ZERO,
+        slippage: Decimal::ZERO, exchange: "live".to_string(), }
     }
 
     fn make_executor(mock: MockBinanceClient) -> BinanceExecutor {

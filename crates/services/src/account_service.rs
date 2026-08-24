@@ -82,7 +82,7 @@ impl AccountService {
             r#"
             SELECT order_id, strategy_id, symbol, order_type, side, price,
                    quantity, filled_quantity, commission, slippage, status,
-                   created_at, updated_at
+                   exchange, created_at, updated_at
             FROM orders
             WHERE status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
             ORDER BY created_at DESC
@@ -132,6 +132,7 @@ impl AccountService {
                         status,
                         created_at: row.get("created_at"),
                         updated_at: row.get("updated_at"),
+                        exchange: row.get("exchange"),
                     })
                 })
                 .collect::<ServiceResult<Vec<_>>>()?;
@@ -169,7 +170,7 @@ impl AccountService {
             r#"
             SELECT order_id, strategy_id, symbol, order_type, side, price,
                    quantity, filled_quantity, commission, slippage, status,
-                   created_at, updated_at
+                   exchange, created_at, updated_at
             FROM orders
             ORDER BY created_at DESC
             LIMIT $1
@@ -343,12 +344,18 @@ impl AccountService {
                     status,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
+                    exchange: row.get("exchange"),
                 })
             })
             .collect()
     }
 
-    pub async fn persist_order(&self, order: &Order, account_id: &i64) -> ServiceResult<()> {
+    pub async fn persist_order(
+        &self,
+        order: &Order,
+        account_id: &i64,
+        exchange: &str,
+    ) -> ServiceResult<()> {
         let client = self
             .postgres
             .as_ref()
@@ -372,8 +379,8 @@ impl AccountService {
             r#"
             INSERT INTO orders (order_id, account_id, strategy_id, symbol, order_type, side,
                                 price, quantity, filled_quantity, commission, slippage, status,
-                                created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                                exchange, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             ON CONFLICT (order_id) DO NOTHING
             "#,
         )
@@ -389,6 +396,7 @@ impl AccountService {
         .bind(order.commission)
         .bind(order.slippage)
         .bind(&status_str)
+        .bind(exchange)
         .bind(order.created_at)
         .bind(order.updated_at)
         .execute(pool)
@@ -616,8 +624,9 @@ mod tests {
             updated_at: chrono::Utc::now(),
             commission: rust_decimal::Decimal::ZERO,
             slippage: rust_decimal::Decimal::ZERO,
+            exchange: "paper".to_string(),
         };
-        let result = svc.persist_order(&order, &0).await;
+        let result = svc.persist_order(&order, &0, "paper").await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),

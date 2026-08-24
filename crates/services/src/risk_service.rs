@@ -241,6 +241,7 @@ mod tests {
             updated_at: chrono::Utc::now(),
             commission: dec!(0),
             slippage: dec!(0),
+            exchange: "paper".to_string(),
         }
     }
 
@@ -259,6 +260,7 @@ mod tests {
             updated_at: chrono::Utc::now(),
             commission: dec!(0),
             slippage: dec!(0),
+            exchange: "paper".to_string(),
         }
     }
 

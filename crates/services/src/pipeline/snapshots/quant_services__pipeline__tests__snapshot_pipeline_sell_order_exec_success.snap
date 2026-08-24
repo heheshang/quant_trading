@@ -16,6 +16,7 @@ order:
   updated_at: "[updated_at]"
   commission: 0
   slippage: 0
+  exchange: paper
 risk_approved: true
 risk_reason: ~
 execution_status: Confirmed

@@ -165,21 +165,19 @@ mod tests {
     async fn test_order_manager() {
         let manager = OrderManager::new();
 
-        let order = Order {
-            order_id: 0,
-            strategy_id: "test_strategy".to_string(),
-            symbol: "TEST".to_string(),
-            order_type: OrderType::Limit,
-            side: OrderSide::Buy,
-            price: Some(dec!(100)),
-            quantity: dec!(10),
-            filled_quantity: dec!(0),
-            status: OrderStatus::Pending,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            commission: dec!(0),
-            slippage: dec!(0),
-        };
+        let order = Order { order_id: 0,
+        strategy_id: "test_strategy".to_string(),
+        symbol: "TEST".to_string(),
+        order_type: OrderType::Limit,
+        side: OrderSide::Buy,
+        price: Some(dec!(100)),
+        quantity: dec!(10),
+        filled_quantity: dec!(0),
+        status: OrderStatus::Pending,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        commission: dec!(0),
+        slippage: dec!(0), exchange: "paper".to_string(), };
 
         let order_id = manager.submit_order(order).await.unwrap();
         let retrieved_order = manager.get_order(order_id).await.unwrap();

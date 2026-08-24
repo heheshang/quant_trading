@@ -48,6 +48,8 @@ export interface Order {
   updated_at: string
   commission: number
   slippage: number
+  /** 订单来源/种类：paper / live / algorithm / manual 等。 */
+  exchange?: string
 }
 
 export interface Position {

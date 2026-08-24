@@ -131,21 +131,19 @@ async fn test_get_positions_without_db_returns_error() {
 async fn test_get_active_orders_returns_submitted() {
     let state = make_test_state();
     // Submit an order first so OrderManager has a submitted order
-    let order = Order {
-        order_id: 0,
-        strategy_id: "test_strategy".to_string(),
-        symbol: "600519.SH".to_string(),
-        order_type: quant_common::types::OrderType::Limit,
-        side: quant_common::types::OrderSide::Buy,
-        price: Some(dec!(1685.00)),
-        quantity: dec!(100),
-        filled_quantity: dec!(0),
-        status: quant_common::types::OrderStatus::Pending,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0),
-    };
+    let order = Order { order_id: 0,
+    strategy_id: "test_strategy".to_string(),
+    symbol: "600519.SH".to_string(),
+    order_type: quant_common::types::OrderType::Limit,
+    side: quant_common::types::OrderSide::Buy,
+    price: Some(dec!(1685.00)),
+    quantity: dec!(100),
+    filled_quantity: dec!(0),
+    status: quant_common::types::OrderStatus::Pending,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    commission: dec!(0),
+    slippage: dec!(0), exchange: "paper".to_string(), };
     state.order_manager.submit_order(order).await.unwrap();
 
     let state_guard: tauri::State<'_, AppState> =
@@ -164,21 +162,19 @@ async fn test_get_active_orders_returns_submitted() {
 async fn test_cancel_order_cancels_paper_order() {
     let state = make_test_state();
     // Submit a paper order into the OrderManager.
-    let order = Order {
-        order_id: 0,
-        strategy_id: "test_strategy".to_string(),
-        symbol: "600519.SH".to_string(),
-        order_type: quant_common::types::OrderType::Limit,
-        side: quant_common::types::OrderSide::Buy,
-        price: Some(dec!(1685.00)),
-        quantity: dec!(100),
-        filled_quantity: dec!(0),
-        status: quant_common::types::OrderStatus::Pending,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0),
-    };
+    let order = Order { order_id: 0,
+    strategy_id: "test_strategy".to_string(),
+    symbol: "600519.SH".to_string(),
+    order_type: quant_common::types::OrderType::Limit,
+    side: quant_common::types::OrderSide::Buy,
+    price: Some(dec!(1685.00)),
+    quantity: dec!(100),
+    filled_quantity: dec!(0),
+    status: quant_common::types::OrderStatus::Pending,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    commission: dec!(0),
+    slippage: dec!(0), exchange: "paper".to_string(), };
     let order_id = state.order_manager.submit_order(order).await.unwrap();
 
     let result = crate::commands::core::cancel_order_core(&state, order_id).await;
@@ -195,21 +191,19 @@ async fn test_cancel_order_cancels_paper_order() {
 #[tokio::test]
 async fn test_cancel_order_rejects_already_filled() {
     let state = make_test_state();
-    let order = Order {
-        order_id: 0,
-        strategy_id: "test_strategy".to_string(),
-        symbol: "600519.SH".to_string(),
-        order_type: quant_common::types::OrderType::Limit,
-        side: quant_common::types::OrderSide::Buy,
-        price: Some(dec!(1685.00)),
-        quantity: dec!(100),
-        filled_quantity: dec!(100),
-        status: quant_common::types::OrderStatus::Filled,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0),
-    };
+    let order = Order { order_id: 0,
+    strategy_id: "test_strategy".to_string(),
+    symbol: "600519.SH".to_string(),
+    order_type: quant_common::types::OrderType::Limit,
+    side: quant_common::types::OrderSide::Buy,
+    price: Some(dec!(1685.00)),
+    quantity: dec!(100),
+    filled_quantity: dec!(100),
+    status: quant_common::types::OrderStatus::Filled,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    commission: dec!(0),
+    slippage: dec!(0), exchange: "paper".to_string(), };
     let order_id = state.order_manager.submit_order(order).await.unwrap();
     // Mark it filled so it is no longer cancellable.
     state

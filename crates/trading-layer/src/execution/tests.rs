@@ -29,21 +29,19 @@ fn config(paper: bool, delay_ms: u64, slippage: f64, commission: f64) -> Trading
 
 /// 构造测试用订单。
 fn sample_order(side: OrderSide, price: Option<Decimal>) -> Order {
-    Order {
-        order_id: 1001,
-        strategy_id: "test".to_string(),
-        symbol: "BTC/USDT".to_string(),
-        order_type: OrderType::Limit,
-        side,
-        price,
-        quantity: dec!(2),
-        filled_quantity: Decimal::ZERO,
-        status: OrderStatus::Submitted,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: Decimal::ZERO,
-        slippage: Decimal::ZERO,
-    }
+    Order { order_id: 1001,
+    strategy_id: "test".to_string(),
+    symbol: "BTC/USDT".to_string(),
+    order_type: OrderType::Limit,
+    side,
+    price,
+    quantity: dec!(2),
+    filled_quantity: Decimal::ZERO,
+    status: OrderStatus::Submitted,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    commission: Decimal::ZERO,
+    slippage: Decimal::ZERO, exchange: "paper".to_string(), }
 }
 
 /// 构造测试用行情数据（买卖价一致，避免 spread 影响）。

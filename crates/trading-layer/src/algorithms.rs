@@ -46,21 +46,19 @@ impl AlgorithmicOrderSlicer {
         let mut current_time = start_time;
 
         for i in 0..params.num_slices {
-            let order = Order {
-                order_id: 0,
-                strategy_id: format!("TWAP_{}", i),
-                symbol: symbol.clone(),
-                order_type: OrderType::Market,
-                side: side.clone(),
-                price: None,
-                quantity: slice_quantity,
-                filled_quantity: Decimal::ZERO,
-                status: quant_common::types::OrderStatus::Pending,
-                created_at: current_time,
-                updated_at: current_time,
-                commission: Decimal::ZERO,
-                slippage: Decimal::ZERO,
-            };
+            let order = Order { order_id: 0,
+            strategy_id: format!("TWAP_{}", i),
+            symbol: symbol.clone(),
+            order_type: OrderType::Market,
+            side: side.clone(),
+            price: None,
+            quantity: slice_quantity,
+            filled_quantity: Decimal::ZERO,
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: current_time,
+            updated_at: current_time,
+            commission: Decimal::ZERO,
+            slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
 
             orders.push(order);
             current_time += Duration::minutes(time_interval);
@@ -97,21 +95,19 @@ impl AlgorithmicOrderSlicer {
             let volume_ratio = *volume / total_volume;
             let slice_quantity = params.total_quantity * volume_ratio;
 
-            let order = Order {
-                order_id: 0,
-                strategy_id: format!("VWAP_{}", i),
-                symbol: symbol.clone(),
-                order_type: OrderType::Market,
-                side: side.clone(),
-                price: None,
-                quantity: slice_quantity,
-                filled_quantity: Decimal::ZERO,
-                status: quant_common::types::OrderStatus::Pending,
-                created_at: *timestamp,
-                updated_at: *timestamp,
-                commission: Decimal::ZERO,
-                slippage: Decimal::ZERO,
-            };
+            let order = Order { order_id: 0,
+            strategy_id: format!("VWAP_{}", i),
+            symbol: symbol.clone(),
+            order_type: OrderType::Market,
+            side: side.clone(),
+            price: None,
+            quantity: slice_quantity,
+            filled_quantity: Decimal::ZERO,
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: *timestamp,
+            updated_at: *timestamp,
+            commission: Decimal::ZERO,
+            slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
 
             orders.push(order);
         }
@@ -146,21 +142,19 @@ impl AlgorithmicOrderSlicer {
                 remaining
             };
 
-            let order = Order {
-                order_id: 0,
-                strategy_id: format!("ICEBERG_{}", i),
-                symbol: symbol.clone(),
-                order_type: OrderType::Limit,
-                side: side.clone(),
-                price,
-                quantity,
-                filled_quantity: Decimal::ZERO,
-                status: quant_common::types::OrderStatus::Pending,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-                commission: Decimal::ZERO,
-                slippage: Decimal::ZERO,
-            };
+            let order = Order { order_id: 0,
+            strategy_id: format!("ICEBERG_{}", i),
+            symbol: symbol.clone(),
+            order_type: OrderType::Limit,
+            side: side.clone(),
+            price,
+            quantity,
+            filled_quantity: Decimal::ZERO,
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: Decimal::ZERO,
+            slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
 
             orders.push(order);
             remaining -= quantity;

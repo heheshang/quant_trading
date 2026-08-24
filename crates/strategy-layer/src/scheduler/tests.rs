@@ -262,21 +262,19 @@ impl OrderExecutor for RecordingExecutor {
 }
 
 fn emit_buy_order() -> Order {
-    Order {
-        order_id: 0,
-        strategy_id: "chain".to_string(),
-        symbol: "BTC-USDT".to_string(),
-        order_type: OrderType::Limit,
-        side: OrderSide::Buy,
-        price: Some(rust_decimal::Decimal::new(50000, 0)),
-        quantity: rust_decimal::Decimal::new(1, 0),
-        filled_quantity: rust_decimal::Decimal::ZERO,
-        status: OrderStatus::Pending,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: rust_decimal::Decimal::ZERO,
-        slippage: rust_decimal::Decimal::ZERO,
-    }
+    Order { order_id: 0,
+    strategy_id: "chain".to_string(),
+    symbol: "BTC-USDT".to_string(),
+    order_type: OrderType::Limit,
+    side: OrderSide::Buy,
+    price: Some(rust_decimal::Decimal::new(50000, 0)),
+    quantity: rust_decimal::Decimal::new(1, 0),
+    filled_quantity: rust_decimal::Decimal::ZERO,
+    status: OrderStatus::Pending,
+    created_at: Utc::now(),
+    updated_at: Utc::now(),
+    commission: rust_decimal::Decimal::ZERO,
+    slippage: rust_decimal::Decimal::ZERO, exchange: "paper".to_string(), }
 }
 
 #[tokio::test]

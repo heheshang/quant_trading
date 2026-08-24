@@ -261,21 +261,19 @@ mod tests {
 
         let checker = PreTradeRiskChecker::new(config);
 
-        let order = Order {
-            order_id: 0,
-            strategy_id: "test".to_string(),
-            symbol: "TEST".to_string(),
-            order_type: OrderType::Limit,
-            side: OrderSide::Buy,
-            price: Some(dec!(100)),
-            quantity: dec!(10),
-            filled_quantity: dec!(0),
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            commission: dec!(0),
-            slippage: dec!(0),
-        };
+        let order = Order { order_id: 0,
+        strategy_id: "test".to_string(),
+        symbol: "TEST".to_string(),
+        order_type: OrderType::Limit,
+        side: OrderSide::Buy,
+        price: Some(dec!(100)),
+        quantity: dec!(10),
+        filled_quantity: dec!(0),
+        status: quant_common::types::OrderStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: dec!(0),
+        slippage: dec!(0), exchange: "paper".to_string(), };
 
         let account = Account {
             account_id: 0,
@@ -307,21 +305,19 @@ mod tests {
         };
 
         let checker = PreTradeRiskChecker::new(config);
-        let order = Order {
-            order_id: 0,
-            strategy_id: "test".to_string(),
-            symbol: "TEST".to_string(),
-            order_type: OrderType::Market,
-            side: OrderSide::Buy,
-            price: None,
-            quantity: dec!(10),
-            filled_quantity: dec!(0),
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            commission: dec!(0),
-            slippage: dec!(0),
-        };
+        let order = Order { order_id: 0,
+        strategy_id: "test".to_string(),
+        symbol: "TEST".to_string(),
+        order_type: OrderType::Market,
+        side: OrderSide::Buy,
+        price: None,
+        quantity: dec!(10),
+        filled_quantity: dec!(0),
+        status: quant_common::types::OrderStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: dec!(0),
+        slippage: dec!(0), exchange: "paper".to_string(), };
         let account = Account {
             account_id: 0,
             total_assets: dec!(10000),

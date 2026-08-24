@@ -295,7 +295,7 @@ mod tests {
             let mut records: Vec<AuditLogRecord> = logs
                 .iter()
                 .filter(|row| {
-                    filter.user_id.map_or(true, |u| row.user_id == u)
+                    filter.user_id.map_or(true, |u| row.user_id == Some(u))
                         && filter
                             .username
                             .as_ref()

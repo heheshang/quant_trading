@@ -49,6 +49,9 @@
           {{ row.order_type === 'Limit' ? '限价' : '市价' }}
         </template>
       </el-table-column>
+      <el-table-column label="种类" width="80">
+        <template #default="{ row }">{{ exchangeText(row.exchange) }}</template>
+      </el-table-column>
       <el-table-column label="价格" width="100">
         <template #default="{ row }">
           <span v-if="row.price != null">¥{{ formatCurrency(row.price) }}</span>
@@ -142,6 +145,17 @@ const searchQuery = ref('')
 const strategyFilter = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
+/** 订单种类中文标签。 */
+function exchangeText(exchange?: string): string {
+  const map: Record<string, string> = {
+    paper: '纸面',
+    live: '实盘',
+    algorithm: '算法',
+    manual: '手动',
+  }
+  return map[exchange || 'paper'] || exchange || '纸面'
+}
+
 /** 解析订单的策略名称显示值。 */
 function orderStrategyName(o: Order): string {
   return strategyNameMap.value[o.strategy_id] || o.strategy_name || o.strategy_id || '—'

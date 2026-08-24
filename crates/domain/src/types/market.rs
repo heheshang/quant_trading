@@ -152,6 +152,14 @@ pub struct Order {
     pub updated_at: DateTime<Utc>,
     pub commission: Decimal,
     pub slippage: Decimal,
+    /// 订单来源/种类：paper / live / algorithm / manual 等（旧数据默认 paper）。
+    #[serde(default = "default_order_exchange")]
+    pub exchange: String,
+}
+
+/// 旧订单/缺失 exchange 字段时默认纸面。
+fn default_order_exchange() -> String {
+    "paper".to_string()
 }
 
 impl Order {
@@ -208,6 +216,7 @@ impl Order {
             updated_at: Utc::now(),
             commission: Decimal::ZERO,
             slippage: Decimal::ZERO,
+            exchange: "paper".to_string(),
         }
     }
 }

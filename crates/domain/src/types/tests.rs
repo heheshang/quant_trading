@@ -40,6 +40,7 @@ fn make_order() -> Order {
         updated_at: Utc::now(),
         commission: dec!(5.0),
         slippage: dec!(0.01),
+        exchange: "paper".to_string(),
     }
 }
 
