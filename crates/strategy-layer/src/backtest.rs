@@ -120,6 +120,13 @@ impl BacktestEngine {
             })?
             .timestamp;
 
+        // 目标标的 = 首批数据的 symbol。策略按单标的（market_data[0].symbol）设计：
+        // 信号历史只喂目标标的，避免多标的 bar 交错污染指标序列。
+        let target_symbol = market_data
+            .first()
+            .map(|d| d.symbol.clone())
+            .unwrap_or_else(|| "BTC-USDT".to_string());
+
         // 按时间戳分组数据
         let mut data_by_time: HashMap<DateTime<Utc>, Vec<MarketData>> = HashMap::new();
         for data in market_data {
@@ -195,7 +202,13 @@ impl BacktestEngine {
             }
 
             // 生成交易信号（用本根 K 线收盘价），挂单留待下一根 K 线执行
-            history.extend(current_data.iter().cloned());
+            // 只把目标标的的 bar 追加进历史（避免多标的交错污染指标）。
+            history.extend(
+                current_data
+                    .iter()
+                    .filter(|d| d.symbol == target_symbol)
+                    .cloned(),
+            );
             let context = crate::strategy::StrategyContext {
                 current_time: timestamp,
                 positions: self.positions.values().cloned().collect(),

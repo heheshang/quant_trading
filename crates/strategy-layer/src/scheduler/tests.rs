@@ -16,6 +16,33 @@ use tokio::time::Duration;
 /// Mock provider that returns no historical data. Enough to satisfy the
 /// scheduler's "trading ready" precondition for lifecycle tests.
 struct MockProvider;
+struct MockProviderData;
+#[async_trait]
+impl MarketDataProvider for MockProviderData {
+    async fn get_historical_data(
+        &self,
+        symbol: &str,
+        _start: DateTime<Utc>,
+        _end: DateTime<Utc>,
+        _timeframe: &str,
+    ) -> Result<Vec<MarketData>, String> {
+        Ok(vec![MarketData {
+            symbol: symbol.to_string(),
+            timestamp: Utc::now(),
+            open: rust_decimal::Decimal::new(100, 0),
+            high: rust_decimal::Decimal::new(110, 0),
+            low: rust_decimal::Decimal::new(90, 0),
+            close: rust_decimal::Decimal::new(105, 0),
+            volume: rust_decimal::Decimal::ZERO,
+            turnover: rust_decimal::Decimal::ZERO,
+            open_interest: None,
+            bid_prices: vec![],
+            bid_volumes: vec![],
+            ask_prices: vec![],
+            ask_volumes: vec![],
+        }])
+    }
+}
 
 #[async_trait]
 impl MarketDataProvider for MockProvider {
@@ -295,7 +322,7 @@ async fn test_scheduler_routes_generated_signal_to_pipeline() {
     };
     let scheduler = StrategyScheduler::new(config);
     scheduler.set_pipeline(Arc::new(pipeline));
-    scheduler.set_market_data_provider(Arc::new(MockProvider));
+    scheduler.set_market_data_provider(Arc::new(MockProviderData));
 
     let strategy = EmitOrderStrategy {
         params: StrategyParams::builder(

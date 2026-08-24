@@ -195,96 +195,83 @@ impl StrategyScheduler {
                         // 执行信号生成
                         info!(strategy_id = %task_sid, "Executing scheduled signal generation");
 
-                        // 构造上下文，获取真实市场数据
-                        let mut market_data = Vec::new();
-                        if let Some(ref provider) = market_data_provider {
-                            for symbol in &strategy_symbols {
+                        // 逐标的生成信号：每个标的用各自 24h 历史，避免多标的交错污染指标；
+                        // 每个标的独立执行流水线（多标的策略可对每个 symbol 各下一单）。
+                        let now = chrono::Utc::now();
+                        let mut any_signal = false;
+                        for symbol in &strategy_symbols {
+                            let mut market_data = Vec::new();
+                            if let Some(ref provider) = market_data_provider {
                                 match provider.get_historical_data(
                                     symbol,
-                                    chrono::Utc::now() - chrono::Duration::hours(24),
-                                    chrono::Utc::now(),
+                                    now - chrono::Duration::hours(24),
+                                    now,
                                     "1H",
                                 ).await {
-                                    Ok(data) => market_data.extend(data),
+                                    Ok(data) => market_data = data,
                                     Err(e) => {
                                         warn!(strategy_id = %task_sid, symbol = %symbol, error = %e, "Failed to fetch market data");
+                                        continue;
                                     }
                                 }
                             }
-                        }
-
-                        let context = crate::strategy::StrategyContext {
-                            current_time: chrono::Utc::now(),
-                            positions: Vec::new(),
-                            market_data,
-                        };
-
-                        match strategy.generate_signals(&context).await {
-                            Ok(signals) => {
-                                info!(
-                                    strategy_id = %task_sid,
-                                    signal_count = signals.len(),
-                                    "Signals generated"
-                                );
-
-                                // 通过流水线处理订单
-                                if let Some(ref pipeline) = pipeline {
-                                    for order in signals {
-                                        if let Err(e) = pipeline.execute(order).await {
-                                            error!(
-                                                strategy_id = %task_sid,
-                                                error = %e,
-                                                "Pipeline step failed"
-                                            );
+                            if market_data.is_empty() {
+                                continue;
+                            }
+                            let context = crate::strategy::StrategyContext {
+                                current_time: now,
+                                positions: Vec::new(),
+                                market_data,
+                            };
+                            match strategy.generate_signals(&context).await {
+                                Ok(signals) => {
+                                    if !signals.is_empty() {
+                                        any_signal = true;
+                                    }
+                                    info!(
+                                        strategy_id = %task_sid,
+                                        symbol = %symbol,
+                                        signal_count = signals.len(),
+                                        "Signals generated"
+                                    );
+                                    // 通过流水线处理订单
+                                    if let Some(ref pipeline) = pipeline {
+                                        for order in signals {
+                                            if let Err(e) = pipeline.execute(order).await {
+                                                error!(
+                                                    strategy_id = %task_sid,
+                                                    symbol = %symbol,
+                                                    error = %e,
+                                                    "Pipeline step failed"
+                                                );
+                                            }
                                         }
                                     }
                                 }
-
-                                // 重置熔断器（成功执行）
-                                {
-                                    let mut cbs = cbs.write().await;
-                                    if let Some(cb) = cbs.get_mut(&task_sid) {
-                                        cb.reset();
-                                    }
-                                }
-
-                                // Update shared metadata on success.
-                                {
-                                    let mut m = task_meta.lock().unwrap();
-                                    m.last_run_at = Some(chrono::Utc::now());
-                                    m.error_count = 0;
-                                }
-                                task_error_counter.store(0, Ordering::Release);
-                            }
-                            Err(e) => {
-                                error!(
-                                    strategy_id = %task_sid,
-                                    error = %e,
-                                    "Signal generation failed"
-                                );
-
-                                // 记录错误到熔断器
-                                let should_pause = {
-                                    let mut cbs = cbs.write().await;
-                                    cbs.get_mut(&task_sid)
-                                        .is_some_and(|cb| cb.record_error())
-                                };
-
-                                // Update error count in shared metadata.
-                                let err_count = task_error_counter.fetch_add(1, Ordering::AcqRel) + 1;
-                                {
-                                    let mut m = task_meta.lock().unwrap();
-                                    m.error_count = err_count;
-                                }
-
-                                if should_pause {
+                                Err(e) => {
                                     error!(
                                         strategy_id = %task_sid,
-                                        "Circuit breaker threshold reached, strategy will be auto-paused"
+                                        symbol = %symbol,
+                                        error = %e,
+                                        "Signal generation failed"
                                     );
-                                    // 通知外部：熔断触发（通过日志和返回状态让调度器处理）
                                 }
                             }
+                        }
+                        if any_signal {
+                            // 重置熔断器（至少一个标的成功执行）+ 更新成功元数据。
+                            {
+                                let mut cbs = cbs.write().await;
+                                if let Some(cb) = cbs.get_mut(&task_sid) {
+                                    cb.reset();
+                                }
+                            }
+                            {
+                                let mut m = task_meta.lock().unwrap();
+                                m.last_run_at = Some(chrono::Utc::now());
+                                m.error_count = 0;
+                            }
+                            task_error_counter.store(0, Ordering::Release);
                         }
                     }
                 }
