@@ -85,35 +85,36 @@ async fn mirror_live_order(
     }
 }
 
-fn services<'a>(state: &'a State<'_, AppState>) -> Result<&'a quant_services::AppServices, String> {
-    state
-        .app_services
-        .as_ref()
-        .ok_or_else(|| "Binance service not initialized (no exchange client)".to_string())
-}
-
 #[tauri::command]
 pub async fn get_binance_balance(
     state: State<'_, AppState>,
-) -> Result<Vec<exchange_binance::types::BinanceBalance>, String> {
-    state.require_auth().await?;
-    services(&state)?
-        .binance_service
-        .get_balance()
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<exchange_binance::types::BinanceBalance>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{ok_result};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_balance().await?;
+    ok_result(data)
 }
 
 /// 全市场价格（`/api/v3/ticker/price`，用于持仓实时价格/市值补全）。
 #[tauri::command]
 pub async fn get_binance_ticker_prices(
     state: State<'_, AppState>,
-) -> Result<std::collections::HashMap<String, rust_decimal::Decimal>, String> {
-    services(&state)?
-        .binance_service
-        .get_all_ticker_prices()
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<std::collections::HashMap<String, rust_decimal::Decimal>>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_all_ticker_prices().await?;
+    ok_result(data)
 }
 
 #[tauri::command]
@@ -122,12 +123,15 @@ pub async fn get_binance_candles(
     symbol: String,
     interval: String,
     limit: Option<u32>,
-) -> Result<Vec<exchange_binance::types::BinanceKline>, String> {
-    services(&state)?
-        .binance_service
-        .get_candles(&symbol, &interval, limit)
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<exchange_binance::types::BinanceKline>>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_candles(&symbol, &interval, limit).await?;
+    ok_result(data)
 }
 
 #[tauri::command]
@@ -135,41 +139,50 @@ pub async fn get_binance_order_book(
     state: State<'_, AppState>,
     symbol: String,
     limit: Option<u32>,
-) -> Result<exchange_binance::types::BinanceOrderBook, String> {
-    services(&state)?
-        .binance_service
-        .get_order_book(&symbol, limit)
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<exchange_binance::types::BinanceOrderBook>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_order_book(&symbol, limit).await?;
+    ok_result(data)
 }
 
 #[tauri::command]
 pub async fn place_binance_order(
     state: State<'_, AppState>,
     request: BinancePlaceOrderRequest,
-) -> Result<exchange_binance::types::BinanceOrder, String> {
-    let services = services(&state)?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<exchange_binance::types::BinanceOrder>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{ok_result, ApiFailure};
+    let Some(services) = state.app_services.as_ref() else {
+        return Err(not_init_err("Binance 服务未初始化"));
+    };
     // 实盘下单必须先鉴权（未登录/越权一律拒绝）。
-    let _user = state.require_auth().await?;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     // 前置风控（与纸面路径一致性）：现金/持仓/单日亏损/集中度。
     let app_order = live_request_to_order(&request);
     let risk_config = services
         .risk_service
         .get_risk_config()
         .await
-        .map_err(|e| format!("风控配置不可用（fail-closed）：{}", e))?;
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("风控配置不可用（fail-closed）：{}", e)))?;
     if risk_config.enable_pre_trade_check {
         let checker = PreTradeRiskChecker::new(risk_config);
         let account = services
             .account_service
             .get_account_info()
             .await
-            .map_err(|e| format!("风控失败：无法获取账户（fail-closed）：{}", e))?;
+            .map_err(|e| ApiFailure::new(quant_common::api::code::RISK_REJECTED, format!("风控失败：无法获取账户（fail-closed）：{}", e)))?;
         let positions = services
             .account_service
             .get_paper_positions()
             .await
-            .map_err(|e| format!("风控失败：无法获取持仓（fail-closed）：{}", e))?;
+            .map_err(|e| ApiFailure::new(quant_common::api::code::RISK_REJECTED, format!("风控失败：无法获取持仓（fail-closed）：{}", e)))?;
         let reference = services
             .market_service
             .get_realtime_data(&app_order.symbol)
@@ -178,13 +191,9 @@ pub async fn place_binance_order(
             .ok();
         checker
             .check_order_with_reference_price(&app_order, &account, &positions, reference)
-            .map_err(|e| format!("风控校验失败：{}", e))?;
+            .map_err(|e| ApiFailure::new(quant_common::api::code::RISK_REJECTED, format!("风控校验失败：{}", e)))?;
     }
-    let order = services
-        .binance_service
-        .place_order(request.clone())
-        .await
-        .map_err(|e| e.to_string())?;
+    let order = services.binance_service.place_order(request.clone()).await?;
     // 记录 live 单（策略关联 + 成交价/量），供策略显示与真实盈亏计算。
     let _ = services
         .live_trades
@@ -201,20 +210,22 @@ pub async fn place_binance_order(
         .await;
     // 镜像写入 orders 表（活跃单统一从 DB 读）。
     mirror_live_order(services, &order, request.strategy_id.as_deref()).await;
-    Ok(order)
+    ok_result(order)
 }
 
 /// 读取本地记录的 live 单成交记录（策略关联 + 成交价/量）。
 #[tauri::command]
 pub async fn get_live_trades(
     state: State<'_, AppState>,
-) -> Result<Vec<data_layer::LiveTrade>, String> {
-    state.require_auth().await?;
-    services(&state)?
-        .live_trades
-        .list()
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::LiveTrade>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.live_trades.list().await?;
+    ok_result(data)
 }
 
 #[tauri::command]
@@ -222,26 +233,33 @@ pub async fn cancel_binance_order(
     state: State<'_, AppState>,
     symbol: String,
     order_id: i64,
-) -> Result<(), String> {
-    state.require_auth().await?;
-    services(&state)?
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::{ok_result};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    services
         .binance_service
         .cancel_order(&symbol, order_id)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(serde_json::Value::Null)
 }
 
 #[tauri::command]
 pub async fn get_binance_positions(
     state: State<'_, AppState>,
     symbol: Option<String>,
-) -> Result<Vec<exchange_binance::types::BinancePosition>, String> {
-    state.require_auth().await?;
-    services(&state)?
-        .binance_service
-        .get_positions(symbol.as_deref())
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<exchange_binance::types::BinancePosition>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_positions(symbol.as_deref()).await?;
+    ok_result(data)
 }
 
 #[tauri::command]
@@ -250,26 +268,20 @@ pub async fn get_binance_orders(
     symbol: String,
     history: Option<bool>,
     limit: Option<u32>,
-) -> Result<Vec<exchange_binance::types::BinanceOrder>, String> {
-    state.require_auth().await?;
-    if history.unwrap_or(false) {
-        services(&state)?
-            .binance_service
-            .get_all_orders(&symbol, limit)
-            .await
-            .map_err(|e| e.to_string())
-    } else {
-        let sym = if symbol.trim().is_empty() {
-            None
-        } else {
-            Some(symbol.as_str())
-        };
-        services(&state)?
-            .binance_service
-            .get_open_orders(sym)
-            .await
-            .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<exchange_binance::types::BinanceOrder>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
     }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = if history.unwrap_or(false) {
+        services.binance_service.get_all_orders(&symbol, limit).await?
+    } else {
+        let sym = if symbol.trim().is_empty() { None } else { Some(symbol.as_str()) };
+        services.binance_service.get_open_orders(sym).await?
+    };
+    ok_result(data)
 }
 
 #[tauri::command]
@@ -277,30 +289,35 @@ pub async fn get_binance_order(
     state: State<'_, AppState>,
     symbol: String,
     order_id: i64,
-) -> Result<exchange_binance::types::BinanceOrder, String> {
-    services(&state)?
-        .binance_service
-        .get_order(&symbol, order_id)
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<exchange_binance::types::BinanceOrder>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_order(&symbol, order_id).await?;
+    ok_result(data)
 }
 
 #[tauri::command]
 pub async fn get_binance_instruments(
     state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    services(&state)?
-        .binance_service
-        .get_instruments()
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.get_instruments().await?;
+    ok_result(data)
 }
 
 #[tauri::command]
-pub async fn check_binance_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    services(&state)?
-        .binance_service
-        .check_status()
-        .await
-        .map_err(|e| e.to_string())
+pub async fn check_binance_status(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("Binance 服务未初始化"))?;
+    let data = services.binance_service.check_status().await?;
+    ok_result(data)
 }

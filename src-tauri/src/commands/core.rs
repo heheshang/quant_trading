@@ -6,36 +6,68 @@ use rust_decimal::prelude::ToPrimitive;
 use tauri::{Emitter, State};
 
 #[tauri::command]
-pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
-    state.require_auth().await?;
+pub async fn get_config(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<AppConfig>> {
+    use crate::commands::auth_err;
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let config = state.config.read().await;
     // Redact sensitive values (DB password, JWT secret, exchange API
     // keys/secrets/passphrase) so they never leave the backend.
-    Ok(config.redacted())
+    ok_result(config.redacted())
 }
 
 /// 用后端 ENCRYPTION_KEY 加密任意字符串（用于把会话 token 等敏感值加密后落盘）。
 #[tauri::command]
-pub async fn secure_encrypt(state: State<'_, AppState>, value: String) -> Result<String, String> {
-    state.require_auth().await?;
+pub async fn secure_encrypt(
+    state: State<'_, AppState>,
+    value: String,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::auth_err;
+    use quant_common::api::{ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let key = state.config.read().await.security.encryption_key.clone();
-    let de = security::DataEncryption::from_key_string(&key).map_err(|e| format!("加密初始化失败: {}", e))?;
-    de.encrypt_string(&value).map_err(|e| format!("加密失败: {}", e))
+    let de = security::DataEncryption::from_key_string(&key)
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("加密初始化失败: {}", e)))?;
+    let enc = de.encrypt_string(&value)
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("加密失败: {}", e)))?;
+    ok_result(enc)
 }
 
 /// 用后端 ENCRYPTION_KEY 解密（配合 `secure_encrypt`）。
 #[tauri::command]
-pub async fn secure_decrypt(state: State<'_, AppState>, value: String) -> Result<String, String> {
-    state.require_auth().await?;
+pub async fn secure_decrypt(
+    state: State<'_, AppState>,
+    value: String,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::auth_err;
+    use quant_common::api::{ok_result, ApiFailure};
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let key = state.config.read().await.security.encryption_key.clone();
-    let de = security::DataEncryption::from_key_string(&key).map_err(|e| format!("解密初始化失败: {}", e))?;
-    de.decrypt_string(&value).map_err(|e| format!("解密失败: {}", e))
+    let de = security::DataEncryption::from_key_string(&key)
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("解密初始化失败: {}", e)))?;
+    let dec = de.decrypt_string(&value)
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("解密失败: {}", e)))?;
+    ok_result(dec)
 }
 
 /// 更新系统配置
 #[tauri::command]
-pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Result<bool, String> {
-    state.require_role("admin").await?;
+pub async fn update_config(
+    state: State<'_, AppState>,
+    config: AppConfig,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use quant_common::api::{ok_result, ApiFailure};
+    if let Err(e) = state.require_role("admin").await {
+        return Err(ApiFailure::new(quant_common::api::code::FORBIDDEN, e));
+    }
     // Delegate to ConfigService which updates both in-memory state and persistent file
     match state.app_services.as_ref() {
         Some(services) => {
@@ -54,7 +86,7 @@ pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Res
                     module: Some("config".to_string()),
                 })
                 .await;
-            Ok(true)
+            ok_result(true)
         }
         None => {
             // Fallback: update in-memory only (no ConfigService without DB)
@@ -71,7 +103,7 @@ pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Res
                     module: Some("config".to_string()),
                 })
                 .await;
-            Ok(true)
+            ok_result(true)
         }
     }
 }
@@ -80,19 +112,15 @@ pub async fn update_config(state: State<'_, AppState>, config: AppConfig) -> Res
 pub async fn get_market_data(
     state: State<'_, AppState>,
     symbol: String,
-) -> Result<MarketData, String> {
-    // Route through the services layer so the command never touches the
-    // data-source / infrastructure layer directly (layering + DIP).
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<MarketData>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
     let services = state
         .app_services
         .as_ref()
-        .ok_or_else(|| "Market service not initialized".to_string())?;
-
-    services
-        .market_service
-        .get_realtime_data(&symbol)
-        .await
-        .map_err(|e| e.to_string())
+        .ok_or_else(|| not_init_err("行情服务未初始化"))?;
+    let data = services.market_service.get_realtime_data(&symbol).await?;
+    ok_result(data)
 }
 
 #[tauri::command]
@@ -174,25 +202,28 @@ pub async fn run_algorithmic_order(
     order: Order,
     algorithm: String,
     params: quant_services::order_processor::AlgorithmicOrderParams,
-) -> Result<Vec<i64>, String> {
-    state.require_auth().await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<i64>>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or_else(|| "Order service not initialized (no database connection)".to_string())?;
+        .ok_or_else(|| not_init_err("下单服务未初始化（无数据库连接）"))?;
 
     let placements = services
         .order_processor
         .place_algorithmic_order(order, &algorithm, &params)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     // Forward one UI event per placed slice so the frontend can track children.
     for placement in &placements {
         let _ = app.emit("order:submitted", placement.event.clone());
     }
 
-    Ok(placements.iter().map(|p| p.order_id).collect())
+    ok_result(placements.iter().map(|p| p.order_id).collect())
 }
 
 #[tauri::command]
