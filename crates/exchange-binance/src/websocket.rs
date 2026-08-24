@@ -169,7 +169,7 @@ impl BinanceWebSocket {
     /// Subscribe to kline stream: `BTC-USDT` -> `btcusdt@kline_1h`.
     pub async fn subscribe_candle(&self, symbol: &str, interval: &str) -> Result<()> {
         let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
-        self.subscribe_stream(&format!("{}@kline_{}", binance, interval))
+        self.subscribe_stream(&format!("{}@kline_{}", binance, interval.to_lowercase()))
             .await
     }
 

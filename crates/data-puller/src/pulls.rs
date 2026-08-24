@@ -82,7 +82,7 @@ impl DataPuller {
                     let ts = chrono::DateTime::from_timestamp_millis(c.open_time)?;
                     Some(NewMarketDataRecord {
                         instrument_id: symbol.clone(),
-                        timeframe: bar.clone(),
+                        timeframe: bar.to_lowercase(),
                         timestamp: ts,
                         open: c.open,
                         high: c.high,

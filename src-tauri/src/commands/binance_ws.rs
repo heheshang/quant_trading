@@ -3,10 +3,9 @@
 //! Manages the [`BinanceWebSocket`] lifecycle and forwards parsed
 //! kline/depth/orderbook/ticker/trade messages to the UI via Tauri events.
 
-use chrono::{DateTime, Utc};
-use data_layer::{
-    LiveTrade, MarketDataRepository, NewMarketDataRecord, NewTickerSnapshot,
-};
+use chrono::Utc;
+use data_layer::LiveTrade;
+use data_puller::market_import::MarketImporter;
 use exchange_binance::types::{BinanceBalance, BinanceEnvironment};
 use exchange_binance::{
     websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient,
@@ -16,130 +15,12 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::mpsc;
 
 use crate::state::AppState;
 use quant_common::api::{ok_result, ApiFailure};
 use tracing::{debug, info, warn};
 
-/// 后台导入管线的消息：WS 数据 → DB。
-enum MarketImport {
-    Kline(NewMarketDataRecord),
-    Ticker(NewTickerSnapshot),
-    Trade(data_layer::NewStreamTrade),
-    OrderBook(data_layer::NewOrderbookSnapshot),
-}
-
-/// 把 `@kline` WS 消息转换为 `market_data` 行（domain symbol 即 instrument_id）。
-fn kline_to_record(k: &exchange_binance::websocket::BinanceWsKline) -> NewMarketDataRecord {
-    NewMarketDataRecord {
-        instrument_id: k.symbol.clone(),
-        timeframe: k.interval.clone(),
-        timestamp: DateTime::from_timestamp_millis(k.open_time).unwrap_or_else(Utc::now),
-        open: k.open,
-        high: k.high,
-        low: k.low,
-        close: k.close,
-        volume: k.volume,
-    }
-}
-
-/// 把 `@ticker` WS 消息转换为 `ticker_snapshots` 行。
-///
-/// `ts` 对齐到分钟（每分钟每标的至多一行），避免高频 ticker 流无限膨胀。
-fn ticker_to_record(t: &exchange_binance::websocket::BinanceWsTicker) -> NewTickerSnapshot {
-    let ts = DateTime::from_timestamp_millis(t.event_time)
-        .map(floor_minute)
-        .unwrap_or_else(Utc::now);
-    NewTickerSnapshot {
-        instrument_id: t.symbol.clone(),
-        ts,
-        last_px: Some(t.last_price),
-        open_24h: Some(t.open),
-        high_24h: Some(t.high),
-        low_24h: Some(t.low),
-        vol_24h: Some(t.volume),
-        vol_ccy_24h: Some(t.quote_volume),
-        change_24h: Some(t.price_change),
-    }
-}
-
-/// 截断到分钟整点（秒/纳秒清零）。
-fn floor_minute(dt: DateTime<Utc>) -> DateTime<Utc> {
-    let secs = dt.timestamp();
-    DateTime::from_timestamp(secs - (secs % 60), 0).unwrap_or(dt)
-}
-
-/// 把 `@trade` WS 消息转换为 `stream_trades` 行。
-fn trade_to_record(t: &exchange_binance::websocket::BinanceWsTrade) -> data_layer::NewStreamTrade {
-    data_layer::NewStreamTrade {
-        symbol: t.symbol.clone(),
-        price: t.price,
-        quantity: t.quantity,
-        trade_time: DateTime::from_timestamp_millis(t.trade_time).unwrap_or_else(Utc::now),
-        is_buyer_maker: t.is_buyer_maker,
-    }
-}
-
-/// 把 `@depth`/`@orderbook` WS 消息转换为 `orderbook_snapshots` 行（JSON 字符串）。
-fn depth_to_record(d: &exchange_binance::websocket::BinanceWsDepth) -> data_layer::NewOrderbookSnapshot {
-    data_layer::NewOrderbookSnapshot {
-        symbol: d.symbol.clone(),
-        bids: serde_json::to_string(&d.bids).unwrap_or_else(|_| "[]".to_string()),
-        asks: serde_json::to_string(&d.asks).unwrap_or_else(|_| "[]".to_string()),
-    }
-}
-
-/// 后台导入写入任务：串行消费消息并 upsert 到 DB，避免阻塞 WS 收流。
-async fn market_import_writer(
-    repo: Arc<MarketDataRepository>,
-    mut rx: mpsc::Receiver<MarketImport>,
-) {
-    info!("market import writer started (repo attached)");
-    let mut total: u64 = 0;
-    let mut klines: u64 = 0;
-    let mut tickers: u64 = 0;
-    let mut trades: u64 = 0;
-    let mut books: u64 = 0;
-    while let Some(msg) = rx.recv().await {
-        total += 1;
-        match msg {
-            MarketImport::Kline(k) => {
-                klines += 1;
-                if let Err(e) = repo.upsert_kline(&k).await {
-                    warn!(error = %e, symbol = %k.instrument_id, "kline import failed");
-                }
-            }
-            MarketImport::Ticker(t) => {
-                tickers += 1;
-                if let Err(e) = repo.upsert_ticker_snapshot(&t).await {
-                    warn!(error = %e, symbol = %t.instrument_id, "ticker import failed");
-                }
-            }
-            MarketImport::Trade(t) => {
-                trades += 1;
-                if let Err(e) = repo.insert_stream_trade(&t).await {
-                    warn!(error = %e, symbol = %t.symbol, "trade import failed");
-                }
-            }
-            MarketImport::OrderBook(d) => {
-                books += 1;
-                if let Err(e) = repo.upsert_orderbook_snapshot(&d).await {
-                    warn!(error = %e, symbol = %d.symbol, "orderbook import failed");
-                }
-            }
-        }
-        if total % 200 == 0 {
-            info!(
-                total, klines, tickers, trades, books,
-                "market import progress (last 200 msg window)"
-            );
-        }
-    }
-    info!(total, klines, tickers, trades, books, "market import writer stopped");
-}
 #[tauri::command]
 pub async fn start_binance_market_data(
     app: AppHandle,
@@ -181,15 +62,11 @@ pub async fn start_binance_market_data(
     let app_clone = app.clone();
     let running = state.binance_ws_state.running.clone();
 
-    // 导入管线：remote WS 数据 → DB（K线/ticker）。无 repo（未连接 DB）时跳过。
+    // 导入管线：remote WS 数据 → DB。无 repo（未连接 DB）时不创建 importer。
     let market_repo = state.app_services.as_ref().and_then(|s| s.market_data.clone());
-    let (import_tx, import_rx) = mpsc::channel::<MarketImport>(256);
-    if let Some(repo) = market_repo.clone() {
-        tokio::spawn(market_import_writer(repo, import_rx));
-    }
-    let import_enabled = market_repo.is_some();
-    if import_enabled {
-        info!("binance market WS import pipeline enabled (repo attached, channel 256)");
+    let importer = market_repo.clone().map(MarketImporter::new);
+    if importer.is_some() {
+        info!("binance market WS import pipeline enabled (batching importer)");
     } else {
         warn!("binance market WS import pipeline DISABLED (no market_data repo / DB not connected)");
     }
@@ -201,37 +78,22 @@ pub async fn start_binance_market_data(
 
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            match msg {
+            match &msg {
                 BinanceWsMessage::Kline(k) => {
                     debug!(symbol = %k.symbol, interval = %k.interval, "Binance WS kline");
                     let _ = app_clone.emit("binance:kline", &k);
-                    if import_enabled {
-                        let _ = import_tx.send(MarketImport::Kline(kline_to_record(&k))).await;
-                    }
                 }
                 BinanceWsMessage::Depth(d) => {
                     let _ = app_clone.emit("binance:depth", &d);
-                    if import_enabled {
-                        let _ = import_tx.send(MarketImport::OrderBook(depth_to_record(&d))).await;
-                    }
                 }
                 BinanceWsMessage::OrderBook(d) => {
                     let _ = app_clone.emit("binance:orderbook", &d);
-                    if import_enabled {
-                        let _ = import_tx.send(MarketImport::OrderBook(depth_to_record(&d))).await;
-                    }
                 }
                 BinanceWsMessage::Ticker(t) => {
                     let _ = app_clone.emit("binance:ticker", &t);
-                    if import_enabled {
-                        let _ = import_tx.send(MarketImport::Ticker(ticker_to_record(&t))).await;
-                    }
                 }
                 BinanceWsMessage::Trade(t) => {
                     let _ = app_clone.emit("binance:trade", &t);
-                    if import_enabled {
-                        let _ = import_tx.send(MarketImport::Trade(trade_to_record(&t))).await;
-                    }
                 }
                 // 用户数据流走独立 WS 连接，这里忽略（不影响市场流）。
                 BinanceWsMessage::AccountPosition(_) | BinanceWsMessage::OrderUpdate(_) => {}
@@ -243,6 +105,10 @@ pub async fn start_binance_market_data(
                     debug!("Binance WS error: {e}");
                     let _ = app_clone.emit("binance:error", &e);
                 }
+            }
+            // 非阻塞投递：DB 慢时按通道容量丢弃并计数，绝不阻塞事件推送/WS 收流。
+            if let Some(importer) = &importer {
+                importer.try_send(&msg);
             }
         }
         let _ = app_clone.emit(

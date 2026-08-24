@@ -244,6 +244,176 @@ impl MarketDataRepository {
         Ok(rows_affected.rows_affected() as u64)
     }
 
+    /// Upsert a batch of klines in a single transaction (live forming-bar updates).
+    ///
+    /// Batching collapses the high-frequency per-message round-trips into one
+    /// tx; each row still `DO UPDATE`s the forming bar in place, so repeated
+    /// emissions of the same `(instrument_id, timeframe, timestamp)` converge.
+    #[instrument(skip(self, items), fields(count = items.len()))]
+    pub async fn upsert_klines_batch(&self, items: &[NewMarketDataRecord]) -> Result<u64> {
+        if items.is_empty() {
+            return Ok(0);
+        }
+        let mut total = 0u64;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to start transaction: {}", e)))?;
+        for item in items {
+            let rows_affected = sqlx::query(
+                r#"
+                INSERT INTO market_data (instrument_id, timeframe, timestamp, open, high, low, close, volume)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (instrument_id, timeframe, timestamp) DO UPDATE SET
+                    open = EXCLUDED.open,
+                    high = EXCLUDED.high,
+                    low = EXCLUDED.low,
+                    close = EXCLUDED.close,
+                    volume = EXCLUDED.volume
+                "#,
+            )
+            .bind(&item.instrument_id)
+            .bind(&item.timeframe)
+            .bind(item.timestamp)
+            .bind(item.open)
+            .bind(item.high)
+            .bind(item.low)
+            .bind(item.close)
+            .bind(item.volume)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| Error::Database(format!("Failed to upsert market_data kline: {}", e)))?;
+            total += rows_affected.rows_affected() as u64;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(total)
+    }
+
+    /// Upsert a batch of ticker snapshots in a single transaction.
+    ///
+    /// Each row upserts on `(instrument_id, ts)`; the minute snapped ts keeps at
+    /// most one row per instrument per minute that is updated in place.
+    #[instrument(skip(self, items), fields(count = items.len()))]
+    pub async fn upsert_tickers_batch(&self, items: &[NewTickerSnapshot]) -> Result<u64> {
+        if items.is_empty() {
+            return Ok(0);
+        }
+        let mut total = 0u64;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to start transaction: {}", e)))?;
+        for item in items {
+            let rows_affected = sqlx::query(
+                r#"
+                INSERT INTO ticker_snapshots (instrument_id, ts, last_px, open_24h, high_24h, low_24h, vol_24h, vol_ccy_24h, change_24h)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (instrument_id, ts) DO UPDATE SET
+                    last_px = EXCLUDED.last_px,
+                    open_24h = EXCLUDED.open_24h,
+                    high_24h = EXCLUDED.high_24h,
+                    low_24h = EXCLUDED.low_24h,
+                    vol_24h = EXCLUDED.vol_24h,
+                    vol_ccy_24h = EXCLUDED.vol_ccy_24h,
+                    change_24h = EXCLUDED.change_24h
+                "#,
+            )
+            .bind(&item.instrument_id)
+            .bind(item.ts)
+            .bind(item.last_px)
+            .bind(item.open_24h)
+            .bind(item.high_24h)
+            .bind(item.low_24h)
+            .bind(item.vol_24h)
+            .bind(item.vol_ccy_24h)
+            .bind(item.change_24h)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| Error::Database(format!("Failed to upsert ticker_snapshot: {}", e)))?;
+            total += rows_affected.rows_affected() as u64;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(total)
+    }
+
+    /// Append a batch of stream trades in a single transaction.
+    #[instrument(skip(self, items), fields(count = items.len()))]
+    pub async fn insert_trades_batch(&self, items: &[NewStreamTrade]) -> Result<u64> {
+        if items.is_empty() {
+            return Ok(0);
+        }
+        let mut total = 0u64;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to start transaction: {}", e)))?;
+        for item in items {
+            let rows_affected = sqlx::query(
+                r#"
+                INSERT INTO stream_trades (symbol, price, quantity, trade_time, is_buyer_maker)
+                VALUES ($1, $2, $3, $4, $5)
+                "#,
+            )
+            .bind(&item.symbol)
+            .bind(item.price)
+            .bind(item.quantity)
+            .bind(item.trade_time)
+            .bind(item.is_buyer_maker)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| Error::Database(format!("Failed to insert stream_trade: {}", e)))?;
+            total += rows_affected.rows_affected() as u64;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(total)
+    }
+
+    /// Upsert a batch of latest orderbook snapshots in a single transaction (per symbol).
+    #[instrument(skip(self, items), fields(count = items.len()))]
+    pub async fn upsert_orderbooks_batch(&self, items: &[NewOrderbookSnapshot]) -> Result<u64> {
+        if items.is_empty() {
+            return Ok(0);
+        }
+        let mut total = 0u64;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to start transaction: {}", e)))?;
+        for item in items {
+            let rows_affected = sqlx::query(
+                r#"
+                INSERT INTO orderbook_snapshots (symbol, bids, asks, ts)
+                VALUES ($1, $2, $3, now())
+                ON CONFLICT (symbol) DO UPDATE SET
+                    bids = EXCLUDED.bids,
+                    asks = EXCLUDED.asks,
+                    ts = now()
+                "#,
+            )
+            .bind(&item.symbol)
+            .bind(&item.bids)
+            .bind(&item.asks)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| Error::Database(format!("Failed to upsert orderbook_snapshot: {}", e)))?;
+            total += rows_affected.rows_affected() as u64;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| Error::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(total)
+    }
+
     /// Query market data by instrument, timeframe, and time range
     #[instrument(skip(self), fields(instrument_id = %instrument_id, timeframe = %timeframe, %from, %to))]
     pub async fn query_by_range(

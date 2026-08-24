@@ -12,8 +12,15 @@ use tracing::{error, info, warn};
 
 mod pulls;
 
+pub mod market_import;
+
+pub use market_import::{ImportBatch, ImportOpts, MarketImporter, MarketSink};
+
 /// Retry an async API call with exponential backoff.
 ///
+/// Calls `f()` up to `max_attempts` times. Between attempts, sleeps for
+/// `2^(attempt-1)` seconds (1s, 2s, 4s, ...). Logs a warning on each failed
+/// attempt and an error when all attempts are exhausted.
 /// Calls `f()` up to `max_attempts` times. Between attempts, sleeps for
 /// `2^(attempt-1)` seconds (1s, 2s, 4s, ...). Logs a warning on each failed
 /// attempt and an error when all attempts are exhausted.

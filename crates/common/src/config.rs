@@ -246,7 +246,7 @@ fn default_optimizer_parallel_jobs() -> u32 {
 }
 
 fn default_candle_bars() -> Vec<String> {
-    vec!["1m".into(), "5m".into(), "1H".into()]
+    vec!["1m".into(), "5m".into(), "1h".into()]
 }
 
 fn default_candle_limit() -> u32 {
