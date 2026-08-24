@@ -21,7 +21,8 @@ async function getStore(): Promise<Store | null> {
 async function enc(v: string): Promise<string> {
   // 非 Tauri/测试（invoke 不可用）回退明文。
   try {
-    return await invoke<string>('secure_encrypt', { value: v })
+    const r = await invoke<string>('secure_encrypt', { value: v })
+    return typeof r === 'string' && r.length > 0 ? r : v
   } catch {
     return v
   }
@@ -29,7 +30,8 @@ async function enc(v: string): Promise<string> {
 
 async function dec(v: string): Promise<string> {
   try {
-    return await invoke<string>('secure_decrypt', { value: v })
+    const r = await invoke<string>('secure_decrypt', { value: v })
+    return typeof r === 'string' && r.length > 0 ? r : v
   } catch {
     return v
   }
