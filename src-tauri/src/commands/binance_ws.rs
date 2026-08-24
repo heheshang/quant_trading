@@ -439,6 +439,7 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
     let binance = app_services.binance_service.clone();
     let account_service = app_services.account_service.clone();
     let live_trades = app_services.live_trades.clone();
+    let market_repo = app_services.market_data.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
@@ -461,6 +462,32 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                 equity += qty * price;
             }
             let _ = account_service.record_equity_snapshot(equity).await;
+
+            // 逐资产余额 + 全标的最近价落库（供余额表/纸面定价/取价，前端不再直连币安 REST）。
+            if let Some(repo) = &market_repo {
+                let new_balances: Vec<data_layer::NewBalance> = balances
+                    .iter()
+                    .map(|b| data_layer::NewBalance {
+                        asset: b.asset.clone(),
+                        free: b.free,
+                        locked: b.locked,
+                    })
+                    .collect();
+                if let Err(e) = repo.upsert_balances(&new_balances).await {
+                    debug!(error = %e, "balances import failed");
+                }
+                for (sym, price) in &prices {
+                    if let Err(e) = repo
+                        .upsert_last_price(&data_layer::NewLastPrice {
+                            symbol: sym.clone(),
+                            price: *price,
+                        })
+                        .await
+                    {
+                        debug!(error = %e, symbol = %sym, "last_price import failed");
+                    }
+                }
+            }
 
             // 币安持仓同步写库（positions 表），前端「持仓信息」从 DB 读取。
             let fills = live_trades.list().await.unwrap_or_default();

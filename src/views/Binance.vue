@@ -2,8 +2,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  getBinanceBalance,
-  getBinancePositions,
   getBinanceOrders,
   checkBinanceStatus,
   startBinanceMarketData,
@@ -14,7 +12,9 @@ import {
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
 import AssetBalanceTable from '@/components/trading/AssetBalanceTable.vue'
 import { useTradingUtils } from '@/components/trading/useTradingUtils'
-import { getKlines, getOrderbook, getSymbols } from '@/services/market'
+import { getBalances, getKlines, getOrderbook, getSymbols } from '@/services/market'
+import { getPositions } from '@/services/account'
+import type { Position } from '@/services/types'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -24,7 +24,6 @@ import type {
   BinanceStatus,
   BinanceWsKline,
   BinanceWsDepth,
-  BinancePosition,
   BinanceOrder,
   MarketDataRecord,
   OrderbookSnapshotRecord,
@@ -32,7 +31,7 @@ import type {
 
 const balances = ref<BinanceBalance[]>([])
 const { getOrderTypeText } = useTradingUtils()
-const positions = ref<BinancePosition[]>([])
+const positions = ref<Position[]>([])
 const orders = ref<BinanceOrder[]>([])
 const status = ref<BinanceStatus | null>(null)
 const loading = ref(false)
@@ -166,7 +165,9 @@ async function stopStream() {
 async function loadBalance() {
   loading.value = true
   try {
-    balances.value = await getBinanceBalance()
+    // 从 DB 读逐资产余额（快照写入器 60s 落库）。
+    const rows = await getBalances()
+    balances.value = rows.map((b) => ({ asset: b.asset, free: b.free, locked: b.locked }))
     status.value = await checkBinanceStatus()
   } catch (e) {
     ElMessage.error(`获取币安余额失败: ${e}`)
@@ -178,7 +179,8 @@ async function loadBalance() {
 async function loadPositions() {
   positionsLoading.value = true
   try {
-    positions.value = await getBinancePositions()
+    // 从 DB 读持仓（remote WS 导入），显示真实现货持仓。
+    positions.value = await getPositions()
   } catch (e) {
     ElMessage.error(`获取币安持仓失败: ${e}`)
   } finally {
@@ -294,15 +296,19 @@ onUnmounted(() => {
         <el-table-column label="交易对">
           <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
         </el-table-column>
-        <el-table-column prop="position_amt" label="数量" />
-        <el-table-column prop="entry_price" label="开仓均价" />
-        <el-table-column prop="mark_price" label="标记价" />
-        <el-table-column label="未实现盈亏">
-          <template #default="{ row }">{{ fmtNumber(row.un_realized_profit) }}</template>
+        <el-table-column prop="quantity" label="数量" />
+        <el-table-column prop="avg_price" label="成本价">
+          <template #default="{ row }">{{ fmtNumber(row.avg_price) }}</template>
         </el-table-column>
-        <el-table-column prop="leverage" label="杠杆" />
-        <el-table-column prop="margin_type" label="保证金模式" />
-        <el-table-column prop="position_side" label="方向" />
+        <el-table-column prop="market_value" label="市值">
+          <template #default="{ row }">{{ fmtNumber(row.market_value) }}</template>
+        </el-table-column>
+        <el-table-column label="未实现盈亏">
+          <template #default="{ row }">{{ fmtNumber(row.unrealized_pnl) }}</template>
+        </el-table-column>
+        <el-table-column label="可用">
+          <template #default="{ row }">{{ fmtNumber(row.available_quantity) }}</template>
+        </el-table-column>
       </el-table>
       <EmptyState v-if="!positionsLoading && positions.length === 0" title="暂无持仓" description="当前账户没有 Binance 持仓" />
       <Paginator

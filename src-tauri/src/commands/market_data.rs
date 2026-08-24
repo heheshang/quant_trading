@@ -91,6 +91,36 @@ pub async fn get_orderbook(
     ok_result(data)
 }
 
+/// 从数据库读取逐资产余额（快照写入器每 60s 落库）。
+#[tauri::command]
+pub async fn get_balances(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::BalanceRecord>>> {
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "行情服务未初始化（无数据库连接）");
+    };
+    let data = services.market_service.get_balances_from_db().await?;
+    ok_result(data)
+}
+
+/// 从数据库读取全标的最近价（快照写入器每 60s 落库）。
+#[tauri::command]
+pub async fn get_last_prices(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::LastPriceRecord>>> {
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "行情服务未初始化（无数据库连接）");
+    };
+    let data = services.market_service.get_last_prices_from_db().await?;
+    ok_result(data)
+}
+
 /// 查询行情快照（按标的 + 可选时间范围）。
 #[tauri::command]
 pub async fn get_ticker_snapshots(

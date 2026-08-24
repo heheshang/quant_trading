@@ -1,9 +1,9 @@
 use crate::error::{ServiceError, ServiceResult};
 use data_layer::market_data::DataSource;
 use data_layer::{
-    AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, MarketDataRecord,
-    MarketDataRepository, OrderbookSnapshotRecord, PositionSnapshotRecord, StreamTradeRecord,
-    TickerSnapshotRecord,
+    AccountSnapshotRecord, BalanceRecord, FundingRateRecord, LastPriceRecord, MarkPriceRecord,
+    MarketDataRecord, MarketDataRepository, OrderbookSnapshotRecord, PositionSnapshotRecord,
+    StreamTradeRecord, TickerSnapshotRecord,
 };
 use quant_common::types::MarketData;
 use std::sync::Arc;
@@ -120,6 +120,30 @@ impl MarketService {
             .await
             .map_err(|e| {
                 error!("Failed to read orderbook from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })
+    }
+
+    /// Latest per-asset balances, read from DB (`balances`).
+    #[instrument(skip(self))]
+    pub async fn get_balances_from_db(&self) -> ServiceResult<Vec<BalanceRecord>> {
+        let repo = self.repo_or_err("balances not available (no database)")?;
+        repo.query_latest_balances()
+            .await
+            .map_err(|e| {
+                error!("Failed to read balances from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })
+    }
+
+    /// Latest prices for all symbols, read from DB (`last_prices`).
+    #[instrument(skip(self))]
+    pub async fn get_last_prices_from_db(&self) -> ServiceResult<Vec<LastPriceRecord>> {
+        let repo = self.repo_or_err("last_prices not available (no database)")?;
+        repo.query_all_last_prices()
+            .await
+            .map_err(|e| {
+                error!("Failed to read last_prices from DB: {}", e);
                 ServiceError::Other(e.to_string())
             })
     }

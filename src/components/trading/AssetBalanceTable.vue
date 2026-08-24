@@ -42,7 +42,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import Paginator from '@/components/common/Paginator.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useFormatting } from '@/composables/useFormatting'
-import { getBinanceTickerPrices } from '@/services/binance'
+import { getLastPrices } from '@/services/market'
 import type { BinanceBalance } from '@/services/types'
 
 /**
@@ -94,7 +94,11 @@ watch(assetFilter, () => { page.value = 1 })
 
 async function fetchPrices() {
   try {
-    prices.value = await getBinanceTickerPrices()
+    // 从 DB 读全标的最近价（快照写入器 60s 落库），前端不再直连币安 REST。
+    const rows = await getLastPrices()
+    const m: Record<string, number> = {}
+    for (const r of rows) m[r.symbol] = r.price
+    prices.value = m
   } catch {
     // 市场价格拉取失败不影响余额/总市值（按 0 计， degrade）
   }

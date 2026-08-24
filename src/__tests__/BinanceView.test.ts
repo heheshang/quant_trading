@@ -31,26 +31,24 @@ describe('BinanceView', () => {
     vi.clearAllMocks()
     mockInvoke.mockImplementation(async (cmd: string) => {
       switch (cmd) {
-        case 'get_binance_balance':
-          return [{ asset: 'USDT', free: 100.5, locked: 0 }]
-        case 'get_binance_positions':
+        case 'get_balances':
+          return [{ asset: 'USDT', free: 100.5, locked: 0, ts: '2024-01-01T00:00:00Z', created_at: null }]
+        case 'get_positions':
           return [
             {
               symbol: 'BTC-USDT',
-              position_amt: 0.001,
-              entry_price: 50000,
-              mark_price: 51000,
-              un_realized_profit: 1,
-              liquidation_price: 0,
-              leverage: '10',
-              margin_type: 'crossed',
-              notional: 50,
-              position_side: 'BOTH',
+              quantity: 0.001,
+              available_quantity: 0.001,
+              avg_price: 50000,
+              market_value: 51,
+              unrealized_pnl: 1,
+              realized_pnl: 0,
+              updated_at: '2024-01-01T00:00:00Z',
             },
           ]
         case 'get_binance_orders':
           return []
-        case 'get_binance_candles':
+        case 'get_klines':
           return []
         case 'check_binance_status':
           return { connected: true }
@@ -65,7 +63,7 @@ describe('BinanceView', () => {
     container.remove()
   })
 
-  it('renders positions from get_binance_positions', async () => {
+  it('renders positions from get_positions (DB)', async () => {
     const wrapper = await mountComponent()
     const text = wrapper.text()
     expect(text).toContain('BTC-USDT')

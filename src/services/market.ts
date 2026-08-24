@@ -1,5 +1,7 @@
 import { call } from './transport'
 import type {
+  BalanceRecord,
+  LastPriceRecord,
   MarketData,
   MarketDataRecord,
   OrderbookSnapshotRecord,
@@ -47,4 +49,14 @@ export function getTrades(symbol: string, limit = 100): Promise<StreamTradeRecor
 /** 从数据库读取某标的最新订单簿快照。 */
 export function getOrderbook(symbol: string): Promise<OrderbookSnapshotRecord | null> {
   return call<OrderbookSnapshotRecord | null>('get_orderbook', { symbol })
+}
+
+/** 从数据库读取逐资产余额（快照写入器落库）。 */
+export function getBalances(): Promise<BalanceRecord[]> {
+  return call<BalanceRecord[]>('get_balances')
+}
+
+/** 从数据库读取全标的最近价（快照写入器落库，binance 符号为 key）。 */
+export function getLastPrices(): Promise<LastPriceRecord[]> {
+  return call<LastPriceRecord[]>('get_last_prices')
 }

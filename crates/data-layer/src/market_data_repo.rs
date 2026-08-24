@@ -101,6 +101,25 @@ pub struct OrderbookSnapshotRecord {
     pub created_at: Option<DateTime<Utc>>,
 }
 
+/// Per-asset balance row (snapshot writer, latest per asset).
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct BalanceRecord {
+    pub asset: String,
+    pub free: Decimal,
+    pub locked: Decimal,
+    pub ts: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// Latest price row for a symbol (snapshot writer, domain symbol PK).
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct LastPriceRecord {
+    pub symbol: String,
+    pub price: Decimal,
+    pub ts: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
 /// Repository for market_data partitioned table
 pub struct MarketDataRepository {
     pool: PgPool,
@@ -650,6 +669,76 @@ impl MarketDataRepository {
         .map_err(|e| Error::Database(format!("Failed to query orderbook_snapshot: {}", e)))?;
         Ok(record)
     }
+
+    /// Upsert latest per-asset balances (snapshot writer, per asset one row).
+    #[instrument(skip(self), fields(count = items.len()))]
+    pub async fn upsert_balances(&self, items: &[NewBalance]) -> Result<u64> {
+        let mut total = 0u64;
+        for item in items {
+            let r = sqlx::query(
+                r#"
+                INSERT INTO balances (asset, free, locked, ts)
+                VALUES ($1, $2, $3, now())
+                ON CONFLICT (asset) DO UPDATE SET
+                    free = EXCLUDED.free,
+                    locked = EXCLUDED.locked,
+                    ts = now()
+                "#,
+            )
+            .bind(&item.asset)
+            .bind(item.free)
+            .bind(item.locked)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::Database(format!("Failed to upsert balance: {}", e)))?;
+            total += r.rows_affected() as u64;
+        }
+        Ok(total)
+    }
+
+    /// All latest per-asset balances, read from DB.
+    #[instrument(skip(self))]
+    pub async fn query_latest_balances(&self) -> Result<Vec<BalanceRecord>> {
+        let records = sqlx::query_as::<_, BalanceRecord>(
+            r#"SELECT asset, free, locked, ts, created_at FROM balances ORDER BY asset"#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query balances: {}", e)))?;
+        Ok(records)
+    }
+
+    /// Upsert latest price for a symbol (snapshot writer, domain symbol PK).
+    #[instrument(skip(self), fields(symbol = %item.symbol))]
+    pub async fn upsert_last_price(&self, item: &NewLastPrice) -> Result<u64> {
+        let r = sqlx::query(
+            r#"
+            INSERT INTO last_prices (symbol, price, ts)
+            VALUES ($1, $2, now())
+            ON CONFLICT (symbol) DO UPDATE SET
+                price = EXCLUDED.price,
+                ts = now()
+            "#,
+        )
+        .bind(&item.symbol)
+        .bind(item.price)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to upsert last_price: {}", e)))?;
+        Ok(r.rows_affected() as u64)
+    }
+
+    /// Latest prices for all symbols, read from DB.
+    #[instrument(skip(self))]
+    pub async fn query_all_last_prices(&self) -> Result<Vec<LastPriceRecord>> {
+        let records = sqlx::query_as::<_, LastPriceRecord>(
+            r#"SELECT symbol, price, ts, created_at FROM last_prices ORDER BY symbol"#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query last_prices: {}", e)))?;
+        Ok(records)
+    }
 }
 
 /// Input struct for inserting new K-line data
@@ -730,6 +819,19 @@ pub struct NewOrderbookSnapshot {
     pub symbol: String,
     pub bids: String, // JSON array string
     pub asks: String, // JSON array string
+}
+
+#[derive(Debug, Clone)]
+pub struct NewBalance {
+    pub asset: String,
+    pub free: Decimal,
+    pub locked: Decimal,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewLastPrice {
+    pub symbol: String,
+    pub price: Decimal,
 }
 
 #[cfg(test)]

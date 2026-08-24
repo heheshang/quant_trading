@@ -379,6 +379,8 @@ async fn main() {
             commands::get_klines,
             commands::get_trades,
             commands::get_orderbook,
+            commands::get_balances,
+            commands::get_last_prices,
             commands::get_ticker_snapshots,
             commands::get_account_snapshots,
             commands::record_account_snapshot,

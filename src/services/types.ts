@@ -493,6 +493,23 @@ export interface OrderbookSnapshotRecord {
   created_at: string | null
 }
 
+/** 数据库逐资产余额行（`balances`，快照写入器落库）。 */
+export interface BalanceRecord {
+  asset: string
+  free: number
+  locked: number
+  ts: string
+  created_at: string | null
+}
+
+/** 数据库标的最近价行（`last_prices`，binance 符号为 key，快照写入器落库）。 */
+export interface LastPriceRecord {
+  symbol: string
+  price: number
+  ts: string
+  created_at: string | null
+}
+
 /** 本地持久化的 live 单成交记录（策略关联 + 成交价/量）。 */
 export interface LiveTrade {
   id: number

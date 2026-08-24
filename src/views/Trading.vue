@@ -49,8 +49,9 @@ import { ElMessage } from 'element-plus'
 import { getAccountInfo, getPositions } from '@/services/account'
 import { cancelOrder as cancelOrderById, getRecentOrders } from '@/services/order'
 import { getStrategies } from '@/services/strategy'
-import { getBinanceBalance, getBinancePositions, getBinanceTickerPrices, getLiveTrades } from '@/services/binance'
+import { getBinancePositions, getLiveTrades } from '@/services/binance'
 import { cancelBinanceOrder, placeBinanceOrder } from '@/services/binanceOrder'
+import { getBalances, getLastPrices } from '@/services/market'
 import { useOrderStore } from '@/stores/order'
 import { usePaperAccountOverview } from '@/composables/usePaperAccountOverview'
 import { listenToBinanceEvents, startUserDataStream, stopUserDataStream } from '@/services/binanceWS'
@@ -92,7 +93,23 @@ const binanceBalances = ref<BinanceBalance[]>([])
 /** 全市场价格（供持仓市值/盈亏、订单盈亏复算，一次拉取复用）。 */
 const tickerPrices = ref<Record<string, number>>({})
 async function fetchTickerPrices() {
-  try { tickerPrices.value = await getBinanceTickerPrices() } catch { tickerPrices.value = {} }
+  try {
+    // 从 DB 读全标的最近价（快照写入器 60s 落库），前端不再直连币安 REST。
+    const rows = await getLastPrices()
+    const m: Record<string, number> = {}
+    for (const r of rows) m[r.symbol] = r.price
+    tickerPrices.value = m
+  } catch {
+    tickerPrices.value = {}
+  }
+}
+async function fetchBinanceBalances() {
+  try {
+    const rows = await getBalances()
+    binanceBalances.value = rows.map((b) => ({ asset: b.asset, free: b.free, locked: b.locked }))
+  } catch {
+    binanceBalances.value = []
+  }
 }
 /** 本地持久化的 live 单记录（订单ID → 成交记录），供策略关联 + 真实盈亏。 */
 const liveTradesMap = ref<Map<number, LiveTrade>>(new Map())
@@ -239,7 +256,7 @@ function generateOrderId(): number { return Date.now() }
 async function fetchAccountInfo() {
   try {
     if (tradeMode.value === 'live') {
-      binanceBalances.value = await getBinanceBalance()
+      await fetchBinanceBalances()
     } else {
       accountInfo.value = await getAccountInfo()
       await paperOverview.refresh(true)
@@ -265,7 +282,8 @@ async function fetchPositions() {
         if (live.length > 0) {
           positions.value = live
         } else {
-          const balances = await getBinanceBalance()
+          const dbRows = await getBalances()
+          const balances = dbRows.map((b) => ({ asset: b.asset, free: b.free, locked: b.locked }))
           const prices = tickerPrices.value
           if (Object.keys(prices).length === 0) await fetchTickerPrices()
           await fetchLiveTrades()

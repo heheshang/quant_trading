@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
-import { getBinanceTickerPrices } from '@/services/binance'
 import { getRecentOrders } from '@/services/order'
+import { getLastPrices } from '@/services/market'
 import { computeRealizedPnl, type FilledFill } from '@/utils/pnl'
 import type { Order } from '@/services/types'
 
@@ -85,9 +85,11 @@ export function usePaperAccountOverview(initialCash: number) {
     if (!force && Date.now() - lastFetched < KEEPALIVE_MS && orders.value.length > 0) return
     loading.value = true
     try {
-      const [ord, pr] = await Promise.all([getRecentOrders(100, 'paper'), getBinanceTickerPrices()])
+      const [ord, pr] = await Promise.all([getRecentOrders(100, 'paper'), getLastPrices()])
       orders.value = Array.isArray(ord) ? ord : []
-      prices.value = pr && typeof pr === 'object' ? pr : {}
+      const m: Record<string, number> = {}
+      for (const r of pr ?? []) m[r.symbol] = r.price
+      prices.value = m
       lastFetched = Date.now()
     } catch {
       // 失败保留上次数据
