@@ -47,7 +47,7 @@ import { ref, computed, onMounted, onUnmounted, onActivated } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { ElMessage } from 'element-plus'
 import { getAccountInfo, getPositions } from '@/services/account'
-import { cancelOrder as cancelOrderById, getActiveOrders } from '@/services/order'
+import { cancelOrder as cancelOrderById, getRecentOrders } from '@/services/order'
 import { getStrategies } from '@/services/strategy'
 import { getBinanceBalance, getBinancePositions, getBinanceTickerPrices, getLiveTrades } from '@/services/binance'
 import { cancelBinanceOrder, placeBinanceOrder } from '@/services/binanceOrder'
@@ -300,10 +300,10 @@ async function fetchPositions() {
 }
 async function fetchActiveOrders() {
   try {
-    // 活跃订单展示**全部**（纸面/实盘/算法），由 ActiveOrdersTable 的「种类」下拉筛选。
+    // 订单展示**全部状态**（含已成交/撤单/过期），由「种类」下拉筛选当前种类。
     if (Object.keys(tickerPrices.value).length === 0) await fetchTickerPrices()
     await fetchLiveTrades()
-    activeOrders.value = (await getActiveOrders()).map((o) => ({
+    activeOrders.value = (await getRecentOrders(200)).map((o) => ({
       ...o,
       strategy_name: strategyName(o.strategy_id),
     }))
@@ -312,7 +312,7 @@ async function fetchActiveOrders() {
       ElMessage.warning('Binance 限流，订单数据可能非最新')
       return
     }
-    ElMessage.error('获取活跃订单失败')
+    ElMessage.error('获取订单失败')
   }
 }
 async function fetchStrategies() {

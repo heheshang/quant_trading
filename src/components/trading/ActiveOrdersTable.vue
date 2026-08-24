@@ -2,7 +2,7 @@
   <el-card class="active-orders-card" shadow="never">
     <template #header>
       <div class="card-header">
-        <span>活跃订单</span>
+        <span>订单</span>
         <div class="card-header-controls">
           <el-select
             v-model="strategyFilter"
@@ -103,7 +103,7 @@
         @update:page-size="onPageSizeChange"
       />
     </div>
-    <EmptyState v-else title="暂无活跃订单" description="当前没有活跃订单" />
+    <EmptyState v-else title="暂无订单" description="当前没有订单" />
   </el-card>
 </template>
 

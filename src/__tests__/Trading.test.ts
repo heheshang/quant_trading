@@ -80,7 +80,7 @@ describe('Trading.vue - 按钮测试', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_active_orders', { exchange: null })
+    expect(mockInvoke).toHaveBeenCalledWith('get_recent_orders', { limit: 200, exchange: null })
   }, 30000)
 
   it('导出 CSV - 触发浏览器下载', async () => {
