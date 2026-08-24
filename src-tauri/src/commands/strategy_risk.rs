@@ -30,17 +30,15 @@ pub async fn get_strategies(
 pub async fn save_strategy(
     state: State<'_, AppState>,
     strategy: StrategyParams,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
-        .strategy_service
-        .save_strategy(&strategy)
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services.strategy_service.save_strategy(&strategy).await?;
+    ok_result(data)
 }
 
 /// 删除策略
@@ -48,17 +46,15 @@ pub async fn save_strategy(
 pub async fn delete_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<bool, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
-        .strategy_service
-        .delete_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services.strategy_service.delete_strategy(&strategy_id).await?;
+    ok_result(data)
 }
 
 /// 启用/禁用策略
@@ -67,17 +63,15 @@ pub async fn toggle_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
     enabled: bool,
-) -> Result<bool, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
-        .strategy_service
-        .toggle_strategy(&strategy_id, enabled)
-        .await
-        .map_err(|e| e.to_string())
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services.strategy_service.toggle_strategy(&strategy_id, enabled).await?;
+    ok_result(data)
 }
 
 /// 部署策略
@@ -85,18 +79,15 @@ pub async fn toggle_strategy(
 pub async fn deploy_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    let status = services
-        .strategy_service
-        .deploy_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(format!("{:?}", status))
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services.strategy_service.deploy_strategy(&strategy_id).await?;
+    ok_result(format!("{:?}", status))
 }
 
 /// 启动策略
@@ -104,18 +95,15 @@ pub async fn deploy_strategy(
 pub async fn start_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    let status = services
-        .strategy_service
-        .start_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(format!("{:?}", status))
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services.strategy_service.start_strategy(&strategy_id).await?;
+    ok_result(format!("{:?}", status))
 }
 
 /// 停止策略
@@ -123,18 +111,15 @@ pub async fn start_strategy(
 pub async fn stop_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    let status = services
-        .strategy_service
-        .stop_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(format!("{:?}", status))
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services.strategy_service.stop_strategy(&strategy_id).await?;
+    ok_result(format!("{:?}", status))
 }
 
 /// 暂停策略
@@ -142,18 +127,15 @@ pub async fn stop_strategy(
 pub async fn pause_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    let status = services
-        .strategy_service
-        .pause_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(format!("{:?}", status))
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services.strategy_service.pause_strategy(&strategy_id).await?;
+    ok_result(format!("{:?}", status))
 }
 
 /// 恢复策略
@@ -161,18 +143,15 @@ pub async fn pause_strategy(
 pub async fn resume_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    let status = services
-        .strategy_service
-        .resume_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(format!("{:?}", status))
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services.strategy_service.resume_strategy(&strategy_id).await?;
+    ok_result(format!("{:?}", status))
 }
 
 /// 归档策略
@@ -180,33 +159,30 @@ pub async fn resume_strategy(
 pub async fn archive_strategy(
     state: State<'_, AppState>,
     strategy_id: String,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    let status = services
-        .strategy_service
-        .archive_strategy(&strategy_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(format!("{:?}", status))
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services.strategy_service.archive_strategy(&strategy_id).await?;
+    ok_result(format!("{:?}", status))
 }
 
 /// 列出所有已注册的策略类型元数据
 #[tauri::command]
 pub async fn list_strategy_types(
     state: State<'_, AppState>,
-) -> Result<Vec<strategy_layer::registry::StrategyTypeInfo>, String> {
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<strategy_layer::registry::StrategyTypeInfo>>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::{ok_result, ApiFailure};
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services
         .strategy_service
         .list_strategy_types()
-        .map_err(|e| e.to_string())
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, e.to_string()))?;
+    ok_result(data)
 }
 
 /// 获取单个策略类型的元数据（含参数 Schema）
@@ -214,15 +190,15 @@ pub async fn list_strategy_types(
 pub async fn get_strategy_type_info(
     state: State<'_, AppState>,
     type_name: String,
-) -> Result<strategy_layer::registry::StrategyTypeInfo, String> {
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
-    services
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<strategy_layer::registry::StrategyTypeInfo>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::{ok_result, ApiFailure};
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services
         .strategy_service
         .get_strategy_type_info(&type_name)
-        .map_err(|e| e.to_string())
+        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, e.to_string()))?;
+    ok_result(data)
 }
 
 /// 创建新策略（自动生成 UUID v7 strategy_id，含参数验证）
@@ -241,19 +217,20 @@ pub async fn create_strategy(
     tags: Vec<String>,
     symbols: Vec<String>,
     user_id: i64,
-) -> Result<String, String> {
-    state.require_role("admin").await?;
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
+    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
 
     let max_pos = rust_decimal::Decimal::from_f64(max_position)
-        .ok_or_else(|| format!("Invalid max_position: {}", max_position))?;
+        .ok_or_else(|| quant_common::api::ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid max_position: {}", max_position)))?;
     let max_loss = rust_decimal::Decimal::from_f64(max_daily_loss)
-        .ok_or_else(|| format!("Invalid max_daily_loss: {}", max_daily_loss))?;
+        .ok_or_else(|| quant_common::api::ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid max_daily_loss: {}", max_daily_loss)))?;
 
-    services
+    let data = services
         .strategy_service
         .create_strategy(
             &type_name,
@@ -268,8 +245,8 @@ pub async fn create_strategy(
             symbols,
             user_id,
         )
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    ok_result(data)
 }
 
 /// 获取风险指标
@@ -329,8 +306,12 @@ pub async fn get_risk_config(
 pub async fn update_risk_config(
     state: State<'_, AppState>,
     config: quant_common::config::RiskConfig,
-) -> Result<bool, String> {
-    state.require_role("admin").await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use crate::commands::auth_err;
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_role("admin").await {
+        return Err(auth_err(e));
+    }
     match state.app_services.as_ref() {
         Some(services) => {
             let mut new_config = services.config_service.get_config().await;
@@ -361,7 +342,7 @@ pub async fn update_risk_config(
                             module: Some("risk".to_string()),
                         })
                         .await;
-                    Ok(true)
+                    ok_result(true)
                 }
                 Ok(false) => {
                     state
@@ -373,7 +354,7 @@ pub async fn update_risk_config(
                             module: Some("risk".to_string()),
                         })
                         .await;
-                    Ok(false)
+                    ok_result(false)
                 }
                 Err(e) => {
                     state
@@ -388,7 +369,7 @@ pub async fn update_risk_config(
                             module: Some("risk".to_string()),
                         })
                         .await;
-                    Ok(true)
+                    ok_result(true)
                 }
             }
         }
@@ -404,7 +385,7 @@ pub async fn update_risk_config(
                     module: Some("config".to_string()),
                 })
                 .await;
-            Ok(true)
+            ok_result(true)
         }
     }
 }
