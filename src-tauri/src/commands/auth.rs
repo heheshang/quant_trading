@@ -72,13 +72,14 @@ pub async fn login(
     username: String,
     password: String,
     code: Option<String>,
-) -> Result<String, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    use quant_common::api::{code, ok_result, ApiFailure};
     // 登录节流：连续失败后锁定，防暴力破解。
-    check_login_throttle(&username)?;
+    check_login_throttle(&username).map_err(|e| ApiFailure::new(code::RATE_LIMITED, e))?;
     // Delegate to AuthService which verifies against database password hashes.
     // When the user has 2FA enabled, `code` is verified by the service before
     // a token is issued.
-    let result = match state.app_services.as_ref() {
+    let result: Result<String, String> = match state.app_services.as_ref() {
         Some(services) => services
             .auth_service
             .login(&username, &password, code.as_deref())
@@ -113,17 +114,25 @@ pub async fn login(
         .audit_logger
         .log_login(&audit_user_id, &username, None, success)
         .await;
-    if result.is_ok() {
-        record_login_success(&username);
-    } else {
-        record_login_failure(&username);
+    match result {
+        Ok(token) => {
+            record_login_success(&username);
+            ok_result(token)
+        }
+        Err(e) => {
+            record_login_failure(&username);
+            Err(ApiFailure::new(code::UNAUTHORIZED, e))
+        }
     }
-    result
 }
 
 /// 验证 Token
 #[tauri::command]
-pub async fn verify_token(state: State<'_, AppState>, token: String) -> Result<bool, String> {
+pub async fn verify_token(
+    state: State<'_, AppState>,
+    token: String,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use quant_common::api::ok_result;
     let valid = match state.app_services.as_ref() {
         Some(services) => services.auth_service.verify_token(&token).await,
         None => {
@@ -146,7 +155,7 @@ pub async fn verify_token(state: State<'_, AppState>, token: String) -> Result<b
     } else {
         *state.auth_session.write().await = None;
     }
-    Ok(valid)
+    ok_result(valid)
 }
 
 /// 更新用户资料
@@ -154,12 +163,17 @@ pub async fn verify_token(state: State<'_, AppState>, token: String) -> Result<b
 pub async fn update_profile(
     state: State<'_, AppState>,
     profile_data: serde_json::Value,
-) -> Result<bool, String> {
-    let user = state.require_auth().await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use crate::commands::not_init_err;
+    use quant_common::api::ok_result;
+    let user = match state.require_auth().await {
+        Ok(u) => u,
+        Err(e) => return Err(crate::commands::auth_err(e)),
+    };
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
 
     // 目标用户名：默认绑定到会话用户（忽略客户端指定）；仅 admin 可编辑他人。
     let requested_username = profile_data
@@ -167,15 +181,22 @@ pub async fn update_profile(
         .and_then(|v| v.as_str())
         .unwrap_or(&user.username);
     if requested_username != user.username {
-        state.require_role("admin").await?;
+        match state.require_role("admin").await {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(quant_common::api::ApiFailure::new(
+                    quant_common::api::code::FORBIDDEN,
+                    e,
+                ))
+            }
+        }
     }
     let username = requested_username.to_string();
 
     let result = services
         .auth_service
         .update_profile(&username, &profile_data)
-        .await
-        .map_err(|e| e.to_string());
+        .await;
     let success = result.is_ok();
     // 审计记录操作者（会话用户），而非被修改者。
     let audit_user_id = user.user_id.to_string();
@@ -192,11 +213,14 @@ pub async fn update_profile(
             if success {
                 None
             } else {
-                result.as_ref().err().cloned()
+                result.as_ref().err().map(|e| e.to_string())
             },
         )
         .await;
-    result
+    match result {
+        Ok(v) => ok_result(v),
+        Err(e) => Err(quant_common::api::ApiFailure::new(e.api_code(), e.api_message())),
+    }
 }
 
 /// 修改密码
@@ -206,19 +230,22 @@ pub async fn change_password(
     current_password: String,
     new_password: String,
     username: Option<String>,
-) -> Result<bool, String> {
-    state.require_auth().await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let username = username.unwrap_or_else(|| "admin".to_string());
 
     let result = services
         .auth_service
         .change_password(&username, &current_password, &new_password)
-        .await
-        .map_err(|e| e.to_string());
+        .await;
     let success = result.is_ok();
     let audit_user_id = match state.app_services.as_ref() {
         Some(s) => s
@@ -243,11 +270,14 @@ pub async fn change_password(
             if success {
                 None
             } else {
-                result.as_ref().err().cloned()
+                result.as_ref().err().map(|e| e.to_string())
             },
         )
         .await;
-    result
+    match result {
+        Ok(v) => ok_result(v),
+        Err(e) => Err(quant_common::api::ApiFailure::new(e.api_code(), e.api_message())),
+    }
 }
 
 /// 获取用户资料
@@ -255,18 +285,19 @@ pub async fn change_password(
 pub async fn get_user_profile(
     state: State<'_, AppState>,
     username: Option<String>,
-) -> Result<serde_json::Value, String> {
-    state.require_auth().await?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    use crate::commands::{auth_err, not_init_err};
+    use quant_common::api::ok_result;
+    if let Err(e) = state.require_auth().await {
+        return Err(auth_err(e));
+    }
     let services = state
         .app_services
         .as_ref()
-        .ok_or("Application services not initialized")?;
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let username = username.unwrap_or_else(|| "admin".to_string());
-    services
-        .auth_service
-        .get_user_profile(&username)
-        .await
-        .map_err(|e| e.to_string())
+    let profile = services.auth_service.get_user_profile(&username).await?;
+    ok_result(profile)
 }
 
 #[cfg(test)]
