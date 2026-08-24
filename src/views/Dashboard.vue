@@ -34,7 +34,7 @@
           <StatsCard title="今日收益" :value="Math.abs(dailyPnl)" format="currency" :icon="Promotion" icon-bg="var(--color-success)" :trend="dailyPnl" :loading="loading" @click="router.push('/monitor')" />
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
-          <StatsCard title="活跃订单" :value="orderStore.orderCount" format="number" :icon="Tickets" icon-bg="var(--color-warning)" :loading="loading" @click="router.push('/trading')" />
+          <StatsCard title="活跃订单" :value="activeOrderCount" format="number" :icon="Tickets" icon-bg="var(--color-warning)" :loading="loading" @click="router.push('/trading')" />
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="风险等级" :value="riskLevel" :icon="Warning" icon-bg="var(--color-danger)" :loading="loading || riskLevelLoading" @click="router.push('/risk')" />
@@ -134,9 +134,24 @@ const error = computed(() => accountStore.error || orderStore.error)
 // 实盘账户概览（Balances×价格=总资产；live_trades 均价=盈亏）。
 const binanceOverview = useBinanceAccountOverview()
 const totalAssets = computed(() => binanceOverview.totalAssets.value)
-const dailyPnl = computed(() => binanceOverview.dailyPnl.value)
+// 今日收益 = 实盘已成交（live_trades 当日 FILLED） + 纸面已成交（当日 Filled 订单）。
+const dailyPnl = computed(() => {
+  const startOfDay = Date.now() - (Date.now() % 86_400_000)
+  let pnl = binanceOverview.dailyPnl.value
+  for (const o of orderStore.recentOrders) {
+    if (o.status !== 'Filled') continue
+    if (new Date(o.created_at).getTime() < startOfDay) continue
+    const notional = (o.price ?? 0) * (o.filled_quantity || 0)
+    pnl += o.side === 'Sell' ? notional : -notional
+  }
+  return pnl
+})
 const totalPnl = computed(() => binanceOverview.totalPnl.value)
 const unrealizedPnl = computed(() => binanceOverview.unrealizedPnl.value)
+// 活跃订单数 = 纸面活跃 + 实盘开放单。
+const activeOrderCount = computed(
+  () => orderStore.orderCount + binanceOverview.liveOpenCount.value,
+)
 // 组合对象里的 ref 不会在模板自动解包，这里再包一层。
 const binanceHoldings = computed(() => binanceOverview.holdings.value)
 const binanceEquityHistory = computed(() => binanceOverview.equityHistory.value)

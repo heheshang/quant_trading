@@ -132,6 +132,7 @@ vi.mock('@/composables/useBinanceAccountOverview', () => {
       totalPnl: binanceOverviewState.totalPnl,
       holdings: ref([]),
       equityHistory: ref([]),
+      liveOpenCount: ref(0),
       refresh: vi.fn(),
     }),
   }

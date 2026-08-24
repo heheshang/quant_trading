@@ -87,9 +87,9 @@ export function useBinanceAccountOverview() {
   /** 总盈亏 = 当日已实现 + 浮动。 */
   const totalPnl = computed(() => dailyPnl.value + unrealizedPnl.value)
 
-  /** 持仓分布（余额×价格），供 pie 图。 */
-  const holdings = computed(() =>
-    balances.value
+  /** 持仓分布（余额×价格），供 pie 图；取 Top10 + 其他，避免 500+ 项挤压。 */
+  const holdings = computed(() => {
+    const all = balances.value
       .map((b) => {
         const qty = (Number(b.free) || 0) + (Number(b.locked) || 0)
         const price = priceOf(b.asset)
@@ -106,7 +106,29 @@ export function useBinanceAccountOverview() {
           updated_at: new Date().toISOString(),
         }
       })
-      .filter((p) => p.market_value > 0),
+      .filter((p) => p.market_value > 0)
+      .sort((a, b) => b.market_value - a.market_value)
+    if (all.length <= 10) return all
+    const top = all.slice(0, 10)
+    const others = all.slice(10).reduce((s, p) => s + p.market_value, 0)
+    return [
+      ...top,
+      {
+        symbol: '其他',
+        quantity: 0,
+        available_quantity: 0,
+        avg_price: 0,
+        market_value: others,
+        unrealized_pnl: 0,
+        realized_pnl: 0,
+        updated_at: new Date().toISOString(),
+      },
+    ]
+  })
+
+  /** 开放中的实盘单数（NEW / PARTIALLY_FILLED）。 */
+  const liveOpenCount = computed(
+    () => liveTrades.value.filter((t) => t.status === 'NEW' || t.status === 'PARTIALLY_FILLED').length,
   )
 
   const equityHistory = ref<[string, number][]>([])
@@ -151,6 +173,7 @@ export function useBinanceAccountOverview() {
     totalPnl,
     holdings,
     equityHistory,
+    liveOpenCount,
     refresh,
   }
 }
