@@ -179,13 +179,14 @@ impl BinanceWebSocket {
         self.subscribe_stream(&format!("{}@depth", binance)).await
     }
 
-    /// Subscribe to partial order-book snapshot: `BTC-USDT` -> `btcusdt@depth20@100ms`.
+    /// Subscribe to partial order-book snapshot: `BTC-USDT` -> `btcusdt@depth20@250ms`.
     ///
-    /// The partial-book stream pushes a top-20 snapshot on every update, so the
+    /// The partial-book stream pushes a top-20 snapshot every update, so the
     /// consumer can render a full ladder without maintaining incremental deltas.
+    /// @250ms 降低更新频率(减半带宽)，对 20 档深度展示足够。
     pub async fn subscribe_orderbook(&self, symbol: &str) -> Result<()> {
         let binance = crate::types::to_binance_symbol(symbol).to_lowercase();
-        self.subscribe_stream(&format!("{}@depth20@100ms", binance))
+        self.subscribe_stream(&format!("{}@depth20@250ms", binance))
             .await
     }
 
