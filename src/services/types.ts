@@ -473,6 +473,26 @@ export interface TickerSnapshotRecord {
   created_at: string | null
 }
 
+/** 数据库逐笔成交行（`stream_trades`）。 */
+export interface StreamTradeRecord {
+  id: number
+  symbol: string
+  price: number
+  quantity: number
+  trade_time: string
+  is_buyer_maker: boolean
+  created_at: string | null
+}
+
+/** 数据库订单簿快照行（`orderbook_snapshots`，bids/asks 为 JSON 数组字符串）。 */
+export interface OrderbookSnapshotRecord {
+  symbol: string
+  bids: string
+  asks: string
+  ts: string
+  created_at: string | null
+}
+
 /** 本地持久化的 live 单成交记录（策略关联 + 成交价/量）。 */
 export interface LiveTrade {
   id: number

@@ -3,7 +3,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import { listen } from '@tauri-apps/api/event'
 import { useMarketDataStore, DEFAULT_MARKET_SYMBOLS } from '@/stores/marketData'
 import { mockInvoke, mockTauriInvoke } from './mock-tauri'
-import type { BinanceWsTrade, BinanceWsDepth } from '@/services/types'
 
 type AnyHandler = (ev: { payload: unknown }) => void
 let capturedHandlers: Record<string, AnyHandler> = {}
@@ -22,19 +21,7 @@ function captureListen(): void {
 }
 
 
-const sampleTrade: BinanceWsTrade = {
-  symbol: 'BTC-USDT',
-  price: 50000,
-  quantity: 0.5,
-  trade_time: 1700000000100,
-  is_buyer_maker: false,
-}
 
-const sampleBook: BinanceWsDepth = {
-  symbol: 'BTC-USDT',
-  bids: [[50000, 1.5]],
-  asks: [[50001, 2.5]],
-}
 
 
 describe('marketData store', () => {
@@ -88,27 +75,36 @@ describe('marketData store', () => {
     expect(store.tickerList.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('prepends binance:trade events for a symbol', async () => {
+  it('loads trades from DB (get_trades)', async () => {
+    mockTauriInvoke('get_trades', [
+      { id: 1, symbol: 'BTC-USDT', price: 50000, quantity: 0.5, trade_time: '2024-01-01T00:00:00Z', is_buyer_maker: false, created_at: null },
+      { id: 2, symbol: 'BTC-USDT', price: 50005, quantity: 0.6, trade_time: '2024-01-01T00:00:01Z', is_buyer_maker: false, created_at: null },
+    ])
     const store = useMarketDataStore()
     await store.start()
-
-    fireEvent('binance:trade', sampleTrade)
-    fireEvent('binance:trade', { ...sampleTrade, trade_time: 1700000000200, price: 50005 })
 
     const list = store.trades['BTC-USDT']
     expect(list).toHaveLength(2)
-    expect(list[0].price).toBe(50005)
-    expect(list[1].trade_time).toBe(1700000000100)
+    // pollDb 只拉活跃标的；DB 查询按 trade_time DESC，最新在前。
+    expect(list[0].price).toBe(50000)
     expect(store.tradesForActive).toEqual(list)
   })
 
-  it('routes binance:orderbook into the order book map', async () => {
+  it('loads orderbook from DB (get_orderbook)', async () => {
+    mockTauriInvoke('get_orderbook', {
+      symbol: 'BTC-USDT',
+      bids: '[[50001,1],[50000,2]]',
+      asks: '[[50002,1],[50003,2]]',
+      ts: '2024-01-01T00:00:00Z',
+      created_at: null,
+    })
     const store = useMarketDataStore()
     await store.start()
 
-    fireEvent('binance:orderbook', sampleBook)
-    expect(store.orderBooks['BTC-USDT']).toEqual(sampleBook)
-    expect(store.orderBookForActive).toEqual(sampleBook)
+    expect(store.orderBooks['BTC-USDT']).toBeTruthy()
+    expect(store.orderBooks['BTC-USDT'].bids[0][0]).toBe(50001)
+    expect(store.orderBooks['BTC-USDT'].asks[0][0]).toBe(50002)
+    expect(store.orderBookForActive).toEqual(store.orderBooks['BTC-USDT'])
   })
 
   it('loads candles from DB (get_klines)', async () => {

@@ -13,13 +13,15 @@ import {
   subscribeBinanceOrderbook,
   subscribeBinanceCandle,
 } from '@/services/binance'
-import { getKlines, getTickerSnapshots } from '@/services/market'
+import { getKlines, getOrderbook, getTickerSnapshots, getTrades } from '@/services/market'
 import type {
   BinanceWsTicker,
   BinanceWsTrade,
   BinanceWsDepth,
   BinanceWsKline,
   MarketDataRecord,
+  OrderbookSnapshotRecord,
+  StreamTradeRecord,
   TickerSnapshotRecord,
 } from '@/services/types'
 
@@ -31,10 +33,10 @@ export const MAX_SUBSCRIBE = 30
 /**
  * Binance market data store (DB-first).
  *
- * 行情源按「remote WS → DB 导入 → 前端读 DB」：K 线 / ticker 经 DB 轮询
- * （`get_klines` / `get_ticker_snapshots`）读取；逐笔成交与订单簿仍走
- * `binance:trade` / `binance:orderbook` 实时事件（暂无对应 DB 表）。
- * 数据按标的关键键，ticker 面板可展示多标的，图表/订单簿聚焦活跃标的。
+ * 行情源按「remote WS → DB 导入 → 前端读 DB」：K 线 / ticker / 逐笔成交 /
+ * 订单簿均经 DB 轮询（`get_klines` / `get_ticker_snapshots` / `get_trades` /
+ * `get_orderbook`）读取。WS 仅作为导入层（仍启动/订阅以驱动后端入库），
+ * 前端事件仅保留连接状态/错误感知。数据按标的关键键。
  */
 export const useMarketDataStore = defineStore('marketData', () => {
   const running = ref(false)
@@ -90,6 +92,26 @@ export const useMarketDataStore = defineStore('marketData', () => {
     }
   }
 
+  /** DB 逐笔成交行 → WS 成交。 */
+  function dbTradeToWs(r: StreamTradeRecord): BinanceWsTrade {
+    return {
+      symbol: r.symbol,
+      price: r.price,
+      quantity: r.quantity,
+      trade_time: new Date(r.trade_time).getTime(),
+      is_buyer_maker: r.is_buyer_maker,
+    }
+  }
+
+  /** DB 订单簿快照行 → WS 订单簿（bids/asks 为 JSON 数组字符串）。 */
+  function dbOrderbookToWs(r: OrderbookSnapshotRecord): BinanceWsDepth {
+    return {
+      symbol: r.symbol,
+      bids: JSON.parse(r.bids),
+      asks: JSON.parse(r.asks),
+    }
+  }
+
   /** 预取某标的近 100 根历史 1m K 线（从数据库），先填 chart。 */
   async function prefetchCandles(sym: string) {
     try {
@@ -103,13 +125,26 @@ export const useMarketDataStore = defineStore('marketData', () => {
     }
   }
 
-  /** 从数据库拉取活跃标的 K 线 + 全部订阅标的的最新 ticker（纯 DB 读）。 */
+  /** 从数据库拉取活跃标的 K 线 + 逐笔成交 + 订单簿 + 全部订阅标的的最新 ticker（纯 DB 读）。 */
   async function pollDb() {
+    const act = activeSymbol.value
     try {
-      const rows = await getKlines(activeSymbol.value, '1m', 120)
-      candles.value = { ...candles.value, [activeSymbol.value]: rows.map(dbKlineToWs) }
+      const rows = await getKlines(act, '1m', 120)
+      candles.value = { ...candles.value, [act]: rows.map(dbKlineToWs) }
     } catch {
       // 忽略：下次轮询重试
+    }
+    try {
+      const rows = await getTrades(act, 100)
+      trades.value = { ...trades.value, [act]: rows.map(dbTradeToWs) }
+    } catch {
+      // 忽略
+    }
+    try {
+      const r = await getOrderbook(act)
+      if (r) orderBooks.value = { ...orderBooks.value, [act]: dbOrderbookToWs(r) }
+    } catch {
+      // 忽略
     }
     const syms = symbols.value.length ? symbols.value : DEFAULT_MARKET_SYMBOLS
     for (const sym of syms.slice(0, MAX_SUBSCRIBE)) {
@@ -125,14 +160,8 @@ export const useMarketDataStore = defineStore('marketData', () => {
 
   async function buildHandlers(): Promise<BinanceEventHandlers> {
     return {
-      // ticker / candle 改由 DB 轮询（pollDb）驱动，不经 WS 事件。
-      onTrade: (t) => {
-        const list = [t, ...(trades.value[t.symbol] ?? [])].slice(0, 100)
-        trades.value = { ...trades.value, [t.symbol]: list }
-      },
-      onOrderBook: (d) => {
-        orderBooks.value = { ...orderBooks.value, [d.symbol]: d }
-      },
+      // 全部行情数据（K线/ticker/逐笔/订单簿）改由 DB 轮询（pollDb）驱动。
+      // WS 事件仅保留连接状态/错误感知。
       onStatus: (s) => {
         status.value = s.status
       },

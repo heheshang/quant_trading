@@ -79,6 +79,28 @@ pub struct MarkPriceRecord {
     pub created_at: Option<DateTime<Utc>>,
 }
 
+/// A single stream trade row (remote WS `@trade`, appended).
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct StreamTradeRecord {
+    pub id: i64,
+    pub symbol: String,
+    pub price: Decimal,
+    pub quantity: Decimal,
+    pub trade_time: DateTime<Utc>,
+    pub is_buyer_maker: bool,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// Latest orderbook snapshot row (remote WS `@depth`, per-symbol one row).
+#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+pub struct OrderbookSnapshotRecord {
+    pub symbol: String,
+    pub bids: String,
+    pub asks: String,
+    pub ts: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
 /// Repository for market_data partitioned table
 pub struct MarketDataRepository {
     pool: PgPool,
@@ -549,6 +571,85 @@ impl MarketDataRepository {
         .map_err(|e| Error::Database(format!("Failed to query mark_prices: {}", e)))?;
         Ok(records)
     }
+
+    /// Append a stream trade (remote WS `@trade`).
+    #[instrument(skip(self), fields(symbol = %item.symbol))]
+    pub async fn insert_stream_trade(&self, item: &NewStreamTrade) -> Result<u64> {
+        let r = sqlx::query(
+            r#"
+            INSERT INTO stream_trades (symbol, price, quantity, trade_time, is_buyer_maker)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(&item.symbol)
+        .bind(item.price)
+        .bind(item.quantity)
+        .bind(item.trade_time)
+        .bind(item.is_buyer_maker)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to insert stream_trade: {}", e)))?;
+        Ok(r.rows_affected() as u64)
+    }
+
+    /// Upsert the latest orderbook snapshot per symbol (remote WS `@depth`).
+    #[instrument(skip(self), fields(symbol = %item.symbol))]
+    pub async fn upsert_orderbook_snapshot(&self, item: &NewOrderbookSnapshot) -> Result<u64> {
+        let r = sqlx::query(
+            r#"
+            INSERT INTO orderbook_snapshots (symbol, bids, asks, ts)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (symbol) DO UPDATE SET
+                bids = EXCLUDED.bids,
+                asks = EXCLUDED.asks,
+                ts = now()
+            "#,
+        )
+        .bind(&item.symbol)
+        .bind(&item.bids)
+        .bind(&item.asks)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to upsert orderbook_snapshot: {}", e)))?;
+        Ok(r.rows_affected() as u64)
+    }
+
+    /// Latest N stream trades for a symbol (newest first), read from DB.
+    #[instrument(skip(self), fields(symbol = %symbol))]
+    pub async fn query_latest_trades(&self, symbol: &str, limit: i64) -> Result<Vec<StreamTradeRecord>> {
+        let records = sqlx::query_as::<_, StreamTradeRecord>(
+            r#"
+            SELECT id, symbol, price, quantity, trade_time, is_buyer_maker, created_at
+            FROM stream_trades
+            WHERE symbol = $1
+            ORDER BY trade_time DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(symbol)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query stream_trades: {}", e)))?;
+        Ok(records)
+    }
+
+    /// Latest orderbook snapshot for a symbol, read from DB.
+    #[instrument(skip(self), fields(symbol = %symbol))]
+    pub async fn query_latest_orderbook(&self, symbol: &str) -> Result<Option<OrderbookSnapshotRecord>> {
+        let record = sqlx::query_as::<_, OrderbookSnapshotRecord>(
+            r#"
+            SELECT symbol, bids, asks, ts, created_at
+            FROM orderbook_snapshots
+            WHERE symbol = $1
+            "#,
+        )
+        .bind(symbol)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::Database(format!("Failed to query orderbook_snapshot: {}", e)))?;
+        Ok(record)
+    }
 }
 
 /// Input struct for inserting new K-line data
@@ -613,6 +714,22 @@ pub struct NewMarkPrice {
     pub ts: DateTime<Utc>,
     pub mark_px: Option<Decimal>,
     pub idx_px: Option<Decimal>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewStreamTrade {
+    pub symbol: String,
+    pub price: Decimal,
+    pub quantity: Decimal,
+    pub trade_time: DateTime<Utc>,
+    pub is_buyer_maker: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewOrderbookSnapshot {
+    pub symbol: String,
+    pub bids: String, // JSON array string
+    pub asks: String, // JSON array string
 }
 
 #[cfg(test)]

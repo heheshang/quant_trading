@@ -2,7 +2,8 @@ use crate::error::{ServiceError, ServiceResult};
 use data_layer::market_data::DataSource;
 use data_layer::{
     AccountSnapshotRecord, FundingRateRecord, MarkPriceRecord, MarketDataRecord,
-    MarketDataRepository, PositionSnapshotRecord, TickerSnapshotRecord,
+    MarketDataRepository, OrderbookSnapshotRecord, PositionSnapshotRecord, StreamTradeRecord,
+    TickerSnapshotRecord,
 };
 use quant_common::types::MarketData;
 use std::sync::Arc;
@@ -95,6 +96,30 @@ impl MarketService {
             .await
             .map_err(|e| {
                 error!("Failed to read klines from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })
+    }
+
+    /// Latest N stream trades for a symbol, read from DB (`stream_trades`).
+    #[instrument(skip(self), fields(symbol = %symbol))]
+    pub async fn get_trades_from_db(&self, symbol: &str, limit: i64) -> ServiceResult<Vec<StreamTradeRecord>> {
+        let repo = self.repo_or_err("trades not available (no database)")?;
+        repo.query_latest_trades(symbol, limit)
+            .await
+            .map_err(|e| {
+                error!("Failed to read stream trades from DB: {}", e);
+                ServiceError::Other(e.to_string())
+            })
+    }
+
+    /// Latest orderbook snapshot for a symbol, read from DB (`orderbook_snapshots`).
+    #[instrument(skip(self), fields(symbol = %symbol))]
+    pub async fn get_orderbook_from_db(&self, symbol: &str) -> ServiceResult<Option<OrderbookSnapshotRecord>> {
+        let repo = self.repo_or_err("orderbook not available (no database)")?;
+        repo.query_latest_orderbook(symbol)
+            .await
+            .map_err(|e| {
+                error!("Failed to read orderbook from DB: {}", e);
                 ServiceError::Other(e.to_string())
             })
     }

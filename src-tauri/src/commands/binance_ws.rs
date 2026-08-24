@@ -28,6 +28,8 @@ use tracing::debug;
 enum MarketImport {
     Kline(NewMarketDataRecord),
     Ticker(NewTickerSnapshot),
+    Trade(data_layer::NewStreamTrade),
+    OrderBook(data_layer::NewOrderbookSnapshot),
 }
 
 /// 把 `@kline` WS 消息转换为 `market_data` 行（domain symbol 即 instrument_id）。
@@ -70,6 +72,26 @@ fn floor_minute(dt: DateTime<Utc>) -> DateTime<Utc> {
     DateTime::from_timestamp(secs - (secs % 60), 0).unwrap_or(dt)
 }
 
+/// 把 `@trade` WS 消息转换为 `stream_trades` 行。
+fn trade_to_record(t: &exchange_binance::websocket::BinanceWsTrade) -> data_layer::NewStreamTrade {
+    data_layer::NewStreamTrade {
+        symbol: t.symbol.clone(),
+        price: t.price,
+        quantity: t.quantity,
+        trade_time: DateTime::from_timestamp_millis(t.trade_time).unwrap_or_else(Utc::now),
+        is_buyer_maker: t.is_buyer_maker,
+    }
+}
+
+/// 把 `@depth`/`@orderbook` WS 消息转换为 `orderbook_snapshots` 行（JSON 字符串）。
+fn depth_to_record(d: &exchange_binance::websocket::BinanceWsDepth) -> data_layer::NewOrderbookSnapshot {
+    data_layer::NewOrderbookSnapshot {
+        symbol: d.symbol.clone(),
+        bids: serde_json::to_string(&d.bids).unwrap_or_else(|_| "[]".to_string()),
+        asks: serde_json::to_string(&d.asks).unwrap_or_else(|_| "[]".to_string()),
+    }
+}
+
 /// 后台导入写入任务：串行消费消息并 upsert 到 DB，避免阻塞 WS 收流。
 async fn market_import_writer(
     repo: Arc<MarketDataRepository>,
@@ -85,6 +107,16 @@ async fn market_import_writer(
             MarketImport::Ticker(t) => {
                 if let Err(e) = repo.upsert_ticker_snapshot(&t).await {
                     debug!(error = %e, "ticker import failed");
+                }
+            }
+            MarketImport::Trade(t) => {
+                if let Err(e) = repo.insert_stream_trade(&t).await {
+                    debug!(error = %e, "trade import failed");
+                }
+            }
+            MarketImport::OrderBook(d) => {
+                if let Err(e) = repo.upsert_orderbook_snapshot(&d).await {
+                    debug!(error = %e, "orderbook import failed");
                 }
             }
         }
@@ -157,9 +189,15 @@ pub async fn start_binance_market_data(
                 }
                 BinanceWsMessage::Depth(d) => {
                     let _ = app_clone.emit("binance:depth", &d);
+                    if import_enabled {
+                        let _ = import_tx.send(MarketImport::OrderBook(depth_to_record(&d))).await;
+                    }
                 }
                 BinanceWsMessage::OrderBook(d) => {
                     let _ = app_clone.emit("binance:orderbook", &d);
+                    if import_enabled {
+                        let _ = import_tx.send(MarketImport::OrderBook(depth_to_record(&d))).await;
+                    }
                 }
                 BinanceWsMessage::Ticker(t) => {
                     let _ = app_clone.emit("binance:ticker", &t);
@@ -169,6 +207,9 @@ pub async fn start_binance_market_data(
                 }
                 BinanceWsMessage::Trade(t) => {
                     let _ = app_clone.emit("binance:trade", &t);
+                    if import_enabled {
+                        let _ = import_tx.send(MarketImport::Trade(trade_to_record(&t))).await;
+                    }
                 }
                 // 用户数据流走独立 WS 连接，这里忽略（不影响市场流）。
                 BinanceWsMessage::AccountPosition(_) | BinanceWsMessage::OrderUpdate(_) => {}

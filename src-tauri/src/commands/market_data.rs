@@ -55,6 +55,42 @@ pub async fn get_klines(
     ok_result(data)
 }
 
+/// 从数据库读取某标的最近 N 笔逐笔成交（remote WS 导入后前端从 DB 读）。
+#[tauri::command]
+pub async fn get_trades(
+    state: State<'_, AppState>,
+    symbol: String,
+    limit: Option<i64>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::StreamTradeRecord>>> {
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "行情服务未初始化（无数据库连接）");
+    };
+    let data = services
+        .market_service
+        .get_trades_from_db(&symbol, limit.unwrap_or(100))
+        .await?;
+    ok_result(data)
+}
+
+/// 从数据库读取某标的最新订单簿快照（remote WS 导入后前端从 DB 读）。
+#[tauri::command]
+pub async fn get_orderbook(
+    state: State<'_, AppState>,
+    symbol: String,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Option<data_layer::OrderbookSnapshotRecord>>> {
+    if let Err(e) = state.require_auth().await {
+        return err_result(code::UNAUTHORIZED, e);
+    }
+    let Some(services) = state.app_services.as_ref() else {
+        return err_result(code::NOT_INITIALIZED, "行情服务未初始化（无数据库连接）");
+    };
+    let data = services.market_service.get_orderbook_from_db(&symbol).await?;
+    ok_result(data)
+}
+
 /// 查询行情快照（按标的 + 可选时间范围）。
 #[tauri::command]
 pub async fn get_ticker_snapshots(

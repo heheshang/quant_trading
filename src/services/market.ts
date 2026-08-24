@@ -1,5 +1,11 @@
 import { call } from './transport'
-import type { MarketData, MarketDataRecord, TickerSnapshotRecord } from './types'
+import type {
+  MarketData,
+  MarketDataRecord,
+  OrderbookSnapshotRecord,
+  StreamTradeRecord,
+  TickerSnapshotRecord,
+} from './types'
 
 /**
  * Market data service (SoC).
@@ -31,4 +37,14 @@ export function getTickerSnapshots(
   limit = 1,
 ): Promise<TickerSnapshotRecord[]> {
   return call<TickerSnapshotRecord[]>('get_ticker_snapshots', { inst_id: instId, limit })
+}
+
+/** 从数据库读取某标的最近 N 笔逐笔成交。 */
+export function getTrades(symbol: string, limit = 100): Promise<StreamTradeRecord[]> {
+  return call<StreamTradeRecord[]>('get_trades', { symbol, limit })
+}
+
+/** 从数据库读取某标的最新订单簿快照。 */
+export function getOrderbook(symbol: string): Promise<OrderbookSnapshotRecord | null> {
+  return call<OrderbookSnapshotRecord | null>('get_orderbook', { symbol })
 }
