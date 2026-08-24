@@ -39,7 +39,7 @@ const submitting = ref(false)
 const positionsLoading = ref(false)
 const ordersLoading = ref(false)
 const ordersHistory = ref(false)
-const ordersSymbol = ref('BTCUSDT')
+const ordersSymbol = ref('BTC-USDT')
 const symbols = ref<string[]>([])
 
 // ── 账户余额优化：总市值 + 可筛选标的下拉 ──
@@ -83,7 +83,7 @@ const form = ref({
 
 // ── Realtime stream ──
 const wsRunning = ref(false)
-const streamSymbol = ref('BTCUSDT')
+const streamSymbol = ref('BTC-USDT')
 const liveKlines = ref<BinanceWsKline[]>([])
 const liveDepth = ref<BinanceWsDepth | null>(null)
 const unlisten: Array<() => void> = []
@@ -275,7 +275,9 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
     <el-card class="section">
       <template #header>实时行情（WebSocket）</template>
       <div class="ws-controls">
-        <el-input v-model="streamSymbol" size="small" style="width: 180px" />
+        <el-select v-model="streamSymbol" filterable size="small" style="width: 180px">
+          <el-option v-for="s in symbols" :key="s" :label="s" :value="s" />
+        </el-select>
         <el-button size="small" type="primary" :disabled="wsRunning" @click="startStream">开始</el-button>
         <el-button size="small" :disabled="!wsRunning" @click="stopStream">停止</el-button>
       </div>
@@ -319,7 +321,9 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
         <div class="orders-header">
           <span>订单</span>
           <div class="orders-controls">
-            <el-input v-model="ordersSymbol" size="small" style="width: 160px" />
+            <el-select v-model="ordersSymbol" filterable size="small" style="width: 160px">
+              <el-option v-for="s in symbols" :key="s" :label="s" :value="s" />
+            </el-select>
             <el-radio-group v-model="ordersHistory" size="small" @change="toggleHistory">
               <el-radio-button :value="false">活动</el-radio-button>
               <el-radio-button :value="true">历史</el-radio-button>
