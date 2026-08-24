@@ -87,7 +87,7 @@ import SubscriptionManager from '@/components/dashboard/SubscriptionManager.vue'
 const activeTab = ref('metrics')
 const loading = ref(false)
 const isPollingFallback = ref(true)
-const selectedMetrics = ref<string[]>(['orders_total', 'orders_filled', 'account_balance', 'daily_pnl'])
+const selectedMetrics = ref<string[]>(['orders_total', 'orders_filled', 'orders_cancelled', 'account_balance', 'daily_pnl'])
 const metrics = ref<Record<string, number>>({})
 const metricsHistory = ref<Array<{ time: string; metrics: Record<string, number> }>>([])
 const alerts = shallowRef<Alert[]>([])
