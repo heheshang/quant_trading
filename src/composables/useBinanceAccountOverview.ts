@@ -1,77 +1,38 @@
 import { ref, computed } from 'vue'
-import {
-  getBinanceBalance,
-  getBinanceTickerPrices,
-  getLiveTrades,
-  getAccountSnapshots,
-} from '@/services/binance'
+import { getPositions } from '@/services/account'
+import { getLiveTrades, getAccountSnapshots } from '@/services/binance'
 import { computeRealizedPnl, type FilledFill } from '@/utils/pnl'
-import type { BinanceBalance, LiveTrade } from '@/services/types'
+import type { LiveTrade, Position } from '@/services/types'
 
-const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
 const KEEPALIVE_MS = 30_000
 
 /**
- * Dashboard 实盘账户概览数据源。
+ * Dashboard 实盘账户概览数据源（DB-first）。
  *
- * 从 Binance 拉取账户余额 + 全市场价格 + 本地 live_trades 成交记录，计算：
- * - 总资产（持仓 × 最新价，USDT 计）
- * - 浮动盈亏（(现价 − 平均成本) × 数量，来自 live_trades FILLED 买单均价）
- * - 今日收益（当日已成交买卖实现盈亏）
+ * 数据全部来自数据库（remote WS → DB 导入 → 前端读 DB）：
+ * - `positions` 表：币安持仓同步（数量/市值/浮动盈亏，每 60s 由快照写入器刷新）。
+ * - `live_trades` 表：本地持久化的实盘成交（策略关联 + 均价/已实现盈亏）。
+ * - `account_snapshots` 表：总权益曲线（含稳定币现金）。
  */
 export function useBinanceAccountOverview() {
-  const balances = ref<BinanceBalance[]>([])
-  const prices = ref<Record<string, number>>({})
+  const positions = ref<Position[]>([])
   const liveTrades = ref<LiveTrade[]>([])
   const loading = ref(false)
+  const latestEquity = ref(0)
   let lastFetched = 0
 
-  function priceOf(asset: string): number {
-    if (USD_STABLES.includes(asset)) return 1
-    return prices.value[asset + 'USDT'] || 0
-  }
-
-  /** 按 order_id 平均买入成本（仅 FILLED 买单，加权）。 */
-  function avgCost(asset: string): number {
-    const pair = `${asset}-USDT`
-    let cost = 0
-    let qty = 0
-    for (const t of liveTrades.value) {
-      if (t.symbol !== pair) continue
-      if (t.status !== 'FILLED' || t.side !== 'BUY') continue
-      const fq = t.filled_quantity || 0
-      cost += (t.price || 0) * fq
-      qty += fq
-    }
-    return qty > 0 ? cost / qty : 0
-  }
-
+  /** 总资产：优先取最近一次账户权益快照（含稳定币）；否则按持仓市值汇总。 */
   const totalAssets = computed(() => {
-    let sum = 0
-    for (const b of balances.value) {
-      const qty = (Number(b.free) || 0) + (Number(b.locked) || 0)
-      sum += qty * priceOf(b.asset)
-    }
-    return sum
+    if (latestEquity.value > 0) return latestEquity.value
+    return positions.value.reduce((s, p) => s + Number(p.market_value || 0), 0)
   })
 
-  /** 浮动盈亏：现货持仓（有均价的部分）按 (现价 − 均价) × 数量。 */
-  const unrealizedPnl = computed(() => {
-    const costByAsset = new Map<string, number>()
-    for (const b of balances.value) {
-      const p = priceOf(b.asset)
-      if (p <= 0) continue
-      const cost = avgCost(b.asset)
-      if (cost <= 0) continue
-      const qty = (Number(b.free) || 0) + (Number(b.locked) || 0)
-      costByAsset.set(b.asset, (p - cost) * qty)
-    }
-    let sum = 0
-    for (const v of costByAsset.values()) sum += v
-    return sum
-  })
+  /** 浮动盈亏：来自 DB positions 表（同步时按 现价 − 均价 计算）。 */
+  const unrealizedPnl = computed(() =>
+    positions.value.reduce((s, p) => s + Number(p.unrealized_pnl || 0), 0),
+  )
 
-  /** 今日已实现盈亏：当日已成交的 FIFO 已实现盈亏（买入日不再被当作亏损）。 */
+  /** 今日已实现盈亏：当日已成交的 FIFO 已实现盈亏（来自本地 live_trades）。 */
   const dailyPnl = computed(() => {
     const startOfDay = Date.now() - (Date.now() % 86_400_000)
     const fills: FilledFill[] = []
@@ -92,25 +53,19 @@ export function useBinanceAccountOverview() {
   /** 总盈亏 = 当日已实现 + 浮动。 */
   const totalPnl = computed(() => dailyPnl.value + unrealizedPnl.value)
 
-  /** 持仓分布（余额×价格），供 pie 图；取 Top10 + 其他，避免 500+ 项挤压。 */
+  /** 持仓分布（DB positions），供 pie 图；取 Top10 + 其他，避免 500+ 项挤压。 */
   const holdings = computed(() => {
-    const all = balances.value
-      .map((b) => {
-        const qty = (Number(b.free) || 0) + (Number(b.locked) || 0)
-        const price = priceOf(b.asset)
-        const mv = qty * price
-        const cost = avgCost(b.asset)
-        return {
-          symbol: b.asset,
-          quantity: qty,
-          available_quantity: qty,
-          avg_price: cost || price,
-          market_value: mv,
-          unrealized_pnl: cost > 0 ? (price - cost) * qty : 0,
-          realized_pnl: 0,
-          updated_at: new Date().toISOString(),
-        }
-      })
+    const all = positions.value
+      .map((p) => ({
+        symbol: p.symbol.replace('-USDT', ''),
+        quantity: Number(p.quantity || 0),
+        available_quantity: Number(p.available_quantity || 0),
+        avg_price: Number(p.avg_price || 0),
+        market_value: Number(p.market_value || 0),
+        unrealized_pnl: Number(p.unrealized_pnl || 0),
+        realized_pnl: Number(p.realized_pnl || 0),
+        updated_at: p.updated_at,
+      }))
       .filter((p) => p.market_value > 0)
       .sort((a, b) => b.market_value - a.market_value)
     if (all.length <= 10) return all
@@ -133,25 +88,31 @@ export function useBinanceAccountOverview() {
 
   /** 开放中的实盘单数（NEW / PARTIALLY_FILLED）。 */
   const liveOpenCount = computed(
-    () => liveTrades.value.filter((t) => t.status === 'NEW' || t.status === 'PARTIALLY_FILLED').length,
+    () =>
+      liveTrades.value.filter(
+        (t) => t.status === 'NEW' || t.status === 'PARTIALLY_FILLED',
+      ).length,
   )
 
   const equityHistory = ref<[string, number][]>([])
 
   async function refresh(force = false) {
-    if (!force && Date.now() - lastFetched < KEEPALIVE_MS && balances.value.length > 0) return
+    if (!force && Date.now() - lastFetched < KEEPALIVE_MS && positions.value.length > 0) return
     loading.value = true
     try {
-      const [b, p, t] = await Promise.all([getBinanceBalance(), getBinanceTickerPrices(), getLiveTrades()])
-      balances.value = b
-      prices.value = p
-      liveTrades.value = t
-      lastFetched = Date.now()
-      // 权益由后台快照写入器记录（每 60s）；这里只拉历史供曲线展示。
-      const rows = await getAccountSnapshots('USDT', 2000)
-      equityHistory.value = rows
+      // 全部从 DB 读：positions（币安持仓同步）/ live_trades（本地成交）/ account_snapshots（权益曲线）。
+      const [db, trades, snapshots] = await Promise.all([
+        getPositions(),
+        getLiveTrades(),
+        getAccountSnapshots('USDT', 2000),
+      ])
+      positions.value = db
+      liveTrades.value = trades
+      latestEquity.value = snapshots.length ? Number(snapshots[0].eq ?? 0) : 0
+      equityHistory.value = snapshots
         .map((r) => [String(r.ts), Number(r.eq ?? 0)] as [string, number])
         .sort((a, b) => a[0].localeCompare(b[0]))
+      lastFetched = Date.now()
     } catch {
       // 限流/失败时保留上次数据（降级）
     } finally {
@@ -160,8 +121,7 @@ export function useBinanceAccountOverview() {
   }
 
   return {
-    balances,
-    prices,
+    positions,
     liveTrades,
     loading,
     totalAssets,

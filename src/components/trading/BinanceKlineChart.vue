@@ -32,8 +32,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { getBinanceCandles } from '@/services/binance'
-import type { BinanceKline } from '@/services/types'
+import { getKlines } from '@/services/market'
+import type { BinanceKline, MarketDataRecord } from '@/services/types'
 import { getChartSeriesColors } from '@/composables/useChartTheme'
 
 const chartSymbol = ref('BTCUSDT')
@@ -102,11 +102,36 @@ function renderChart(): void {
   })
 }
 
+/** 币安符号 → domain（'BTCUSDT'→'BTC-USDT'），DB `market_data` 用 domain 作 instrument_id。 */
+function toDomainSymbol(sym: string): string {
+  if (sym.includes('-')) return sym
+  return sym.replace(/(USDT|USDC|BUSD|TUSD|FDUSD|DAI)$/, '-$1')
+}
+
+/** DB K 线行 → chart 使用的 `BinanceKline`。 */
+function dbKlineToBinance(r: MarketDataRecord): BinanceKline {
+  const openTime = new Date(r.timestamp).getTime()
+  const intervalMs = 3_600_000 // 默认按小时；短周期误差可接受
+  return {
+    open_time: openTime,
+    open: r.open,
+    high: r.high,
+    low: r.low,
+    close: r.close,
+    volume: r.volume,
+    close_time: openTime + intervalMs,
+    quote_volume: 0,
+    trades: 0,
+  }
+}
+
 async function fetchCandles(): Promise<void> {
   candleError.value = ''
   loading.value = true
   try {
-    candles.value = await getBinanceCandles(chartSymbol.value, chartInterval.value, 60)
+    // 从 DB 读（remote WS 已导入 `market_data`），符合「前端走 db」。
+    const rows = await getKlines(toDomainSymbol(chartSymbol.value), chartInterval.value, 60)
+    candles.value = rows.map(dbKlineToBinance)
     await nextTick()
     renderChart()
   } catch (err: unknown) {
