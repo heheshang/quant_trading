@@ -390,6 +390,18 @@ impl OrderProcessor {
                             continue;
                         }
                     };
+                    // 限价单：仅当市价触及限价才成交（避免活跃单到期即被撮合消失）。
+                    if matches!(&order.order_type, OrderType::Limit) {
+                        if let Some(limit) = order.price {
+                            let crossed = match &order.side {
+                                OrderSide::Buy => market_data.close <= limit,
+                                OrderSide::Sell => market_data.close >= limit,
+                            };
+                            if !crossed {
+                                continue;
+                            }
+                        }
+                    }
                     match engine.fill_order(order, &market_data).await {
                         Ok(result) => {
                             let _ = account_service
