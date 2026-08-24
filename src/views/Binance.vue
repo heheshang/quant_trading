@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listen } from '@tauri-apps/api/event'
 import {
   getBinanceBalance,
+  getBinanceTickerPrices,
   getBinancePositions,
   getBinanceOrders,
   checkBinanceStatus,
@@ -13,6 +14,7 @@ import {
   subscribeBinanceDepth,
 } from '@/services/binance'
 import { placeBinanceOrder, cancelBinanceOrder } from '@/services/binanceOrder'
+import { useFormatting } from '@/composables/useFormatting'
 import { getSymbols } from '@/services/market'
 import BinanceKlineChart from '@/components/trading/BinanceKlineChart.vue'
 import BinanceDepthChart from '@/components/trading/BinanceDepthChart.vue'
@@ -27,6 +29,7 @@ import type {
 } from '@/services/types'
 
 const balances = ref<BinanceBalance[]>([])
+const { formatCurrency } = useFormatting()
 const positions = ref<BinancePosition[]>([])
 const orders = ref<BinanceOrder[]>([])
 const status = ref<BinanceStatus | null>(null)
@@ -37,6 +40,28 @@ const ordersLoading = ref(false)
 const ordersHistory = ref(false)
 const ordersSymbol = ref('BTCUSDT')
 const symbols = ref<string[]>([])
+
+// ── 账户余额优化：总市值 + 可筛选标的下拉 ──
+const balancePrices = ref<Record<string, number>>({})
+const balanceAssetFilter = ref('')
+const USD_STABLES = ['USDT', 'USDC', 'TUSD', 'BUSD', 'FDUSD', 'DAI']
+const balancePriceOf = (asset: string) =>
+  USD_STABLES.includes(asset) ? 1 : balancePrices.value[asset + 'USDT'] || 0
+/** 总市值（USDT 计）。 */
+const totalBalanceValue = computed(() =>
+  balances.value.reduce((s, b) => s + ((Number(b.free) || 0) + (Number(b.locked) || 0)) * balancePriceOf(b.asset), 0),
+)
+const balanceOptions = computed(() =>
+  balances.value
+    .filter((b) => Number(b.free) > 0 || Number(b.locked) > 0)
+    .map((b) => b.asset),
+)
+/** 按下拉筛选后的余额。 */
+const filteredBalances = computed(() =>
+  balanceAssetFilter.value
+    ? balances.value.filter((b) => b.asset === balanceAssetFilter.value)
+    : balances.value.filter((b) => Number(b.free) > 0 || Number(b.locked) > 0),
+)
 
 const form = ref({
   symbol: 'BTC-USDT',
@@ -104,6 +129,12 @@ async function loadBalance() {
   try {
     balances.value = await getBinanceBalance()
     status.value = await checkBinanceStatus()
+    // 拉全市场价格用于总市值（失败不影响余额显示）。
+    try {
+      balancePrices.value = await getBinanceTickerPrices()
+    } catch {
+      balancePrices.value = {}
+    }
   } catch (e) {
     ElMessage.error(`获取币安余额失败: ${e}`)
   } finally {
@@ -199,13 +230,28 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
     />
 
     <el-card class="section">
-      <template #header>账户余额</template>
-      <el-table :data="balances" v-loading="loading" size="small">
+      <template #header>
+        <div class="card-header">
+          <span>账户余额（总市值 ¥{{ formatCurrency(totalBalanceValue) }}）</span>
+          <div class="header-controls">
+            <el-select
+              v-model="balanceAssetFilter"
+              filterable
+              clearable
+              placeholder="资产下拉搜索"
+              style="width: 180px"
+            >
+              <el-option v-for="a in balanceOptions" :key="a" :label="a" :value="a" />
+            </el-select>
+            <el-button size="small" @click="loadBalance">刷新</el-button>
+          </div>
+        </div>
+      </template>
+      <el-table :data="filteredBalances" v-loading="loading" size="small">
         <el-table-column prop="asset" label="资产" />
         <el-table-column prop="free" label="可用" />
         <el-table-column prop="locked" label="锁定" />
       </el-table>
-      <el-button class="mt" size="small" @click="loadBalance">刷新</el-button>
     </el-card>
 
     <el-card class="section">
@@ -329,5 +375,7 @@ onUnmounted(() => { unlisten.forEach((u) => u()) })
 .ws-controls { display: flex; gap: 8px; margin-bottom: 12px; }
 .hint { color: var(--color-text-secondary); padding: 8px 0; }
 .orders-header { display: flex; justify-content: space-between; align-items: center; }
+.card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.header-controls { display: flex; align-items: center; gap: 8px; }
 .orders-controls { display: flex; gap: 8px; align-items: center; }
 </style>
