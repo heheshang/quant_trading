@@ -10,13 +10,14 @@ use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
+use quant_common::api::{ok_result, ApiFailure};
 use tracing::debug;
 
 #[tauri::command]
 pub async fn start_binance_market_data(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     // 原子抢锁：仅一个调用能置位 running，避免 TOCTOU 启动重复连接。
     if state
         .binance_ws_state
@@ -24,7 +25,7 @@ pub async fn start_binance_market_data(
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        return Err("Binance WebSocket already running".to_string());
+        return Err(ApiFailure::new(quant_common::api::code::CONFLICT, "Binance WebSocket already running".to_string()));
     }
 
     let (environment, ws_url) = {
@@ -46,7 +47,7 @@ pub async fn start_binance_market_data(
         .map_err(|e| {
             // 启动失败：释放锁，允许重试。
             state.binance_ws_state.running.store(false, Ordering::SeqCst);
-            format!("Failed to start Binance WebSocket: {}", e)
+            ApiFailure::new(quant_common::api::code::BINANCE_API, format!("Failed to start Binance WebSocket: {}", e))
         })?;
 
     let mut rx = ws.get_receiver().await;
@@ -97,7 +98,7 @@ pub async fn start_binance_market_data(
     });
 
     *state.binance_ws_state.ws.write().await = Some(ws);
-    Ok(())
+    ok_result(serde_json::Value::Null)
 }
 
 #[tauri::command]
@@ -105,14 +106,17 @@ pub async fn subscribe_binance_candle(
     state: State<'_, AppState>,
     symbol: String,
     interval: String,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
-        Some(ws) => ws
-            .subscribe_candle(&symbol, &interval)
-            .await
-            .map_err(|e| e.to_string()),
-        None => Err("Binance WebSocket not started".to_string()),
+        Some(ws) => {
+            ws
+                .subscribe_candle(&symbol, &interval).await
+                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ok_result(serde_json::Value::Null)
+        },
+
+        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
     }
 }
 
@@ -120,11 +124,15 @@ pub async fn subscribe_binance_candle(
 pub async fn subscribe_binance_depth(
     state: State<'_, AppState>,
     symbol: String,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
-        Some(ws) => ws.subscribe_depth(&symbol).await.map_err(|e| e.to_string()),
-        None => Err("Binance WebSocket not started".to_string()),
+        Some(ws) => {
+            ws.subscribe_depth(&symbol).await
+                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ok_result(serde_json::Value::Null)
+        }
+        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
     }
 }
 
@@ -132,14 +140,17 @@ pub async fn subscribe_binance_depth(
 pub async fn subscribe_binance_ticker(
     state: State<'_, AppState>,
     symbol: String,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
-        Some(ws) => ws
-            .subscribe_ticker(&symbol)
-            .await
-            .map_err(|e| e.to_string()),
-        None => Err("Binance WebSocket not started".to_string()),
+        Some(ws) => {
+            ws
+                .subscribe_ticker(&symbol).await
+                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ok_result(serde_json::Value::Null)
+        },
+
+        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
     }
 }
 
@@ -147,14 +158,17 @@ pub async fn subscribe_binance_ticker(
 pub async fn subscribe_binance_trades(
     state: State<'_, AppState>,
     symbol: String,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
-        Some(ws) => ws
-            .subscribe_trades(&symbol)
-            .await
-            .map_err(|e| e.to_string()),
-        None => Err("Binance WebSocket not started".to_string()),
+        Some(ws) => {
+            ws
+                .subscribe_trades(&symbol).await
+                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ok_result(serde_json::Value::Null)
+        },
+
+        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
     }
 }
 
@@ -162,19 +176,22 @@ pub async fn subscribe_binance_trades(
 pub async fn subscribe_binance_orderbook(
     state: State<'_, AppState>,
     symbol: String,
-) -> Result<(), String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
-        Some(ws) => ws
-            .subscribe_orderbook(&symbol)
-            .await
-            .map_err(|e| e.to_string()),
-        None => Err("Binance WebSocket not started".to_string()),
+        Some(ws) => {
+            ws
+                .subscribe_orderbook(&symbol).await
+                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ok_result(serde_json::Value::Null)
+        },
+
+        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
     }
 }
 
 #[tauri::command]
-pub async fn stop_binance_market_data(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_binance_market_data(state: State<'_, AppState>) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     {
         let mut guard = state.binance_ws_state.ws.write().await;
         if let Some(ws) = guard.as_ref() {
@@ -186,15 +203,15 @@ pub async fn stop_binance_market_data(state: State<'_, AppState>) -> Result<(), 
         .binance_ws_state
         .running
         .store(false, Ordering::SeqCst);
-    Ok(())
+    ok_result(serde_json::Value::Null)
 }
 
 #[tauri::command]
-pub async fn get_binance_subscriptions(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn get_binance_subscriptions(state: State<'_, AppState>) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<String>>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
-        Some(ws) => Ok(ws.subscriptions().await),
-        None => Ok(vec![]),
+        Some(ws) => ok_result(ws.subscriptions().await),
+        None => ok_result(vec![]),
     }
 }
 
@@ -206,14 +223,14 @@ pub async fn get_binance_subscriptions(state: State<'_, AppState>) -> Result<Vec
 pub async fn start_binance_user_data_stream(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
     if state
         .binance_ws_state
         .user_data_running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        return Err("Binance user data stream already running".to_string());
+        return Err(ApiFailure::new(quant_common::api::code::CONFLICT, "Binance user data stream already running".to_string()));
     }
 
     // WebSocket-API 用户数据流（替换已弃用的 REST listenKey —— 410）。
@@ -233,7 +250,7 @@ pub async fn start_binance_user_data_stream(
     let listen_key = client
         .start()
         .await
-        .map_err(|e| format!("Failed to start user data stream: {}", e))?;
+        .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, format!("Failed to start user data stream: {}", e)))?;
 
     let mut rx = client.get_receiver().await;
     let app_clone = app.clone();
@@ -259,12 +276,12 @@ pub async fn start_binance_user_data_stream(
     });
 
     *state.binance_ws_state.user_data_ws.write().await = Some(client);
-    Ok(listen_key)
+    ok_result(listen_key)
 }
 
 /// 停止用户数据流。
 #[tauri::command]
-pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     let mut guard = state.binance_ws_state.user_data_ws.write().await;
     if let Some(ws) = guard.take() {
         ws.stop();
@@ -273,7 +290,7 @@ pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> Result
         .binance_ws_state
         .user_data_running
         .store(false, Ordering::SeqCst);
-    Ok(())
+    ok_result(serde_json::Value::Null)
 }
 
 /// 启动实盘订单状态监控（后台轮询 Binance + 同步 `live_trades` + 推事件）。

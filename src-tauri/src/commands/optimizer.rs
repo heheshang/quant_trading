@@ -23,40 +23,38 @@ pub async fn optimize_strategy(
     initial_capital: Option<f64>,
     start_date: Option<String>,
     end_date: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let services = state
-        .app_services
-        .as_ref()
-        .ok_or("Application services not initialized")?;
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    use quant_common::api::{ok_result, ApiFailure};
+    let services = state.app_services.as_ref().ok_or_else(|| ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "应用服务未初始化".to_string()))?;
 
-    let metric = OptimizationMetric::parse(&metric).map_err(|e| e.to_string())?;
+    let metric = OptimizationMetric::parse(&metric).map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, e.to_string()))?;
     let algorithm =
         OptimizationAlgorithm::parse(&algorithm.unwrap_or_else(|| "grid_search".to_string()))
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, e.to_string()))?;
     let top_n = top_n.unwrap_or(5);
 
-    let grid = expand_grid(&param_grid).map_err(|e| e.to_string())?;
+    let grid = expand_grid(&param_grid).map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, e.to_string()))?;
     if grid.is_empty() {
-        return Err("Parameter grid is empty".to_string());
+        return Err(ApiFailure::new(quant_common::api::code::INVALID_PARAM, "Parameter grid is empty".to_string()));
     }
 
-    let start = parse_date(start_date.as_deref(), "start", 180)?;
-    let end = parse_date(end_date.as_deref(), "end", 0)?;
+    let start = parse_date(start_date.as_deref(), "start", 180).map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, e))?;
+    let end = parse_date(end_date.as_deref(), "end", 0).map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, e))?;
 
     let (strategy_type, market_data) = services
         .strategy_service
         .prepare_optimization_input(&strategy_id, start, end)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     if market_data.is_empty() {
-        return Err(format!(
-            "No market data returned for strategy '{strategy_id}' in the requested date range"
+        return Err(ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("No market data returned for strategy '{strategy_id}' in the requested date range"),
         ));
     }
 
     let init_cap = rust_decimal::Decimal::from_f64(initial_capital.unwrap_or(10_000.0))
-        .ok_or_else(|| "Invalid initial capital".to_string())?;
+        .ok_or_else(|| ApiFailure::new(quant_common::api::code::INVALID_PARAM, "Invalid initial capital".to_string()))?;
 
     let result = services
         .optimizer
@@ -70,8 +68,7 @@ pub async fn optimize_strategy(
             rust_decimal::Decimal::ZERO,
             metric,
         )
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     let OptimizationResult {
         total_combinations,
@@ -82,7 +79,7 @@ pub async fn optimize_strategy(
     let returned = combinations.len().min(top_n);
     let top = combinations.into_iter().take(top_n).collect::<Vec<_>>();
 
-    Ok(json!({
+    ok_result(json!({
         "total_combinations": total_combinations,
         "combinations_returned": returned,
         "top_n_requested": top_n,
