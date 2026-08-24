@@ -398,6 +398,34 @@ impl AppConfig {
         c
     }
 
+    /// 校验安全密钥：拒绝空/占位/过短（<32 字节）的 JWT 密钥与加密密钥。
+    ///
+    /// 防止使用仓库中公开的默认占位值运行（否则 JWT 可伪造、密钥可解密）。
+    pub fn validate_secrets(&self) -> Result<(), String> {
+        // 拦截仓库/文档中公开的占位（如 change_this_* / change_me / docker_test_*）。
+        let is_placeholder = |s: &str| {
+            let s = s.trim().to_lowercase();
+            s.is_empty()
+                || s.contains("change_this")
+                || s.contains("change_me")
+                || s.contains("docker_test")
+                || s.contains("test_change")
+        };
+        if is_placeholder(&self.security.jwt_secret) {
+            return Err("JWT 密钥为空或仍为占位值，拒绝启动。请在环境变量设置足够强(≥32字节)的 JWT_SECRET。".to_string());
+        }
+        if self.security.jwt_secret.len() < 32 {
+            return Err("JWT 密钥过短(<32字节)，拒绝启动。".to_string());
+        }
+        if is_placeholder(&self.security.encryption_key) {
+            return Err("加密密钥为空或仍为占位值，拒绝启动。请设置足够强(≥32字节)的 ENCRYPTION_KEY。".to_string());
+        }
+        if self.security.encryption_key.len() < 32 {
+            return Err("加密密钥过短(<32字节)，拒绝启动。".to_string());
+        }
+        Ok(())
+    }
+
     /// Restore secret values from `previous` where `self` has them blanked.
     ///
     /// When the frontend round-trips a redacted config back on save, empty

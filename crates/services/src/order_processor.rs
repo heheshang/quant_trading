@@ -211,9 +211,34 @@ impl OrderProcessor {
             risk_config = db_risk_config;
         }
 
-        // 1. Resolve market data with a conservative synthetic fallback so a
-        //    data-source outage does not block order submission (limit orders).
-        let market_data = self.resolve_market_data(&order).await;
+        // 1. Resolve market data。市价单在数据源中断时 fail-closed（无法定价风控）；
+        //    限价单用限价作参考价。
+        let market_data = match self.resolve_market_data(&order).await {
+            Ok(data) => data,
+            Err(()) => {
+                if matches!(order.order_type, OrderType::Market) {
+                    return Err(ServiceError::Other(
+                        "市价单无法获取行情参考价，拒绝下单（fail-closed）".to_string(),
+                    ));
+                }
+                let fallback_price = order.price.unwrap_or(dec!(100));
+                MarketData {
+                    symbol: order.symbol.clone(),
+                    timestamp: chrono::Utc::now(),
+                    open: fallback_price,
+                    high: fallback_price,
+                    low: fallback_price,
+                    close: fallback_price,
+                    volume: dec!(0),
+                    turnover: dec!(0),
+                    open_interest: None,
+                    bid_prices: vec![],
+                    bid_volumes: vec![],
+                    ask_prices: vec![],
+                    ask_volumes: vec![],
+                }
+            }
+        };
 
         // 2. Pre-trade risk check. When enabled, this is fail-closed: an
         //    unavailable account/positions rejects the order rather than
@@ -280,27 +305,13 @@ impl OrderProcessor {
         Ok(OrderPlacement { order_id, event })
     }
 
-    /// Best-effort realtime market data resolution with a synthetic fallback.
-    async fn resolve_market_data(&self, order: &Order) -> MarketData {
+    /// Realtime market data；若数据源中断返回 `Err(())`，由调用方决定降级/拒绝。
+    async fn resolve_market_data(&self, order: &Order) -> Result<MarketData, ()> {
         if let Ok(data) = self.market_service.get_realtime_data(&order.symbol).await {
-            return data;
+            return Ok(data);
         }
-        let fallback_price = order.price.unwrap_or(dec!(100));
-        MarketData {
-            symbol: order.symbol.clone(),
-            timestamp: chrono::Utc::now(),
-            open: fallback_price,
-            high: fallback_price,
-            low: fallback_price,
-            close: fallback_price,
-            volume: dec!(0),
-            turnover: dec!(0),
-            open_interest: None,
-            bid_prices: vec![],
-            bid_volumes: vec![],
-            ask_prices: vec![],
-            ask_volumes: vec![],
-        }
+        // 数据中断：不在此处伪造价格。市价单调用方将 fail-closed；限价单用限价作参考。
+        Err(())
     }
 
     async fn log_order(&self, order: &Order) {
@@ -347,7 +358,10 @@ impl OrderProcessor {
     /// 且未成交的纸面单，用 `ExecutionEngine::fill_order` 立即撮合并回写 DB。
     /// 以 DB 为事实来源 → App 重启后可恢复处理，不再丢单。
     pub async fn start_paper_execution_scheduler(&self) {
-        let trading = self.config.read().await.trading.clone();
+        // 纸面调度器**永远**用纸面引擎（即使 enable_paper_trading=false）——它只处理
+        // 纸面/算法单，绝不下真实 Binance 单。实盘单由 live_order_monitor/place_binance_order 处理。
+        let mut trading = self.config.read().await.trading.clone();
+        trading.enable_paper_trading = true;
         let delay_ms = trading.simulation_delay_ms;
         let engine = ExecutionEngine::new_binance(
             self.order_manager.clone(),
@@ -367,6 +381,10 @@ impl OrderProcessor {
                 };
                 let now = chrono::Utc::now();
                 for order in orders {
+                    // 只处理纸面/算法单；实盘单（exchange='live'）走 Binance 实时路径，跳过。
+                    if order.exchange == "live" {
+                        continue;
+                    }
                     let due = order.created_at
                         + chrono::Duration::milliseconds(delay_ms as i64)
                         <= now;
@@ -552,10 +570,48 @@ impl OrderProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quant_common::types::OrderStatus;
+    use data_layer::market_data::DataSource;
+    use quant_common::types::{MarketData, OrderStatus};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use std::sync::Arc;
+
+    /// 固定价行情源，供算法切片等测试注入（无真实数据源也能定价）。
+    struct FakeDataSource;
+    #[async_trait::async_trait]
+    impl DataSource for FakeDataSource {
+        async fn get_realtime_data(&self, symbol: &str) -> quant_common::Result<MarketData> {
+            Ok(MarketData {
+                symbol: symbol.to_string(),
+                timestamp: chrono::Utc::now(),
+                open: dec!(100),
+                high: dec!(110),
+                low: dec!(90),
+                close: dec!(100),
+                volume: dec!(0),
+                turnover: dec!(0),
+                open_interest: None,
+                bid_prices: vec![],
+                bid_volumes: vec![],
+                ask_prices: vec![],
+                ask_volumes: vec![],
+            })
+        }
+        async fn get_historical_data(
+            &self,
+            _symbol: &str,
+            _start: chrono::DateTime<chrono::Utc>,
+            _end: chrono::DateTime<chrono::Utc>,
+        ) -> quant_common::Result<Vec<MarketData>> {
+            Ok(vec![])
+        }
+        async fn subscribe(&self, _symbols: Vec<String>) -> quant_common::Result<()> {
+            Ok(())
+        }
+        async fn unsubscribe(&self, _symbols: Vec<String>) -> quant_common::Result<()> {
+            Ok(())
+        }
+    }
 
     fn make_order_processor() -> OrderProcessor {
         let config = Arc::new(RwLock::new(AppConfig::default()));
@@ -657,7 +713,10 @@ mod tests {
             Arc::new(RwLock::new(None)),
             order_manager.clone(),
             Arc::new(LogBuffer::new(1000)),
-            Arc::new(MarketService::new(Arc::new(RwLock::new(None)), None)),
+            Arc::new(MarketService::new(
+                Arc::new(RwLock::new(Some(Arc::new(FakeDataSource) as Arc<dyn DataSource>))),
+                None,
+            )),
             Arc::new(RiskService::new(None)),
             Arc::new(AccountService::new(None)),
         );

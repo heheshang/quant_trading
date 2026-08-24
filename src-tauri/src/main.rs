@@ -52,6 +52,10 @@ async fn main() {
 
     // 加载配置；容器部署通过 DATABASE_*/REDIS_* 等环境变量覆盖默认值
     let config = AppConfig::from_env();
+    // 安全密钥必须替换默认占位值，否则拒绝启动（防伪造 JWT / 解密密钥）。
+    if let Err(e) = config.validate_secrets() {
+        panic!("安全配置校验失败，拒绝启动：{}", e);
+    }
 
     // 初始化日志（从 AppConfig 读取，LOG_LEVEL 环境变量可覆写）
     let log_level =

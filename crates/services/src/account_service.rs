@@ -434,6 +434,7 @@ impl AccountService {
             UPDATE orders
             SET status = $1, filled_quantity = $2, commission = $3, updated_at = now()
             WHERE order_id = $4
+              AND status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
             "#,
         )
         .bind(&status_str)

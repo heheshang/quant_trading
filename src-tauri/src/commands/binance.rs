@@ -4,10 +4,39 @@
 //! They never touch the Binance client or data layers directly (layering/DIP).
 
 use crate::state::AppState;
-use exchange_binance::types::{BinanceOrder, BinancePlaceOrderRequest};
+use exchange_binance::types::{BinanceOrder, BinanceOrderType, BinancePlaceOrderRequest, BinanceSide};
 use quant_common::types::{Order, OrderSide, OrderStatus, OrderType};
+use risk_layer::pre_trade::PreTradeRiskChecker;
 use rust_decimal::Decimal;
 use tauri::State;
+
+/// 把实盘下单请求映射为 App `Order`（用于前置风控校验）。
+fn live_request_to_order(req: &BinancePlaceOrderRequest) -> Order {
+    let side = match req.side {
+        BinanceSide::Buy => OrderSide::Buy,
+        BinanceSide::Sell => OrderSide::Sell,
+    };
+    let order_type = match req.order_type {
+        BinanceOrderType::Market => OrderType::Market,
+        BinanceOrderType::Limit => OrderType::Limit,
+    };
+    Order {
+        order_id: 0,
+        strategy_id: req.strategy_id.clone().unwrap_or_default(),
+        symbol: exchange_binance::from_binance_symbol(&req.symbol),
+        order_type,
+        side,
+        price: req.price,
+        quantity: req.quantity,
+        filled_quantity: Decimal::ZERO,
+        status: OrderStatus::Pending,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        commission: Decimal::ZERO,
+        slippage: Decimal::ZERO,
+        exchange: "live".to_string(),
+    }
+}
 
 /// 把 Binance 实盘单映射为 App `Order`（域格式 symbol / PascalCase 状态）。
 fn binance_order_to_app_order(o: &BinanceOrder, strategy_id: Option<&str>) -> Order {
@@ -119,6 +148,37 @@ pub async fn place_binance_order(
     request: BinancePlaceOrderRequest,
 ) -> Result<exchange_binance::types::BinanceOrder, String> {
     let services = services(&state)?;
+    // 实盘下单必须先鉴权（未登录/越权一律拒绝）。
+    let _user = state.require_auth().await?;
+    // 前置风控（与纸面路径一致性）：现金/持仓/单日亏损/集中度。
+    let app_order = live_request_to_order(&request);
+    let risk_config = services
+        .risk_service
+        .get_risk_config()
+        .await
+        .map_err(|e| format!("风控配置不可用（fail-closed）：{}", e))?;
+    if risk_config.enable_pre_trade_check {
+        let checker = PreTradeRiskChecker::new(risk_config);
+        let account = services
+            .account_service
+            .get_account_info()
+            .await
+            .map_err(|e| format!("风控失败：无法获取账户（fail-closed）：{}", e))?;
+        let positions = services
+            .account_service
+            .get_paper_positions()
+            .await
+            .map_err(|e| format!("风控失败：无法获取持仓（fail-closed）：{}", e))?;
+        let reference = services
+            .market_service
+            .get_realtime_data(&app_order.symbol)
+            .await
+            .map(|d| d.close)
+            .ok();
+        checker
+            .check_order_with_reference_price(&app_order, &account, &positions, reference)
+            .map_err(|e| format!("风控校验失败：{}", e))?;
+    }
     let order = services
         .binance_service
         .place_order(request.clone())
@@ -161,6 +221,7 @@ pub async fn cancel_binance_order(
     symbol: String,
     order_id: i64,
 ) -> Result<(), String> {
+    state.require_auth().await?;
     services(&state)?
         .binance_service
         .cancel_order(&symbol, order_id)
