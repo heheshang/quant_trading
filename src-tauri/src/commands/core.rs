@@ -26,11 +26,7 @@ pub async fn secure_encrypt(
     state: State<'_, AppState>,
     value: String,
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
-    use crate::commands::auth_err;
     use quant_common::api::{ok_result, ApiFailure};
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
-    }
     let key = state.config.read().await.security.encryption_key.clone();
     let de = security::DataEncryption::from_key_string(&key)
         .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("加密初始化失败: {}", e)))?;
@@ -45,11 +41,7 @@ pub async fn secure_decrypt(
     state: State<'_, AppState>,
     value: String,
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
-    use crate::commands::auth_err;
     use quant_common::api::{ok_result, ApiFailure};
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
-    }
     let key = state.config.read().await.security.encryption_key.clone();
     let de = security::DataEncryption::from_key_string(&key)
         .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("解密初始化失败: {}", e)))?;

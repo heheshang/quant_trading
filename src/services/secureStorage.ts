@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './transport'
 import { load, type Store } from '@tauri-apps/plugin-store'
 
 const STORE_FILE = 'auth.json'
@@ -19,9 +19,10 @@ async function getStore(): Promise<Store | null> {
 }
 
 async function enc(v: string): Promise<string> {
-  // 非 Tauri/测试（invoke 不可用）回退明文。
+  // call<T> 解包信封：成功返回后端 `data` 字符串（即密文）。
+  // 仅接受字符串结果，否则（非 Tauri/测试、后端不可用）回退明文，保证可用性。
   try {
-    const r = await invoke<string>('secure_encrypt', { value: v })
+    const r = await call<string>('secure_encrypt', { value: v })
     return typeof r === 'string' && r.length > 0 ? r : v
   } catch {
     return v
@@ -29,8 +30,10 @@ async function enc(v: string): Promise<string> {
 }
 
 async function dec(v: string): Promise<string> {
+  // `v` 是落盘的密文；call<T> 解包信封返回解密后的明文。
+  // 仅接受字符串结果；若 `v` 是历史明文（旧数据）或后端不可用，解密失败即回退原值。
   try {
-    const r = await invoke<string>('secure_decrypt', { value: v })
+    const r = await call<string>('secure_decrypt', { value: v })
     return typeof r === 'string' && r.length > 0 ? r : v
   } catch {
     return v
