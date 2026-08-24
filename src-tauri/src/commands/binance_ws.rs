@@ -17,7 +17,13 @@ pub async fn start_binance_market_data(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    if state.binance_ws_state.running.load(Ordering::SeqCst) {
+    // 原子抢锁：仅一个调用能置位 running，避免 TOCTOU 启动重复连接。
+    if state
+        .binance_ws_state
+        .running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Err("Binance WebSocket already running".to_string());
     }
 
@@ -37,12 +43,15 @@ pub async fn start_binance_market_data(
 
     ws.start()
         .await
-        .map_err(|e| format!("Failed to start Binance WebSocket: {}", e))?;
+        .map_err(|e| {
+            // 启动失败：释放锁，允许重试。
+            state.binance_ws_state.running.store(false, Ordering::SeqCst);
+            format!("Failed to start Binance WebSocket: {}", e)
+        })?;
 
     let mut rx = ws.get_receiver().await;
     let app_clone = app.clone();
     let running = state.binance_ws_state.running.clone();
-    running.store(true, Ordering::SeqCst);
 
     let _ = app_clone.emit(
         "binance:status",
@@ -198,7 +207,12 @@ pub async fn start_binance_user_data_stream(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    if state.binance_ws_state.user_data_running.load(Ordering::SeqCst) {
+    if state
+        .binance_ws_state
+        .user_data_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Err("Binance user data stream already running".to_string());
     }
 

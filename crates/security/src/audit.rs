@@ -18,6 +18,7 @@ pub enum AuditAction {
     ApiKeyAccess,
     DataExport,
     SystemShutdown,
+    Unknown,
 }
 
 /// 审计日志条目
@@ -47,6 +48,7 @@ fn action_to_str(action: &AuditAction) -> String {
         AuditAction::ApiKeyAccess => "ApiKeyAccess",
         AuditAction::DataExport => "DataExport",
         AuditAction::SystemShutdown => "SystemShutdown",
+        AuditAction::Unknown => "Unknown",
     }
     .to_string()
 }
@@ -62,7 +64,7 @@ fn action_from_str(s: &str) -> AuditAction {
         "ApiKeyAccess" => AuditAction::ApiKeyAccess,
         "DataExport" => AuditAction::DataExport,
         "SystemShutdown" => AuditAction::SystemShutdown,
-        _ => AuditAction::Login,
+        _ => AuditAction::Unknown,
     }
 }
 
@@ -214,6 +216,8 @@ impl AuditLogger {
         symbol: &str,
         side: &str,
         quantity: &str,
+        success: bool,
+        error_message: Option<String>,
     ) -> Result<AuditLog> {
         self.log(
             user_id,
@@ -226,8 +230,8 @@ impl AuditLogger {
                 "quantity": quantity,
             }),
             None,
-            true,
-            None,
+            success,
+            error_message,
         )
         .await
     }
@@ -359,7 +363,7 @@ mod tests {
         let repo = Arc::new(InMemoryAuditRepository::new());
         let logger = AuditLogger::new(Some(repo.clone()));
         logger
-            .log_order_submit("1", "admin", "ORD-1", "BTC-USDT", "buy", "0.1")
+            .log_order_submit("1", "admin", "ORD-1", "BTC-USDT", "buy", "0.1", true, None)
             .await
             .unwrap();
         logger.log_login("1", "admin", None, true).await.unwrap();

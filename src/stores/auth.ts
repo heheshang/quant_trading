@@ -82,10 +82,10 @@ export const useAuthStore = defineStore('auth', () => {
       setItem(STORAGE_KEYS.IS_AUTHENTICATED, 'true')
       return true
     } catch {
-      // verify_token 拒绝（而非返回 false）表示后端无法确定 token 是否有效，
-      // 属瞬时错误而非"确定失效"。保留已持久化会话（fail-open），
-      // 避免后端短暂不可用时误登出；后续受保护操作收到 401 时再触发登出。
-      return true
+      // 安全：verify_token 无法确认有效 → 清除会话（fail-closed），
+      // 避免保留可能已被撤销/过期的 token；用户可重新登录。
+      clearSession()
+      return false
     }
   }
 

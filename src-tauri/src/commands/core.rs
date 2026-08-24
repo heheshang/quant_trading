@@ -97,11 +97,27 @@ pub async fn submit_order(
     let side = format!("{:?}", order.side);
     let quantity = order.quantity.to_string();
 
-    let placement = services
-        .order_processor
-        .place_order(order)
-        .await
-        .map_err(|e| e.to_string())?;
+    let placement = match services.order_processor.place_order(order).await {
+        Ok(p) => p,
+        Err(e) => {
+            // 被拒/失败也审计（成功/失败 + 错误信息），避免失联的下单审计盲区。
+            let msg = e.to_string();
+            let _ = state
+                .audit_logger
+                .log_order_submit(
+                    &user.user_id.to_string(),
+                    &user.username,
+                    "N/A",
+                    &symbol,
+                    &side,
+                    &quantity,
+                    false,
+                    Some(msg.clone()),
+                )
+                .await;
+            return Err(msg);
+        }
+    };
 
     let _ = state
         .audit_logger
@@ -112,6 +128,8 @@ pub async fn submit_order(
             &symbol,
             &side,
             &quantity,
+            true,
+            None,
         )
         .await;
 
