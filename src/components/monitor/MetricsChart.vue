@@ -1,5 +1,5 @@
 <template>
-  <el-row :gutter="20" style="margin-top: 20px;">
+  <el-row :gutter="20">
     <el-col :span="24">
       <el-card>
         <template #header>
@@ -9,9 +9,11 @@
               :model-value="selectedMetrics"
               @update:model-value="emit('update:selectedMetrics', $event)"
               multiple
+              collapse-tags
+              collapse-tags-tooltip
               placeholder="选择指标"
               size="small"
-              style="width:200px"
+              style="width:220px"
             >
               <el-option label="总订单数" value="orders_total" />
               <el-option label="已成交订单" value="orders_filled" />
@@ -139,7 +141,7 @@ function buildOption(): echarts.EChartsCoreOption {
       bottom: 0,
       textStyle: { color: theme.axisLabel },
     },
-    grid: { left: 50, right: hasAmount ? 60 : 20, bottom: 40, top: 20 },
+    grid: { left: 50, right: hasAmount ? 60 : 20, bottom: 40, top: 32 },
     xAxis: {
       type: 'category' as const,
       data: times,

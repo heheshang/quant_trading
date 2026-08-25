@@ -1,5 +1,5 @@
 <template>
-  <div class="risk-management">
+  <div class="risk-management page-stack">
     <el-row :gutter="20" class="header">
       <el-col :span="24">
         <h2>风险管理</h2>
@@ -12,8 +12,14 @@
       :selected-metrics="riskSelectedMetrics"
       @update:selected-metrics="riskSelectedMetrics = $event"
     />
-    <RiskConfigForm :config="riskConfig" :saving="saving" @save="saveConfig" />
-    <PreTradeCheckForm />
+    <el-row :gutter="20">
+      <el-col :xs="24" :md="12">
+        <RiskConfigForm :config="riskConfig" :saving="saving" @save="saveConfig" />
+      </el-col>
+      <el-col :xs="24" :md="12">
+        <PreTradeCheckForm />
+      </el-col>
+    </el-row>
     <RiskAlertsTable :alerts="riskAlerts" @acknowledge="acknowledgeAlert" @refresh="fetchRiskAlerts" />
   </div>
 </template>
@@ -134,8 +140,5 @@ defineExpose({
 <style scoped>
 .risk-management {
   padding: 20px;
-}
-.header {
-  margin-bottom: 20px;
 }
 </style>

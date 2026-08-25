@@ -94,9 +94,6 @@ function signClass(value: number): string {
 </script>
 
 <style scoped>
-.stat-card {
-  margin-bottom: 20px;
-}
 
 .stat-item {
   text-align: center;

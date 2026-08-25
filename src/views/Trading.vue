@@ -1,5 +1,5 @@
 <template>
-  <div class="trading-system">
+  <div class="trading-system page-stack">
     <el-row :gutter="20" class="header">
       <el-col :span="24">
         <h2>交易执行</h2>
@@ -15,14 +15,26 @@
     </el-row>
 
     <template v-if="activeTradeTab === 'paper'">
-      <PaperAccountCard :account="paperAccount" />
-      <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+      <el-row :gutter="20" class="pair-row">
+        <el-col :xs="24" :md="8">
+          <PaperAccountCard :account="paperAccount" />
+        </el-col>
+        <el-col :xs="24" :md="16">
+          <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+        </el-col>
+      </el-row>
       <PositionsTable :positions="displayPositions" />
       <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
     </template>
     <template v-else-if="activeTradeTab === 'live'">
-      <AssetBalanceTable :balances="binanceBalances" title="Binance 测试网余额" @refresh="fetchAccountInfo" />
-      <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+      <el-row :gutter="20" class="pair-row">
+        <el-col :xs="24" :md="8">
+          <AssetBalanceTable :balances="binanceBalances" title="Binance 测试网余额" @refresh="fetchAccountInfo" />
+        </el-col>
+        <el-col :xs="24" :md="16">
+          <PaperOrderForm ref="paperOrderFormRef" :strategies="strategies" :submitting="submitting" @submit="submitOrder" @reset="resetOrderForm" />
+        </el-col>
+      </el-row>
       <PositionsTable :positions="displayPositions" />
       <ActiveOrdersTable ref="activeOrdersTableRef" :orders="activeOrders" :strategies="strategies" :prices="tickerPrices" @refresh="fetchActiveOrders" @cancel="cancelOrder" />
     </template>
@@ -557,7 +569,6 @@ defineExpose({
 
 <style scoped>
 .trading-system { padding: 20px; }
-.header { margin-bottom: 20px; }
 .trade-tabs { margin-bottom: 0; }
 .trade-tabs-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .trade-tab-badge { margin-left: 8px; white-space: nowrap; }
@@ -572,5 +583,12 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.pair-row .el-col {
+  display: flex;
+}
+.pair-row .el-card {
+  flex: 1;
+  width: 100%;
 }
 </style>

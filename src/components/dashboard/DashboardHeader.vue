@@ -40,7 +40,6 @@ const emit = defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
   flex-wrap: wrap;
   gap: var(--space-sm);
 }

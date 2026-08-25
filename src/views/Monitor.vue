@@ -1,5 +1,5 @@
 <template>
-  <div class="monitor-dashboard">
+  <div class="monitor-dashboard page-stack">
     <MonitorHeader
       :loading="loading"
       :is-polling-fallback="isPollingFallback"
@@ -7,12 +7,14 @@
     />
     <el-tabs v-model="activeTab" class="monitor-tabs">
       <el-tab-pane label="指标监控" name="metrics">
+        <div class="page-stack">
         <MetricsCards :metrics="metrics" />
         <MetricsChart
           :metrics-history="metricsHistory"
           :selected-metrics="selectedMetrics"
           @update:selected-metrics="selectedMetrics = $event"
         />
+        </div>
       </el-tab-pane>
       <el-tab-pane label="告警监控" name="alerts">
         <AlertPanel :alerts="alerts" @acknowledge="acknowledgeAlert" @refresh="fetchAlerts" />
@@ -32,6 +34,7 @@
         <AuditLogs />
       </el-tab-pane>
       <el-tab-pane label="实时行情" name="realtime">
+        <div class="page-stack">
         <el-row :gutter="20">
           <el-col :xs="24" :md="8">
             <SubscriptionManager
@@ -46,7 +49,7 @@
             <RealtimeTickerPanel :tickers="marketTickers" />
           </el-col>
         </el-row>
-        <el-row :gutter="20" style="margin-top: 20px">
+        <el-row :gutter="20">
           <el-col :xs="24" :lg="12">
             <TradeStream :trades="marketTrades" />
           </el-col>
@@ -54,11 +57,12 @@
             <OrderBookDepth :order-book="marketOrderBook" />
           </el-col>
         </el-row>
-        <el-row :gutter="20" style="margin-top: 20px">
+        <el-row :gutter="20">
           <el-col :xs="24">
             <RealtimeCandleChart :candles="marketCandles" :symbol="marketActiveSymbol" />
           </el-col>
         </el-row>
+        </div>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -173,5 +177,4 @@ watch(logLevel, () => { fetchLogs() })
 
 <style scoped>
 .monitor-dashboard { padding: 20px; }
-.monitor-tabs { margin-top: 20px; }
 </style>

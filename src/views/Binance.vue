@@ -324,7 +324,7 @@ onUnmounted(() => {
 
     <el-card class="section chart-wide">
       <template #header>持仓（{{ positions.length }}）</template>
-      <el-table :data="paginatedPositions" v-loading="positionsLoading" size="small">
+      <el-table v-if="positions.length > 0" :data="paginatedPositions" v-loading="positionsLoading" size="small">
         <el-table-column label="交易对">
           <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
         </el-table-column>
@@ -342,7 +342,7 @@ onUnmounted(() => {
           <template #default="{ row }">{{ fmtNumber(row.available_quantity) }}</template>
         </el-table-column>
       </el-table>
-      <EmptyState v-if="!positionsLoading && positions.length === 0" title="暂无持仓" description="当前账户没有 Binance 持仓" />
+      <EmptyState v-else-if="!positionsLoading" title="暂无持仓" description="当前账户没有 Binance 持仓" />
       <Paginator
         v-if="positions.length > 0"
         :total="positions.length"
@@ -371,7 +371,7 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-      <el-table :data="paginatedOrders" v-loading="ordersLoading" size="small">
+      <el-table v-if="filteredOrders.length > 0" :data="paginatedOrders" v-loading="ordersLoading" size="small">
         <el-table-column label="时间">
           <template #default="{ row }">{{ row.time ? fmtTime(row.time) : '-' }}</template>
         </el-table-column>
@@ -394,7 +394,7 @@ onUnmounted(() => {
           </template>
         </el-table-column>
       </el-table>
-      <EmptyState v-if="!ordersLoading && filteredOrders.length === 0" title="暂无订单" description="当前没有匹配的订单" />
+      <EmptyState v-else-if="!ordersLoading" title="暂无订单" description="当前没有匹配的订单" />
       <Paginator
         v-if="filteredOrders.length > 0"
         :total="filteredOrders.length"

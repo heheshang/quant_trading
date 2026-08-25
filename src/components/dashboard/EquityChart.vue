@@ -82,7 +82,8 @@ function initChart() {
           type: 'text',
           key: 'no-data',
           style: { text: '暂无资产历史', fontSize: 16, textAlign: 'center', fill: theme.axisLabel },
-          position: ['50%', '50%'],
+          left: 'center',
+          top: 'middle',
         }],
       },
     })

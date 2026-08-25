@@ -27,7 +27,6 @@ const emit = defineEmits<{
 
 <style scoped>
 .header {
-  margin-bottom: 20px;
   align-items: center;
 }
 .controls {

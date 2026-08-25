@@ -42,7 +42,7 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="20">
       <el-col :xs="12" :span="8">
         <el-card class="metric-card">
           <div class="metric-header">
@@ -159,5 +159,8 @@ const pnlPrefix = computed(() => (pnlValue.value > 0 ? '+' : ''))
 }
 .metric-value.negative {
   color: var(--color-danger);
+}
+.el-row + .el-row {
+  margin-top: 20px;
 }
 </style>

@@ -99,25 +99,28 @@
             </el-select>
           </el-form-item>
         </el-col>
+        <el-col :span="12">
+          <el-form-item>
+            <div class="form-actions">
+              <el-button type="primary" @click="handleRun" :loading="running">开始回测</el-button>
+              <el-button @click="handleSaveTemplate">保存模板</el-button>
+              <el-dropdown @command="handleLoadTemplate" v-if="templates.length > 0">
+                <el-button>
+                  加载模板<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-for="(tpl, i) in templates" :key="i" :command="i">
+                      {{ tpl.name }}
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-button @click="handleReset">重置</el-button>
+            </div>
+          </el-form-item>
+        </el-col>
       </el-row>
-
-      <el-form-item>
-        <el-button type="primary" @click="handleRun" :loading="running">开始回测</el-button>
-        <el-button @click="handleSaveTemplate">保存模板</el-button>
-        <el-dropdown @command="handleLoadTemplate" v-if="templates.length > 0">
-          <el-button>
-            加载模板<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-for="(tpl, i) in templates" :key="i" :command="i">
-                {{ tpl.name }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button @click="handleReset">重置</el-button>
-      </el-form-item>
     </el-form>
   </el-card>
 </template>
@@ -252,13 +255,17 @@ defineExpose({ setConfig })
 </script>
 
 <style scoped>
-.backtest-config-card {
-  margin-bottom: 20px;
-}
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
 }
 </style>

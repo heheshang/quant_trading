@@ -4,7 +4,7 @@
     <p style="color:var(--color-text-regular);margin-bottom:20px;">系统功能测试与状态验证</p>
 
     <el-row :gutter="20">
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card>
           <template #header><div class="card-header"><span>API 服务</span></div></template>
           <div style="text-align:center;padding:20px 0;">
@@ -13,7 +13,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card>
           <template #header><div class="card-header"><span>数据库</span></div></template>
           <div style="text-align:center;padding:20px 0;">
@@ -22,7 +22,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card>
           <template #header><div class="card-header"><span>Redis</span></div></template>
           <div style="text-align:center;padding:20px 0;">
@@ -33,7 +33,7 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top:20px;">
+    <el-row :gutter="20" class="equal-row" style="margin-top:20px;">
       <el-col :span="12">
         <el-card>
           <template #header><div class="card-header"><span>运行测试</span></div></template>
@@ -184,5 +184,12 @@ async function testAuth(): Promise<{passed: boolean; detail?: string}> {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.equal-row .el-col {
+  display: flex;
+}
+.equal-row .el-card {
+  flex: 1;
+  width: 100%;
 }
 </style>

@@ -65,7 +65,8 @@ function initChart() {
           type: 'text',
           key: 'no-data',
           style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: useChartTheme().palette.value.axisLabel },
-          position: ['50%', '50%'],
+          left: 'center',
+          top: 'middle',
         }],
       },
     })

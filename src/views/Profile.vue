@@ -6,7 +6,7 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20">
+    <el-row :gutter="20" class="profile-row">
       <el-col :xs="24" :lg="16">
         <ProfileInfo
           :initial-form="profileForm"
@@ -144,5 +144,12 @@ defineExpose({
 <style scoped>
 .profile-container {
   padding: 20px;
+}
+.profile-row > .el-col:first-child {
+  display: flex;
+  flex-direction: column;
+}
+.profile-row > .el-col:first-child > .el-card {
+  flex: 1;
 }
 </style>

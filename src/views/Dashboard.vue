@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard page-stack">
     <el-alert
       v-if="error"
       :title="error"
@@ -19,14 +19,14 @@
 
     <el-skeleton v-if="loading && !accountStore.totalAssets" :rows="5" animated />
 
-    <div v-else>
-      <el-row :gutter="20" class="realtime-overview-row">
+      <div v-else class="page-stack">
+      <el-row :gutter="20" class="grid-stretch">
         <el-col :xs="24">
           <PnlOverview :total-pnl="totalPnl" :unrealized-pnl="unrealizedPnl" />
         </el-col>
       </el-row>
 
-      <el-row :gutter="20">
+      <el-row :gutter="20" class="grid-stretch">
         <el-col :xs="12" :sm="12" :md="6">
           <StatsCard title="总资产" :value="totalAssets" format="currency" :icon="TrendCharts" icon-bg="var(--color-primary)" :loading="loading" @click="router.push('/trading')" />
         </el-col>
@@ -43,7 +43,7 @@
 
       <MarketOverview />
 
-      <el-row :gutter="20" style="margin-top: 20px">
+      <el-row :gutter="20" class="grid-stretch">
         <el-col :xs="24" :lg="16">
           <EquityChart :equity-history="binanceEquityHistory" />
         </el-col>
@@ -51,7 +51,7 @@
           <PositionChart :positions="binanceHoldings" />
         </el-col>
       </el-row>
-      <el-row :gutter="20" style="margin-top: 20px">
+        <el-row :gutter="20" class="grid-stretch">
         <el-col :xs="24" :md="8">
           <SubscriptionManager
             :running="marketRunning"
@@ -64,9 +64,9 @@
         <el-col :xs="24" :md="16">
           <RealtimeTickerPanel :tickers="marketTickers" />
         </el-col>
-      </el-row>
+        </el-row>
 
-      <el-row :gutter="20" style="margin-top: 20px">
+        <el-row :gutter="20" class="grid-stretch">
         <el-col :xs="24" :lg="12">
           <TradeStream :trades="marketTrades" />
         </el-col>
@@ -75,7 +75,7 @@
         </el-col>
       </el-row>
 
-      <el-row :gutter="20" style="margin-top: 20px">
+        <el-row :gutter="20" class="grid-stretch">
         <el-col :xs="24">
           <RealtimeCandleChart :candles="marketCandles" :symbol="marketActiveSymbol" />
         </el-col>
@@ -234,7 +234,4 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.realtime-overview-row {
-  margin-bottom: 20px;
-}
 </style>

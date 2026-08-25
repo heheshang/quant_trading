@@ -137,9 +137,6 @@ async function handleSave() {
 </script>
 
 <style scoped>
-.account-info-card {
-  margin-bottom: 20px;
-}
 
 .card-header {
   display: flex;

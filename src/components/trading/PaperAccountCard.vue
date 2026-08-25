@@ -7,25 +7,25 @@
     </template>
 
     <el-row :gutter="20">
-      <el-col :span="6">
+      <el-col :xs="12" :md="12">
         <div class="account-stat">
           <div class="stat-label">总资产</div>
           <div class="stat-value">¥{{ formatCurrency(account.total_assets) }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :md="12">
         <div class="account-stat">
           <div class="stat-label">可用资金</div>
           <div class="stat-value">¥{{ formatCurrency(account.available_cash) }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :md="12">
         <div class="account-stat">
           <div class="stat-label">持仓市值</div>
           <div class="stat-value">¥{{ formatCurrency(account.market_value) }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :md="12">
         <div class="account-stat">
           <div class="stat-label">当日盈亏</div>
           <div class="stat-value" :class="{ positive: account.daily_pnl > 0, negative: account.daily_pnl < 0 }">

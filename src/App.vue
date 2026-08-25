@@ -482,6 +482,30 @@ body {
   border-radius: var(--radius-lg);
 }
 
+/* ── Page layout utilities ── */
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+.page-stack > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.grid-stretch .el-col {
+  display: flex;
+  flex-direction: column;
+}
+.grid-stretch .el-col > .el-card {
+  flex: 1;
+}
+@media (max-width: 768px) {
+  /* Vertical breathing room between wrapped (stacked) cols */
+  .page-stack .el-row {
+    row-gap: var(--space-md);
+  }
+}
+
 /* ── Mobile / narrow-screen component adaptation ── */
 @media (max-width: 768px) {
   body {
@@ -493,11 +517,6 @@ body {
   }
   .el-message-box {
     width: 90%;
-  }
-  /* Per-page responsive breakpoints handle el-col layout; spacing is
-     applied here so rows/cards breathe without forcing full-width cols. */
-  .el-row + .el-row {
-    margin-top: var(--space-md);
   }
   .el-table {
     font-size: 12px;
@@ -528,13 +547,6 @@ body {
   }
   .main-content {
     padding: var(--space-sm) var(--space-md) var(--space-xl);
-  }
-  /* Breathing room between stacked cards */
-  .el-card {
-    margin-bottom: var(--space-md);
-  }
-  .el-row + .el-row {
-    margin-top: var(--space-md);
   }
   /* Comfortable touch targets (>= ~40px) */
   .el-button {

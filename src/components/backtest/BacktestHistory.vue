@@ -230,9 +230,6 @@ function signClass(value: number | null | undefined): string {
 </script>
 
 <style scoped>
-.history-card {
-  margin-bottom: 20px;
-}
 
 .card-header {
   display: flex;

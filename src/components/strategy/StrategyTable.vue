@@ -209,7 +209,8 @@ function emitBatch(action: 'start' | 'stop' | 'delete') {
 
 <style scoped>
 .strategy-table { width: 100%; }
-.table-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; margin-bottom: 12px; gap: 12px; }
+.table-toolbar { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 12px; gap: 12px; }
+.table-toolbar :deep(.el-input) { width: 240px; flex-shrink: 0; }
 .batch-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .table-footer { margin-top: 16px; display: flex; justify-content: flex-end; }
 .action-cell {

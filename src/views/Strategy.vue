@@ -1,5 +1,5 @@
 <template>
-  <div class="strategy-management">
+  <div class="strategy-management page-stack">
     <el-row :gutter="20" class="header">
       <el-col :xs="24" :lg="18">
         <h2>策略管理</h2>
@@ -320,8 +320,7 @@ onMounted(() => {
 
 <style scoped>
 .strategy-management { padding: 20px; }
-.header { margin-bottom: 20px; align-items: center; }
+.header { align-items: center; }
 .controls { text-align: right; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
-.strategy-list-card { margin-bottom: 20px; }
 </style>

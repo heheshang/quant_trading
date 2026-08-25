@@ -31,9 +31,6 @@ defineEmits<{
   align-items: center;
 }
 
-.security-card {
-  margin-top: 20px;
-}
 
 .security-settings {
   padding: 20px 0;

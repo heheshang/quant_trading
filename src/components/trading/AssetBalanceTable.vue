@@ -18,7 +18,7 @@
       </div>
     </template>
 
-    <el-table :data="paginated" size="small" v-loading="loading">
+    <el-table v-if="filtered.length > 0" :data="paginated" size="small" v-loading="loading">
       <el-table-column prop="asset" label="资产" />
       <el-table-column prop="free" label="可用" />
       <el-table-column prop="locked" label="锁定" />
