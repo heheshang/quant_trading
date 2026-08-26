@@ -8,7 +8,7 @@ use serde_json;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::error::RepoError;
+use crate::repository::error::RepoError;
 
 mod pg_impl;
 

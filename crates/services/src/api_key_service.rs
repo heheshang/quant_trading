@@ -1,11 +1,11 @@
 //! Exchange API-key storage service.
 //!
 //! Combines the `security::ApiKeyManager` (AES-256-GCM encryption) with the
-//! `quant_repository::ApiKeyRepository` (persistence) so exchange secrets are
+//! `data_layer::ApiKeyRepository` (persistence) so exchange secrets are
 //! stored encrypted in the `api_keys` table and never returned in plaintext.
 
 use crate::error::{ServiceError, ServiceResult};
-use quant_repository::{ApiKeyRecord, ApiKeyRepository, NewApiKey};
+use data_layer::{ApiKeyRecord, ApiKeyRepository, NewApiKey};
 use security::ApiKeyManager;
 use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
@@ -172,7 +172,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use parking_lot::Mutex;
-    use quant_repository::RepoError;
+    use data_layer::RepoError;
 
     #[derive(Debug, Clone)]
     struct ApiKeyRecordClone {

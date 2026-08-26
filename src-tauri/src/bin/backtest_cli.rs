@@ -11,6 +11,7 @@ use quant_common::types::{MarketData, StrategyParams, StrategyType};
 use rust_decimal::Decimal;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
+use std::time::Duration;
 
 fn to_market_data(r: &MarketDataRecord) -> MarketData {
     MarketData {
@@ -33,16 +34,12 @@ fn to_market_data(r: &MarketDataRecord) -> MarketData {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
-    let host = env::var("DATABASE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port = env::var("DATABASE_PORT").unwrap_or_else(|_| "15432".into());
-    let user = env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".into());
-    let pass = env::var("DATABASE_PASSWORD").unwrap_or_else(|_| "quant_password".into());
-    let db = env::var("DATABASE_NAME").unwrap_or_else(|_| "quant_trading".into());
-    let url = format!("postgres://{user}:{pass}@{host}:{port}/{db}");
+    let db_config = quant_common::config::AppConfig::from_env().database;
 
     let pool = PgPoolOptions::new()
-        .max_connections(4)
-        .connect(&url)
+        .max_connections(db_config.max_connections)
+        .acquire_timeout(Duration::from_secs(db_config.connect_timeout_seconds))
+        .connect(&db_config.connection_string())
         .await?;
     let repo = MarketDataRepository::new(pool);
 

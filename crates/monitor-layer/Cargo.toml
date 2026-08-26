@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 quant-common = { path = "../common" }
-quant-repository = { path = "../repository" }
+data-layer = { path = "../data-layer" }
 
 tokio = { workspace = true }
 serde = { workspace = true }

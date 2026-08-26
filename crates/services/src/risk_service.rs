@@ -1,7 +1,7 @@
 use crate::error::{ServiceError, ServiceResult};
 use quant_common::config::RiskConfig;
 use quant_common::types::{Account, Order, Position};
-use quant_repository::PostgresClient;
+use data_layer::PostgresClient;
 use risk_engine::{PreTradeRiskChecker, VaRCalculator};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;

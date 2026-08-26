@@ -6,6 +6,7 @@ use exchange_binance::types::{
 use exchange_binance::ClientInterface;
 use quant_common::types::MarketData;
 use quant_common::Result;
+use quant_common::utils::datetime_from_millis_or_now;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::instrument;
@@ -39,7 +40,7 @@ impl BinanceDataSource {
     fn kline_to_market_data(symbol: &str, kline: &BinanceKline) -> Result<MarketData> {
         Ok(MarketData {
             symbol: symbol.to_string(),
-            timestamp: DateTime::from_timestamp(kline.open_time / 1000, 0).unwrap_or_else(Utc::now),
+            timestamp: datetime_from_millis_or_now(kline.open_time),
             open: kline.open,
             high: kline.high,
             low: kline.low,

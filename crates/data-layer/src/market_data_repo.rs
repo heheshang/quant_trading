@@ -1,4 +1,8 @@
 use chrono::{DateTime, Utc};
+use exchange_binance::types::BinanceKline;
+use exchange_binance::websocket::{BinanceWsKline, BinanceWsTrade};
+use quant_common::types::MarketData;
+use quant_common::utils::{datetime_from_millis, datetime_from_millis_or_now};
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -806,6 +810,63 @@ pub struct NewOrderbookSnapshot {
     pub symbol: String,
     pub bids: String, // JSON array string
     pub asks: String, // JSON array string
+}
+
+impl NewMarketDataRecord {
+    /// 由 REST kline（`/api/v3/klines`）构造；时间戳非法返回 `None`。
+    pub fn from_kline(k: &BinanceKline, instrument_id: &str, interval: &str) -> Option<Self> {
+        Some(Self {
+            instrument_id: instrument_id.to_string(),
+            timeframe: interval.to_string(),
+            timestamp: datetime_from_millis(k.open_time)?,
+            open: k.open,
+            high: k.high,
+            low: k.low,
+            close: k.close,
+            volume: k.volume,
+        })
+    }
+
+    /// 由 WS `@kline` 消息构造；时间戳非法回退当前时间。
+    pub fn from_ws_kline(k: &BinanceWsKline) -> Self {
+        Self {
+            instrument_id: k.symbol.clone(),
+            timeframe: k.interval.to_lowercase(),
+            timestamp: datetime_from_millis_or_now(k.open_time),
+            open: k.open,
+            high: k.high,
+            low: k.low,
+            close: k.close,
+            volume: k.volume,
+        }
+    }
+
+    /// 由领域行情构造（backfill 场景；时间戳已是 `DateTime`）。
+    pub fn from_market_data(m: &MarketData, timeframe: &str) -> Self {
+        Self {
+            instrument_id: m.symbol.clone(),
+            timeframe: timeframe.to_string(),
+            timestamp: m.timestamp,
+            open: m.open,
+            high: m.high,
+            low: m.low,
+            close: m.close,
+            volume: m.volume,
+        }
+    }
+}
+
+impl NewStreamTrade {
+    /// 由 WS `@trade` 消息构造；时间戳非法回退当前时间。
+    pub fn from_ws_trade(t: &BinanceWsTrade) -> Self {
+        Self {
+            symbol: t.symbol.clone(),
+            price: t.price,
+            quantity: t.quantity,
+            trade_time: datetime_from_millis_or_now(t.trade_time),
+            is_buyer_maker: t.is_buyer_maker,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

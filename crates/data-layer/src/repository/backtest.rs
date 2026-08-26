@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{error, instrument};
 
-use crate::error::RepoError;
+use crate::repository::error::RepoError;
 
 /// Database row type — maps 1:1 to `backtest_results` table columns.
 #[derive(Debug, Clone, sqlx::FromRow)]

@@ -1,10 +1,12 @@
-use quant_common::config::DatabaseConfig;
+use quant_common::config::AppConfig;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use tracing::{error, info};
 
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().ok();
+
     monitor_layer::logging::init_logging(monitor_layer::logging::LoggingConfig {
         log_level: "info".to_string(),
         log_dir: "./logs".to_string(),
@@ -24,27 +26,9 @@ async fn main() {
 
     let command = &args[1];
 
-    let db_config = DatabaseConfig {
-        host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "localhost".to_string()),
-        port: std::env::var("DATABASE_PORT")
-            .unwrap_or_else(|_| "5432".to_string())
-            .parse()
-            .unwrap_or(5432),
-        username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
-        password: std::env::var("DATABASE_PASSWORD")
-            .unwrap_or_else(|_| "quant_password".to_string()),
-        database: std::env::var("DATABASE_NAME").unwrap_or_else(|_| "quant_trading".to_string()),
-        max_connections: 5,
-        connect_timeout_seconds: std::env::var("DATABASE_CONNECT_TIMEOUT_SECONDS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(3),
-    };
+    let db_config = AppConfig::from_env().database;
 
-    let connection_string = format!(
-        "postgres://{}:{}@{}:{}/{}",
-        db_config.username, db_config.password, db_config.host, db_config.port, db_config.database
-    );
+    let connection_string = db_config.connection_string();
 
     info!(
         "Connecting to database: {}@{}:{}/{}",

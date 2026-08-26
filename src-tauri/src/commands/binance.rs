@@ -51,7 +51,7 @@ fn binance_order_to_app_order(o: &BinanceOrder, strategy_id: Option<&str>) -> Or
         "EXPIRED" => OrderStatus::Expired,
         _ => OrderStatus::Pending,
     };
-    let from_ms = |ms: i64| chrono::DateTime::from_timestamp_millis(ms).unwrap_or_else(chrono::Utc::now);
+    let from_ms = quant_common::utils::datetime_from_millis_or_now;
     Order {
         order_id: o.order_id,
         strategy_id: strategy_id.unwrap_or("").to_string(),

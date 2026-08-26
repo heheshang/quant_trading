@@ -151,15 +151,15 @@ impl From<ServiceError> for quant_common::api::ApiFailure {
     }
 }
 
-impl From<quant_repository::RepoError> for ServiceError {
+impl From<data_layer::RepoError> for ServiceError {
     /// Map repository-layer errors to typed service errors.
     ///
     /// The goal is to preserve the typed error so callers can `match` on the
     /// specific failure mode (e.g. retry on `Conflict`, surface a 404 on
     /// `NotFound`) instead of having every repository failure degrade into
     /// the opaque `ServiceError::Other(String)`.
-    fn from(err: quant_repository::RepoError) -> Self {
-        use quant_repository::RepoError as R;
+    fn from(err: data_layer::RepoError) -> Self {
+        use data_layer::RepoError as R;
         match err {
             R::NotFound { entity, id } => Self::NotFound(format!("{entity} '{id}' not found")),
             R::VersionConflict {
@@ -217,7 +217,7 @@ impl From<strategy_engine::registry::FactoryError> for ServiceError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quant_repository::RepoError;
+    use data_layer::RepoError;
 
     #[test]
     fn from_repo_error_not_found_maps_to_service_not_found() {

@@ -1,7 +1,7 @@
 use crate::error::{ServiceError, ServiceResult};
 use chrono::Utc;
 use quant_common::types::{Account, Order, OrderStatus, Position};
-use quant_repository::PostgresClient;
+use data_layer::PostgresClient;
 use rust_decimal::Decimal;
 use sqlx::Row;
 use std::sync::Arc;

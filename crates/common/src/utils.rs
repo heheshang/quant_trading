@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 计算年化收益率（CAGR，复利年化）
 pub fn calculate_annual_return(
@@ -102,6 +103,40 @@ pub fn calculate_win_rate(winning_trades: i32, total_trades: i32) -> Decimal {
     }
 
     Decimal::from(winning_trades) / Decimal::from(total_trades)
+}
+
+/// 毫秒时间戳 → UTC 时间；非法值（超出 chrono 可表示范围）返回 `None`。
+pub fn datetime_from_millis(ms: i64) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp_millis(ms)
+}
+
+/// 毫秒时间戳 → UTC 时间；非法时回退当前时间（用于 WS 消息等不可信时间戳）。
+pub fn datetime_from_millis_or_now(ms: i64) -> DateTime<Utc> {
+    datetime_from_millis(ms).unwrap_or_else(Utc::now)
+}
+
+/// 向下取整到 step（lot size）；step 非正时返回原值。
+pub fn floor_to_step(value: Decimal, step: Decimal) -> Decimal {
+    if step <= Decimal::ZERO {
+        return value;
+    }
+    (value / step).floor() * step
+}
+
+/// 四舍五入到最近 tick（tick size）；tick 非正时返回原值。
+pub fn round_to_tick(value: Decimal, tick: Decimal) -> Decimal {
+    if tick <= Decimal::ZERO {
+        return value;
+    }
+    (value / tick).round() * tick
+}
+
+/// 当前 UNIX 毫秒时间戳。
+pub fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock before epoch")
+        .as_millis() as u64
 }
 
 #[cfg(test)]

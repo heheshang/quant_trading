@@ -10,7 +10,6 @@ license.workspace = true
 [dependencies]
 quant-domain = { path = "../domain" }
 quant-common = { path = "../common" }
-quant-repository = { path = "../repository" }
 quant-clients = { path = "../clients" }
 exchange-binance = { path = "../exchange-binance", features = ["test-utils"] }
 strategy-engine = { package = "strategy-layer", path = "../strategy-layer" }

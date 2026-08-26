@@ -3,8 +3,8 @@ use crate::market_data_provider::MarketDataProvider;
 use quant_common::types::{
     MarketData, ParamType, ParameterSchema, StrategyParams, StrategyStatus, StrategyType,
 };
-use quant_repository::StrategyRepository as StRepo;
-use quant_repository::{BacktestRepository, PostgresClient};
+use data_layer::StrategyRepository as StRepo;
+use data_layer::{BacktestRepository, PostgresClient};
 use rust_decimal::Decimal;
 use std::sync::Arc;
 use strategy_engine::registry::StrategyRegistry;

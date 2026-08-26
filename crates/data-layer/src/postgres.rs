@@ -17,7 +17,7 @@ impl PostgresClient {
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
             .acquire_timeout(Duration::from_secs(config.connect_timeout_seconds))
-            .connect(&connection_string(config))
+            .connect(&config.connection_string())
             .await
             .map_err(|e| {
                 error!("Failed to connect to database: {}", e);
@@ -35,7 +35,7 @@ impl PostgresClient {
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
             .acquire_timeout(Duration::from_secs(config.connect_timeout_seconds))
-            .connect_lazy(&connection_string(config))
+            .connect_lazy(&config.connection_string())
             .map_err(|e| {
                 error!("Failed to configure database connection pool: {}", e);
                 Error::Database(e.to_string())
@@ -61,6 +61,13 @@ impl PostgresClient {
         &self.pool
     }
 
+    /// 包装已有的连接池,避免为同一数据库打开第二套连接池。
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self {
+            pool: Arc::new(pool),
+        }
+    }
+
     /// 健康检查
     #[instrument(skip(self))]
     pub async fn health_check(&self) -> Result<bool> {
@@ -72,12 +79,6 @@ impl PostgresClient {
     }
 }
 
-fn connection_string(config: &DatabaseConfig) -> String {
-    format!(
-        "postgres://{}:{}@{}:{}/{}",
-        config.username, config.password, config.host, config.port, config.database
-    )
-}
 
 #[cfg(test)]
 mod tests {

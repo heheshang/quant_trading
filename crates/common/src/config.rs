@@ -32,6 +32,16 @@ pub struct DatabaseConfig {
     pub connect_timeout_seconds: u64,
 }
 
+impl DatabaseConfig {
+    /// sqlx 连接 URL（由配置字段统一构建，消除各 CLI 手工拼接）。
+    pub fn connection_string(&self) -> String {
+        format!(
+            "postgres://{}:{}@{}:{}/{}",
+            self.username, self.password, self.host, self.port, self.database
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RedisConfig {
     pub host: String,

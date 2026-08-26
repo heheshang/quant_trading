@@ -140,17 +140,8 @@ impl MarketService {
         }
 
         let records: Vec<NewMarketDataRecord> = data
-            .into_iter()
-            .map(|m| NewMarketDataRecord {
-                instrument_id: m.symbol.clone(),
-                timeframe: timeframe.to_string(),
-                timestamp: m.timestamp,
-                open: m.open,
-                high: m.high,
-                low: m.low,
-                close: m.close,
-                volume: m.volume,
-            })
+            .iter()
+            .map(|m| NewMarketDataRecord::from_market_data(m, timeframe))
             .collect();
 
         match repo.insert_batch(&records).await {

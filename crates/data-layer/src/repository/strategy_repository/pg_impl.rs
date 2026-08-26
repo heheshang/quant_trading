@@ -5,7 +5,7 @@ use quant_domain::types::{StrategyParams, StrategyStatus, StrategyType};
 use serde_json;
 use tracing::{error, instrument};
 
-use crate::error::RepoError;
+use crate::repository::error::RepoError;
 
 use super::{
     PgStrategyRepository, StrategyRepository, StrategyRow, StrategyStats, StrategySummaryRow,

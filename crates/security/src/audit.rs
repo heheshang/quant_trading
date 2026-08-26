@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use quant_common::Result;
-use quant_repository::{AuditFilter, AuditLogRecord, AuditRepository, NewAuditLog};
+use data_layer::{AuditFilter, AuditLogRecord, AuditRepository, NewAuditLog};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -268,7 +268,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use parking_lot::Mutex;
-    use quant_repository::RepoError;
+    use data_layer::RepoError;
     use std::result::Result;
 
     struct InMemoryAuditRepository {

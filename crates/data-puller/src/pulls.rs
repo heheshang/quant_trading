@@ -54,6 +54,7 @@ impl DataPuller {
             symbol, bar, interval
         );
 
+        let bar_lower = bar.to_lowercase();
         loop {
             sleep(interval).await;
 
@@ -65,7 +66,7 @@ impl DataPuller {
                     client
                         .get_candles(
                             &to_binance_symbol(&symbol),
-                            &bar.to_lowercase(),
+                            &bar_lower,
                             Some(config.limit),
                         )
                         .await
@@ -78,19 +79,7 @@ impl DataPuller {
 
             let records: Vec<NewMarketDataRecord> = candles
                 .into_iter()
-                .filter_map(|c| {
-                    let ts = chrono::DateTime::from_timestamp_millis(c.open_time)?;
-                    Some(NewMarketDataRecord {
-                        instrument_id: symbol.clone(),
-                        timeframe: bar.to_lowercase(),
-                        timestamp: ts,
-                        open: c.open,
-                        high: c.high,
-                        low: c.low,
-                        close: c.close,
-                        volume: c.volume,
-                    })
-                })
+                .filter_map(|c| NewMarketDataRecord::from_kline(&c, &symbol, &bar_lower))
                 .collect();
 
             if records.is_empty() {

@@ -151,17 +151,17 @@ async fn main() {
         warn!("PostgreSQL connection pool unavailable, running without database");
     }
 
-    // 为 AppServices 创建 quant_repository::PostgresClient，复用同一个 PgPool，
+    // 为 AppServices 创建 data_layer::PostgresClient，复用同一个 PgPool，
     // 避免为同一数据库打开第二套连接池。
     let repo_pg_client = pg_client
         .as_ref()
-        .map(|pg| quant_repository::PostgresClient::from_pool(pg.pool().clone()));
+        .map(|pg| data_layer::PostgresClient::from_pool(pg.pool().clone()));
     let repo_pg = repo_pg_client.map(Arc::new);
     // 告警持久化仓储（有 DB 时注入 AlertManager，无 DB 时降级内存）
     let alert_repo = repo_pg.as_ref().map(|pg| {
-        Arc::new(quant_repository::PgAlertRepository::new(Arc::new(
+        Arc::new(data_layer::PgAlertRepository::new(Arc::new(
             pg.pool().clone(),
-        ))) as Arc<dyn quant_repository::AlertRepository>
+        ))) as Arc<dyn data_layer::AlertRepository>
     });
     let alert_manager = Arc::new(AlertManager::new(false, vec![]).with_repository(alert_repo));
 
@@ -171,9 +171,9 @@ async fn main() {
         .map(|pg| Arc::new(MarketDataRepository::new(pg.pool().clone())));
     // 审计日志仓储（有 DB 时持久化，无 DB 时仅内存日志）
     let audit_repo = repo_pg.as_ref().map(|pg| {
-        Arc::new(quant_repository::PgAuditRepository::new(Arc::new(
+        Arc::new(data_layer::PgAuditRepository::new(Arc::new(
             pg.pool().clone(),
-        ))) as Arc<dyn quant_repository::AuditRepository>
+        ))) as Arc<dyn data_layer::AuditRepository>
     });
     let audit_logger = Arc::new(security::AuditLogger::new(audit_repo));
 

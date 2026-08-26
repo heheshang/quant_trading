@@ -16,7 +16,7 @@ use monitor_engine::LogBuffer;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
 use quant_common::MarketDataProvider;
-use quant_repository::{PgBacktestRepository, PgStrategyRepository, PostgresClient};
+use data_layer::{PgBacktestRepository, PgStrategyRepository, PostgresClient};
 use std::path::PathBuf;
 use std::sync::Arc;
 use strategy_engine::registry::default_registry;
@@ -126,11 +126,11 @@ impl AppServices {
             Some(provider),
             postgres.as_ref().map(|pg| {
                 Arc::new(PgBacktestRepository::new(Arc::new(pg.pool().clone())))
-                    as Arc<dyn quant_repository::BacktestRepository>
+                    as Arc<dyn data_layer::BacktestRepository>
             }),
             postgres.as_ref().map(|pg| {
                 Arc::new(PgStrategyRepository::new(Arc::new(pg.pool().clone())))
-                    as Arc<dyn quant_repository::StrategyRepository>
+                    as Arc<dyn data_layer::StrategyRepository>
             }),
             Some(scheduler),
         );
@@ -244,9 +244,9 @@ impl AppServices {
         scheduler.set_pipeline(Arc::new(live_pipeline));
 
         let api_key_repo = postgres.as_ref().map(|pg| {
-            Arc::new(quant_repository::PgApiKeyRepository::new(Arc::new(
+            Arc::new(data_layer::PgApiKeyRepository::new(Arc::new(
                 pg.pool().clone(),
-            ))) as Arc<dyn quant_repository::ApiKeyRepository>
+            ))) as Arc<dyn data_layer::ApiKeyRepository>
         });
         let encryption_key = config
             .try_read()

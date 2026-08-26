@@ -4,7 +4,7 @@ use super::*;
 use async_trait::async_trait;
 use mockall::mock;
 use quant_common::config::SchedulerConfig;
-use quant_repository::{RepoError, StrategyStats, StrategySummaryRow};
+use data_layer::{RepoError, StrategyStats, StrategySummaryRow};
 use rust_decimal::prelude::FromPrimitive;
 
 fn make_service_no_db() -> StrategyService {

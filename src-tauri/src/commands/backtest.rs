@@ -46,7 +46,7 @@ pub async fn get_backtest_results(
     state: State<'_, AppState>,
     limit: i64,
     offset: i64,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<quant_repository::BacktestResultsPage>> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<data_layer::BacktestResultsPage>> {
     use crate::commands::not_init_err;
     use quant_common::api::ok_result;
     let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;

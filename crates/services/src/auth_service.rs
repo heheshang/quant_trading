@@ -1,6 +1,6 @@
 use crate::error::{ServiceError, ServiceResult};
 use quant_common::config::AppConfig;
-use quant_repository::PostgresClient;
+use data_layer::PostgresClient;
 use security::encryption::{DataEncryption, PasswordHasher};
 use security::totp::{generate_totp_secret, verify_totp};
 use security::AuthService as SecAuthService;
@@ -495,8 +495,31 @@ impl AuthService {
 mod tests {
     use super::*;
     use quant_common::config::DatabaseConfig;
-    use quant_repository::PostgresClient;
+    use data_layer::PostgresClient;
     use security::encryption::PasswordHasher;
+
+    /// 构建指向 docker 集成库的 PostgresClient(测试共用,消除重复 env 读取)。
+    async fn test_postgres_client() -> Arc<PostgresClient> {
+        let db_config = DatabaseConfig {
+            host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
+            port: std::env::var("DATABASE_PORT")
+                .unwrap_or_else(|_| "15432".to_string())
+                .parse::<u16>()
+                .unwrap_or(15432),
+            username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
+            password: std::env::var("DATABASE_PASSWORD")
+                .unwrap_or_else(|_| "quant_password".to_string()),
+            database: std::env::var("DATABASE_NAME")
+                .unwrap_or_else(|_| "quant_trading".to_string()),
+            max_connections: 5,
+            connect_timeout_seconds: 5,
+        };
+        Arc::new(
+            PostgresClient::new(&db_config)
+                .await
+                .expect("expected docker PostgreSQL to be reachable"),
+        )
+    }
 
     #[tokio::test]
     async fn test_login_without_db_returns_error() {
@@ -616,25 +639,7 @@ mod tests {
         use security::totp::totp_code;
         use std::time::{SystemTime, UNIX_EPOCH};
 
-        let db_config = DatabaseConfig {
-            host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-            port: std::env::var("DATABASE_PORT")
-                .unwrap_or_else(|_| "15432".to_string())
-                .parse::<u16>()
-                .unwrap_or(15432),
-            username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
-            password: std::env::var("DATABASE_PASSWORD")
-                .unwrap_or_else(|_| "quant_password".to_string()),
-            database: std::env::var("DATABASE_NAME")
-                .unwrap_or_else(|_| "quant_trading".to_string()),
-            max_connections: 5,
-            connect_timeout_seconds: 5,
-        };
-
-        let postgres = PostgresClient::new(&db_config)
-            .await
-            .expect("expected docker PostgreSQL to be reachable");
-        let postgres = Arc::new(postgres);
+        let postgres = test_postgres_client().await;
         let config = Arc::new(RwLock::new(AppConfig::default()));
         let auth_service = AuthService::new(config, Some(postgres.clone()));
         let pool = postgres.pool();
@@ -757,25 +762,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires PostgreSQL integration environment"]
     async fn test_login_change_password_invalidates_old_token_with_real_db() {
-        let db_config = DatabaseConfig {
-            host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-            port: std::env::var("DATABASE_PORT")
-                .unwrap_or_else(|_| "15432".to_string())
-                .parse::<u16>()
-                .unwrap_or(15432),
-            username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
-            password: std::env::var("DATABASE_PASSWORD")
-                .unwrap_or_else(|_| "quant_password".to_string()),
-            database: std::env::var("DATABASE_NAME")
-                .unwrap_or_else(|_| "quant_trading".to_string()),
-            max_connections: 5,
-            connect_timeout_seconds: 5,
-        };
-
-        let postgres = PostgresClient::new(&db_config)
-            .await
-            .expect("expected docker PostgreSQL to be reachable");
-        let postgres = Arc::new(postgres);
+        let postgres = test_postgres_client().await;
 
         let mut config = AppConfig::default();
         config.security.jwt_secret = "docker-test-secret".to_string();
@@ -839,25 +826,7 @@ mod tests {
         use security::totp::totp_code;
         use std::time::{SystemTime, UNIX_EPOCH};
 
-        let db_config = DatabaseConfig {
-            host: std::env::var("DATABASE_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-            port: std::env::var("DATABASE_PORT")
-                .unwrap_or_else(|_| "15432".to_string())
-                .parse::<u16>()
-                .unwrap_or(15432),
-            username: std::env::var("DATABASE_USERNAME").unwrap_or_else(|_| "quant".to_string()),
-            password: std::env::var("DATABASE_PASSWORD")
-                .unwrap_or_else(|_| "quant_password".to_string()),
-            database: std::env::var("DATABASE_NAME")
-                .unwrap_or_else(|_| "quant_trading".to_string()),
-            max_connections: 5,
-            connect_timeout_seconds: 5,
-        };
-
-        let postgres = PostgresClient::new(&db_config)
-            .await
-            .expect("expected docker PostgreSQL to be reachable");
-        let postgres = Arc::new(postgres);
+        let postgres = test_postgres_client().await;
         let config = Arc::new(RwLock::new(AppConfig::default()));
         let auth_service = AuthService::new(config, Some(postgres.clone()));
         let pool = postgres.pool();

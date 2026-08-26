@@ -27,7 +27,6 @@ risk-layer = { path = "../crates/risk-layer" }
 monitor-layer = { path = "../crates/monitor-layer" }
 security = { path = "../crates/security" }
 quant-services = { path = "../crates/services" }
-quant-repository = { path = "../crates/repository" }
 quant-clients = { path = "../crates/clients" }
 exchange-binance = { path = "../crates/exchange-binance" }
 data-puller = { path = "../crates/data-puller" }

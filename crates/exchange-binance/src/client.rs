@@ -9,6 +9,7 @@ use crate::types::*;
 use async_trait::async_trait;
 use hmac::{Hmac, Mac};
 use quant_common::{Error, Result};
+use quant_common::utils::{floor_to_step, now_millis, round_to_tick};
 use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use sha2::Sha256;
@@ -17,7 +18,6 @@ use base64::Engine as _;
 use ed25519_dalek::{SigningKey, Signer as _};
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -87,10 +87,7 @@ impl SigningScheme {
 
 /// Current UNIX timestamp in milliseconds.
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock before epoch")
-        .as_millis() as u64
+    now_millis()
 }
 
 /// Binance client trait — enables mocking in tests.
@@ -227,18 +224,12 @@ impl Client {
 
     /// Round a quantity DOWN to the symbol's lot step (safe: never over-buys).
     fn round_down(value: Decimal, step: Decimal) -> Decimal {
-        if step <= Decimal::ZERO {
-            return value;
-        }
-        ((value / step).floor()) * step
+        floor_to_step(value, step)
     }
 
     /// Round a price to the nearest symbol tick.
     fn round_tick(value: Decimal, tick: Decimal) -> Decimal {
-        if tick <= Decimal::ZERO {
-            return value;
-        }
-        ((value / tick).round()) * tick
+        round_to_tick(value, tick)
     }
 
     /// Send a request, retrying transient 429 (rate limit) with exponential

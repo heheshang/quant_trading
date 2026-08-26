@@ -1,6 +1,6 @@
 use chrono::Utc;
 use quant_common::types::{Alert, AlertLevel};
-use quant_repository::AlertRepository;
+use data_layer::AlertRepository;
 use reqwest::Client;
 use serde_json::json;
 use std::collections::HashMap;
@@ -332,7 +332,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
     use parking_lot::Mutex;
-    use quant_repository::{AlertRepository, RepoError};
+    use data_layer::{AlertRepository, RepoError};
 
     /// In-memory [`AlertRepository`] used to exercise repo-backed alert flows.
     struct InMemoryAlertRepository {

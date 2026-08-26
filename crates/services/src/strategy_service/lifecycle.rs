@@ -460,14 +460,14 @@ impl StrategyService {
         &self,
         limit: i64,
         offset: i64,
-    ) -> ServiceResult<quant_repository::BacktestResultsPage> {
+    ) -> ServiceResult<data_layer::BacktestResultsPage> {
         let repo = self
             .backtest_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let rows = repo.find_all(limit, offset).await.map_err(ServiceError::from)?;
         let total = repo.count().await.map_err(ServiceError::from)?;
-        Ok(quant_repository::BacktestResultsPage { rows, total })
+        Ok(data_layer::BacktestResultsPage { rows, total })
     }
 
     /// Query a single backtest result by ID (includes equity_curve).

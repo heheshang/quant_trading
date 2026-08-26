@@ -24,6 +24,7 @@ use exchange_binance::websocket::{
     BinanceWsDepth, BinanceWsKline, BinanceWsMessage, BinanceWsTicker, BinanceWsTrade,
 };
 use quant_common::error::Result;
+use quant_common::utils::datetime_from_millis;
 use tokio::sync::mpsc::{self, error::TrySendError};
 use tracing::{debug, info, warn};
 
@@ -312,21 +313,12 @@ fn floor_minute(dt: DateTime<Utc>) -> DateTime<Utc> {
 /// The interval from Binance is lower-case; normalize so storage, the REST pull,
 /// and the read path all agree on one canonical case.
 fn kline_to_record(k: &BinanceWsKline) -> NewMarketDataRecord {
-    NewMarketDataRecord {
-        instrument_id: k.symbol.clone(),
-        timeframe: k.interval.to_lowercase(),
-        timestamp: DateTime::from_timestamp_millis(k.open_time).unwrap_or_else(Utc::now),
-        open: k.open,
-        high: k.high,
-        low: k.low,
-        close: k.close,
-        volume: k.volume,
-    }
+    NewMarketDataRecord::from_ws_kline(k)
 }
 
 /// Map a `@ticker` WS message to a `ticker_snapshots` row (minute-snapped ts).
 fn ticker_to_record(t: &BinanceWsTicker) -> NewTickerSnapshot {
-    let ts = DateTime::from_timestamp_millis(t.event_time)
+    let ts = datetime_from_millis(t.event_time)
         .map(floor_minute)
         .unwrap_or_else(Utc::now);
     NewTickerSnapshot {
@@ -344,13 +336,7 @@ fn ticker_to_record(t: &BinanceWsTicker) -> NewTickerSnapshot {
 
 /// Map a `@trade` WS message to a `stream_trades` row (append-only).
 fn trade_to_record(t: &BinanceWsTrade) -> NewStreamTrade {
-    NewStreamTrade {
-        symbol: t.symbol.clone(),
-        price: t.price,
-        quantity: t.quantity,
-        trade_time: DateTime::from_timestamp_millis(t.trade_time).unwrap_or_else(Utc::now),
-        is_buyer_maker: t.is_buyer_maker,
-    }
+    NewStreamTrade::from_ws_trade(t)
 }
 
 /// Map a `@depth`/`@orderbook` WS message to an `orderbook_snapshots` row.
