@@ -27,7 +27,6 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 rust_decimal = { workspace = true, features = ["maths"] }
-anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 async-trait = "0.1"
@@ -39,7 +38,6 @@ toml = "0.8"
 
 [dev-dependencies]
 mockall = "0.13"
-futures = { workspace = true }
 insta = { version = "1", features = ["yaml", "redactions"] }
 parking_lot = "0.12"
 

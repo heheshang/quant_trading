@@ -15,13 +15,9 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 rust_decimal = { workspace = true }
-anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
-# Mathematical computations
-ndarray = { workspace = true }
-statrs = { workspace = true }
 async-trait = "0.1"
 [dev-dependencies]
 rust_decimal_macros = "1.36"

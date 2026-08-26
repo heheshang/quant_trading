@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { LineChart } from 'echarts/charts'
 import {
   TitleComponent,
@@ -124,13 +124,6 @@ function onControlsChange() {
   nextTick(resize)
 }
 
-watch(
-  [() => props.equityCurve, () => props.marketData, selectedDataSource],
-  () => {
-    if (chartInstance.value) nextTick(resize)
-  },
-)
-
 watch(chartInstance, (inst) => {
   if (inst) {
     loading.value = false
@@ -139,8 +132,6 @@ watch(chartInstance, (inst) => {
   }
 })
 
-onMounted(() => window.addEventListener('resize', resize))
-onBeforeUnmount(() => window.removeEventListener('resize', resize))
 </script>
 
 <style scoped>

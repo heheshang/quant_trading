@@ -53,31 +53,6 @@ impl MarketService {
         }
     }
 
-    #[instrument(skip(self), fields(symbol = %symbol))]
-    pub async fn get_historical_data(
-        &self,
-        symbol: &str,
-        start: chrono::DateTime<chrono::Utc>,
-        end: chrono::DateTime<chrono::Utc>,
-    ) -> ServiceResult<Vec<MarketData>> {
-        let ds = self.data_source.read().await;
-        match ds.as_ref() {
-            Some(source) => source
-                .get_historical_data(symbol, start, end)
-                .await
-                .map_err(|e| {
-                    error!(symbol = %symbol, "Failed to get historical data: {}", e);
-                    ServiceError::DataSource(e.to_string())
-                }),
-            None => {
-                error!("market data source not configured for historical data");
-                Err(ServiceError::Other(
-                    "market data source not configured".into(),
-                ))
-            }
-        }
-    }
-
     /// Distinct symbols available in the market_data store (dropdown source).
     #[instrument(skip(self))]
     pub async fn list_symbols(&self) -> ServiceResult<Vec<String>> {
@@ -86,26 +61,6 @@ impl MarketService {
             error!("Failed to list symbols: {}", e);
             ServiceError::Other(e.to_string())
         })
-    }
-
-    /// Latest N klines for an instrument/timeframe, read from DB (`market_data`).
-    ///
-    /// Remote WS import path: the DB is the read source; the live stream only
-    /// feeds the importer. Returns newest-first.
-    #[instrument(skip(self), fields(symbol = %symbol, timeframe = %timeframe))]
-    pub async fn get_klines_from_db(
-        &self,
-        symbol: &str,
-        timeframe: &str,
-        limit: i64,
-    ) -> ServiceResult<Vec<MarketDataRecord>> {
-        let repo = self.repo_or_err("klines not available (no database)")?;
-        repo.query_latest_klines(symbol, timeframe, limit)
-            .await
-            .map_err(|e| {
-                error!("Failed to read klines from DB: {}", e);
-                ServiceError::Other(e.to_string())
-            })
     }
 
     /// Latest N klines for an instrument/timeframe, read from DB, REST-backfilled
@@ -414,20 +369,6 @@ mod tests {
     async fn test_get_realtime_data_no_datasource() {
         let svc = MarketService::new(Arc::new(RwLock::new(None)), None);
         let result = svc.get_realtime_data("BTC-USDT").await;
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ServiceError::Other(_)));
-    }
-
-    #[tokio::test]
-    async fn test_get_historical_data_no_datasource() {
-        let svc = MarketService::new(Arc::new(RwLock::new(None)), None);
-        let result = svc
-            .get_historical_data(
-                "BTC-USDT",
-                chrono::Utc::now() - chrono::Duration::days(7),
-                chrono::Utc::now(),
-            )
-            .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ServiceError::Other(_)));
     }

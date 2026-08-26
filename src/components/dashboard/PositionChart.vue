@@ -8,8 +8,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { ref, computed } from 'vue'
+import type { EChartsCoreOption } from 'echarts/core'
+import { useEcharts } from '@/composables/useEcharts'
 import { useFormatting } from '@/composables/useFormatting'
 import type { Position } from '@/services/types'
 import { useChartTheme } from '@/composables/useChartTheme'
@@ -19,8 +20,6 @@ const props = defineProps<{
 }>()
 
 const chartRef = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
-let resizeHandler: (() => void) | null = null
 
 const { formatCurrency } = useFormatting()
 
@@ -31,66 +30,48 @@ interface TooltipItemParam {
   color: string
 }
 
-function initChart() {
-  if (!chartRef.value) return
-  chart = echarts.init(chartRef.value)
+const chartOptions = computed<EChartsCoreOption>(() => {
+  const theme = useChartTheme().palette.value
 
-  if (props.positions.length > 0) {
-    chart.setOption({
-      tooltip: {
-        trigger: 'item',
-        formatter: (rawParams: object | object[]) => {
-          const params = (Array.isArray(rawParams) ? rawParams[0] : rawParams) as unknown as TooltipItemParam
-          return `${params.name}<br/>¥${formatCurrency(params.value)} (${params.percent}%)`
-        },
-      },
-      series: [
-        {
-          type: 'pie',
-          radius: ['40%', '70%'],
-          data: props.positions.map((pos) => ({
-            value: Number(pos.market_value),
-            name: pos.symbol,
-          })),
-          emphasis: {
-            itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' },
-          },
-        },
-      ],
-    })
-  } else {
-    chart.setOption({
+  if (props.positions.length === 0) {
+    return {
       graphic: {
         elements: [{
           type: 'text',
           key: 'no-data',
-          style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: useChartTheme().palette.value.axisLabel },
+          style: { text: '暂无持仓', fontSize: 16, textAlign: 'center', fill: theme.axisLabel },
           left: 'center',
           top: 'middle',
         }],
       },
-    })
+    }
   }
 
-  if (resizeHandler) window.removeEventListener('resize', resizeHandler)
-  resizeHandler = () => chart?.resize()
-  window.addEventListener('resize', resizeHandler)
-}
-
-watch(() => props.positions, () => {
-  nextTick(() => initChart())
-}, { deep: true })
-
-onMounted(() => {
-  nextTick(() => initChart())
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: (rawParams: object | object[]) => {
+        const params = (Array.isArray(rawParams) ? rawParams[0] : rawParams) as unknown as TooltipItemParam
+        return `${params.name}<br/>¥${formatCurrency(params.value)} (${params.percent}%)`
+      },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['40%', '70%'],
+        data: props.positions.map((pos) => ({
+          value: Number(pos.market_value),
+          name: pos.symbol,
+        })),
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' },
+        },
+      },
+    ],
+  }
 })
 
-onUnmounted(() => {
-  if (resizeHandler) window.removeEventListener('resize', resizeHandler)
-  resizeHandler = null
-  chart?.dispose()
-  chart = null
-})
+useEcharts(chartRef, chartOptions)
 </script>
 
 <style scoped>

@@ -27,8 +27,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
-import * as echarts from 'echarts'
+import { ref, computed } from 'vue'
+import type { EChartsCoreOption } from 'echarts/core'
+import { useEcharts } from '@/composables/useEcharts'
 import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
 const props = withDefaults(
@@ -46,7 +47,6 @@ const emit = defineEmits<{
 }>()
 
 const chartRef = ref<HTMLElement | null>(null)
-const riskChart = shallowRef<echarts.ECharts | null>(null)
 
 const metricLabels: Record<string, string> = {
   var_95: 'VaR (95%)',
@@ -67,7 +67,7 @@ function seriesColor(index: number): string {
   return colors[key] || '#409eff'
 }
 
-function buildOption(): echarts.EChartsCoreOption {
+const chartOptions = computed<EChartsCoreOption>(() => {
   const theme = useChartTheme().palette.value
   const hasData = props.metricsHistory.length > 0
 
@@ -125,41 +125,9 @@ function buildOption(): echarts.EChartsCoreOption {
     },
     series,
   }
-}
-
-function initRiskChart() {
-  const dom = chartRef.value
-  if (!dom) return
-  riskChart.value?.dispose()
-  riskChart.value = echarts.init(dom)
-  riskChart.value.setOption(buildOption(), { notMerge: true })
-}
-
-function updateChart() {
-  const instance = riskChart.value
-  if (!instance) return
-  instance.setOption(buildOption(), { notMerge: true })
-}
-
-watch(() => props.selectedMetrics, updateChart, { deep: true })
-watch(() => props.metricsHistory, updateChart, { deep: true })
-
-let resizeHandler: (() => void) | null = null
-
-onMounted(() => {
-  initRiskChart()
-  resizeHandler = () => riskChart.value?.resize()
-  window.addEventListener('resize', resizeHandler)
 })
 
-onUnmounted(() => {
-  if (resizeHandler) {
-    window.removeEventListener('resize', resizeHandler)
-    resizeHandler = null
-  }
-  riskChart.value?.dispose()
-  riskChart.value = null
-})
+useEcharts(chartRef, chartOptions)
 </script>
 
 <style scoped>

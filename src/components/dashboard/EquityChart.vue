@@ -8,8 +8,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { ref, computed } from 'vue'
+import type { EChartsCoreOption } from 'echarts/core'
+import { useEcharts } from '@/composables/useEcharts'
 import { useFormatting } from '@/composables/useFormatting'
 import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
@@ -18,8 +19,6 @@ const props = defineProps<{
 }>()
 
 const chartRef = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
-let resizeHandler: (() => void) | null = null
 
 const { formatCurrency } = useFormatting()
 
@@ -30,53 +29,11 @@ interface TooltipAxisParam {
   color: string
 }
 
-function initChart() {
-  if (!chartRef.value) return
-  chart = echarts.init(chartRef.value)
-
+const chartOptions = computed<EChartsCoreOption>(() => {
   const theme = useChartTheme().palette.value
 
-  if (props.equityHistory && props.equityHistory.length > 0) {
-    const lineColor = getChartSeriesColors().blue
-    const dates = props.equityHistory.map(([d]) =>
-      new Date(d).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
-    )
-    const values = props.equityHistory.map(([, v]) => v)
-    chart.setOption({
-      tooltip: {
-        trigger: 'axis',
-        formatter: (rawParams: object | object[]) => {
-          const params = (Array.isArray(rawParams) ? rawParams : [rawParams]) as unknown as TooltipAxisParam[]
-          return `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`
-        },
-      },
-      xAxis: {
-        type: 'category',
-        data: dates,
-        axisLabel: { color: theme.axisLabel },
-        axisLine: { lineStyle: { color: theme.axisLabel } },
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          color: theme.axisLabel,
-          formatter: (v: number) => (v / 10000).toFixed(0) + '万',
-        },
-        splitLine: { lineStyle: { color: theme.splitLine } },
-      },
-      series: [
-        {
-          data: values,
-          type: 'line',
-          smooth: true,
-          areaStyle: {},
-          lineStyle: { width: 3 },
-          itemStyle: { color: lineColor },
-        },
-      ],
-    })
-  } else {
-    chart.setOption({
+  if (!props.equityHistory || props.equityHistory.length === 0) {
+    return {
       graphic: {
         elements: [{
           type: 'text',
@@ -86,28 +43,51 @@ function initChart() {
           top: 'middle',
         }],
       },
-    })
+    }
   }
 
-  if (resizeHandler) window.removeEventListener('resize', resizeHandler)
-  resizeHandler = () => chart?.resize()
-  window.addEventListener('resize', resizeHandler)
-}
+  const lineColor = getChartSeriesColors().blue
+  const dates = props.equityHistory.map(([d]) =>
+    new Date(d).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
+  )
+  const values = props.equityHistory.map(([, v]) => v)
 
-watch(() => props.equityHistory, () => {
-  nextTick(() => initChart())
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (rawParams: object | object[]) => {
+        const params = (Array.isArray(rawParams) ? rawParams : [rawParams]) as unknown as TooltipAxisParam[]
+        return `${params[0].axisValue}<br/>¥${formatCurrency(params[0].value)}`
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLabel: { color: theme.axisLabel },
+      axisLine: { lineStyle: { color: theme.axisLabel } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        color: theme.axisLabel,
+        formatter: (v: number) => (v / 10000).toFixed(0) + '万',
+      },
+      splitLine: { lineStyle: { color: theme.splitLine } },
+    },
+    series: [
+      {
+        data: values,
+        type: 'line',
+        smooth: true,
+        areaStyle: {},
+        lineStyle: { width: 3 },
+        itemStyle: { color: lineColor },
+      },
+    ],
+  }
 })
 
-onMounted(() => {
-  nextTick(() => initChart())
-})
-
-onUnmounted(() => {
-  if (resizeHandler) window.removeEventListener('resize', resizeHandler)
-  resizeHandler = null
-  chart?.dispose()
-  chart = null
-})
+useEcharts(chartRef, chartOptions)
 </script>
 
 <style scoped>

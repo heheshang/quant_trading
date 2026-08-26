@@ -31,8 +31,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
-import * as echarts from 'echarts'
+import { ref, computed } from 'vue'
+import type { EChartsCoreOption } from 'echarts/core'
+import { useEcharts } from '@/composables/useEcharts'
 import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
 
 const props = defineProps<{
@@ -45,7 +46,6 @@ const emit = defineEmits<{
 }>()
 
 const chartRef = ref<HTMLElement | null>(null)
-const chart = shallowRef<echarts.ECharts | null>(null)
 
 const metricLabels: Record<string, string> = {
   orders_total: '总订单数',
@@ -68,7 +68,7 @@ function seriesColor(index: number): string {
   return colors[key] || '#409eff'
 }
 
-function buildOption(): echarts.EChartsCoreOption {
+const chartOptions = computed<EChartsCoreOption>(() => {
   const theme = useChartTheme().palette.value
   const hasData = props.metricsHistory.length > 0
 
@@ -150,41 +150,9 @@ function buildOption(): echarts.EChartsCoreOption {
     yAxis,
     series,
   }
-}
-
-function initChart() {
-  if (!chartRef.value) return
-  chart.value?.dispose()
-  chart.value = echarts.init(chartRef.value)
-  chart.value.setOption(buildOption(), { notMerge: true })
-}
-
-function updateChart() {
-  const instance = chart.value
-  if (!instance) return
-  instance.setOption(buildOption(), { notMerge: true })
-}
-
-watch(() => props.selectedMetrics, updateChart, { deep: true })
-watch(() => props.metricsHistory, updateChart, { deep: true })
-
-let resizeObserver: ResizeObserver | null = null
-
-onMounted(() => {
-  initChart()
-  if (chartRef.value) {
-    resizeObserver = new ResizeObserver(() => {
-      chart.value?.resize()
-    })
-    resizeObserver.observe(chartRef.value)
-  }
 })
 
-onUnmounted(() => {
-  resizeObserver?.disconnect()
-  chart.value?.dispose()
-  chart.value = null
-})
+useEcharts(chartRef, chartOptions)
 </script>
 
 <style scoped>

@@ -5,8 +5,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { ref, computed, nextTick } from 'vue'
+import type { EChartsCoreOption } from 'echarts/core'
+import { useEcharts } from '@/composables/useEcharts'
 import type { BacktestResult } from '@/services/types'
 import { useFormatting } from '@/composables/useFormatting'
 import { useChartTheme, getChartSeriesColors } from '@/composables/useChartTheme'
@@ -18,15 +19,9 @@ const props = defineProps<{
 const { formatCurrency } = useFormatting()
 
 const chartContainer = ref<HTMLDivElement | null>(null)
-let chartInstance: echarts.ECharts | null = null
-let initTimer: ReturnType<typeof setTimeout> | undefined
 
-function initChart() {
-  if (!chartContainer.value || !props.result) return
-
-  if (!chartInstance) {
-    chartInstance = echarts.getInstanceByDom(chartContainer.value) || echarts.init(chartContainer.value)
-  }
+const chartOptions = computed<EChartsCoreOption>(() => {
+  if (!props.result?.equity_curve) return {}
 
   const theme = useChartTheme().palette.value
   const lineColor = getChartSeriesColors().blue
@@ -34,7 +29,7 @@ function initChart() {
   const dates = curves.map(([date]) => new Date(date).toLocaleDateString('zh-CN'))
   const values = curves.map(([, value]) => value)
 
-  const option: echarts.EChartsOption = {
+  return {
     tooltip: {
       trigger: 'axis',
       formatter: (params: unknown) => {
@@ -68,36 +63,13 @@ function initChart() {
       },
     ],
   }
+})
 
-  chartInstance.setOption(option, true)
-}
-
-function scheduleInit() {
-  if (initTimer) clearTimeout(initTimer)
-  initTimer = setTimeout(() => {
-    initChart()
-  }, 100)
-}
+const { resize } = useEcharts(chartContainer, chartOptions)
 
 function refresh() {
-  nextTick(() => scheduleInit())
+  nextTick(resize)
 }
-
-watch(
-  () => props.result,
-  (newVal) => {
-    if (newVal) {
-      nextTick(() => scheduleInit())
-    }
-  },
-  { deep: false },
-)
-
-onUnmounted(() => {
-  chartInstance?.dispose()
-  chartInstance = null
-  if (initTimer) clearTimeout(initTimer)
-})
 
 defineExpose({ refresh })
 </script>

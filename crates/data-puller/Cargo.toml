@@ -13,11 +13,9 @@ data-layer = { path = "../data-layer" }
 tokio = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }
-serde = { workspace = true }
 async-trait = "0.1"
 serde_json = { workspace = true }
 tracing = { workspace = true }
-futures = { workspace = true }
 
 [lints]
 workspace = true

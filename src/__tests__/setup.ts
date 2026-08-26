@@ -64,23 +64,26 @@ class MockResizeObserver {
 }
 globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
-// Mock echarts
-vi.mock('echarts', () => {
-  const mockECharts = {
-    setOption: vi.fn(),
-    dispose: vi.fn(),
-    getInstanceByDom: vi.fn(),
-    on: vi.fn(),
-    off: vi.fn(),
-    resize: vi.fn(),
-    clear: vi.fn(),
-  }
-  return {
-    init: vi.fn().mockReturnValue(mockECharts),
-    getInstanceByDom: vi.fn().mockReturnValue(mockECharts),
-    default: { init: vi.fn().mockReturnValue(mockECharts) },
-  }
+// Mock echarts — 'echarts' and 'echarts/core' share a single mock instance
+// so assertions on either entry point observe the same chart object.
+const mockEChartsInstance = {
+  setOption: vi.fn(),
+  dispose: vi.fn(),
+  getInstanceByDom: vi.fn(),
+  on: vi.fn(),
+  off: vi.fn(),
+  resize: vi.fn(),
+  clear: vi.fn(),
+}
+const mockEChartsInit = vi.fn().mockReturnValue(mockEChartsInstance)
+const echartsMockFactory = () => ({
+  init: mockEChartsInit,
+  getInstanceByDom: vi.fn().mockReturnValue(mockEChartsInstance),
+  use: vi.fn(),
+  default: { init: mockEChartsInit },
 })
+vi.mock('echarts', () => echartsMockFactory())
+vi.mock('echarts/core', () => echartsMockFactory())
 
 // Mock Element Plus
 vi.mock('element-plus', () => ({

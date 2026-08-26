@@ -21,9 +21,6 @@ pub use market_import::{ImportBatch, ImportOpts, MarketImporter, MarketSink};
 /// Calls `f()` up to `max_attempts` times. Between attempts, sleeps for
 /// `2^(attempt-1)` seconds (1s, 2s, 4s, ...). Logs a warning on each failed
 /// attempt and an error when all attempts are exhausted.
-/// Calls `f()` up to `max_attempts` times. Between attempts, sleeps for
-/// `2^(attempt-1)` seconds (1s, 2s, 4s, ...). Logs a warning on each failed
-/// attempt and an error when all attempts are exhausted.
 async fn api_call_with_retry<F, Fut, T>(operation: &str, max_attempts: usize, f: F) -> Result<T>
 where
     F: Fn() -> Fut,

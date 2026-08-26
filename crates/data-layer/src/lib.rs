@@ -9,9 +9,9 @@ pub use binance_source::BinanceDataSource;
 pub use live_trades_repo::{LiveTrade, LiveTradesRepository};
 pub use market_data_repo::{
     AccountSnapshotRecord, BalanceRecord, FundingRateRecord, LastPriceRecord, MarkPriceRecord,
-    MarketDataRecord, MarketDataRepository, NewAccountSnapshot, NewBalance, NewFundingRate,
-    NewLastPrice, NewMarkPrice, NewMarketDataRecord, NewOrderbookSnapshot, NewPositionSnapshot,
-    NewStreamTrade, NewTickerSnapshot, OrderbookSnapshotRecord, PositionSnapshotRecord,
-    StreamTradeRecord, TickerSnapshotRecord,
+    MarketDataRecord, MarketDataRepository, NewAccountSnapshot, NewBalance, NewLastPrice,
+    NewMarketDataRecord, NewOrderbookSnapshot, NewPositionSnapshot, NewStreamTrade,
+    NewTickerSnapshot, OrderbookSnapshotRecord, PositionSnapshotRecord, StreamTradeRecord,
+    TickerSnapshotRecord,
 };
 pub use postgres::PostgresClient;

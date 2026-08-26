@@ -12,24 +12,18 @@ exchange-binance = { path = "../exchange-binance" }
 # Workspace dependencies
 tokio = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 chrono = { workspace = true }
-uuid = { workspace = true }
 rust_decimal = { workspace = true, features = ["maths"] }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 
 # Database
 sqlx = { workspace = true }
 
 # Data processing
-csv = { workspace = true }
 async-trait = "0.1"
 
 [dev-dependencies]
 rust_decimal_macros = "1.36"
-dotenv = "0.15"
 
 [lints]
 workspace = true

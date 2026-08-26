@@ -24,6 +24,7 @@ export function useEcharts(
 ) {
   const instance = ref<echarts.ECharts | null>(null)
   const isReady = ref(false)
+  let resizeObserver: ResizeObserver | null = null
 
   function init() {
     if (!elRef.value) return
@@ -33,6 +34,14 @@ export function useEcharts(
     })
     instance.value.setOption(options.value)
     isReady.value = true
+    observeResize()
+  }
+
+  function observeResize() {
+    if (!elRef.value || typeof ResizeObserver === 'undefined') return
+    resizeObserver?.disconnect()
+    resizeObserver = new ResizeObserver(() => instance.value?.resize())
+    resizeObserver.observe(elRef.value)
   }
 
   function resize() {
@@ -40,6 +49,8 @@ export function useEcharts(
   }
 
   function dispose() {
+    resizeObserver?.disconnect()
+    resizeObserver = null
     if (instance.value) {
       instance.value.dispose()
       instance.value = null

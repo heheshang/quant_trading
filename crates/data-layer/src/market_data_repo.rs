@@ -175,75 +175,6 @@ impl MarketDataRepository {
         Ok(total)
     }
 
-    /// Upsert a single kline (live bar updates in place; closed bars finalize).
-    ///
-    /// Remote WS import path: the same bar (instrument_id+timeframe+timestamp)
-    /// is emitted repeatedly while it forms, so `DO UPDATE` keeps the latest
-    /// OHLC. Requires the row in a partition covering `timestamp`.
-    #[instrument(skip(self))]
-    pub async fn upsert_kline(&self, item: &NewMarketDataRecord) -> Result<u64> {
-        let rows_affected = sqlx::query(
-            r#"
-            INSERT INTO market_data (instrument_id, timeframe, timestamp, open, high, low, close, volume)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (instrument_id, timeframe, timestamp) DO UPDATE SET
-                open = EXCLUDED.open,
-                high = EXCLUDED.high,
-                low = EXCLUDED.low,
-                close = EXCLUDED.close,
-                volume = EXCLUDED.volume
-            "#,
-        )
-        .bind(&item.instrument_id)
-        .bind(&item.timeframe)
-        .bind(item.timestamp)
-        .bind(item.open)
-        .bind(item.high)
-        .bind(item.low)
-        .bind(item.close)
-        .bind(item.volume)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to upsert market_data kline: {}", e)))?;
-        Ok(rows_affected.rows_affected() as u64)
-    }
-
-    /// Upsert the latest ticker snapshot (`ON CONFLICT (instrument_id, ts)`).
-    ///
-    /// Remote WS import path: ts is snapped to the minute by the caller so each
-    /// instrument has at most one row per minute that is updated in place,
-    /// avoiding unbounded row growth from the high-frequency ticker stream.
-    #[instrument(skip(self))]
-    pub async fn upsert_ticker_snapshot(&self, item: &NewTickerSnapshot) -> Result<u64> {
-        let rows_affected = sqlx::query(
-            r#"
-            INSERT INTO ticker_snapshots (instrument_id, ts, last_px, open_24h, high_24h, low_24h, vol_24h, vol_ccy_24h, change_24h)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (instrument_id, ts) DO UPDATE SET
-                last_px = EXCLUDED.last_px,
-                open_24h = EXCLUDED.open_24h,
-                high_24h = EXCLUDED.high_24h,
-                low_24h = EXCLUDED.low_24h,
-                vol_24h = EXCLUDED.vol_24h,
-                vol_ccy_24h = EXCLUDED.vol_ccy_24h,
-                change_24h = EXCLUDED.change_24h
-            "#,
-        )
-        .bind(&item.instrument_id)
-        .bind(item.ts)
-        .bind(item.last_px)
-        .bind(item.open_24h)
-        .bind(item.high_24h)
-        .bind(item.low_24h)
-        .bind(item.vol_24h)
-        .bind(item.vol_ccy_24h)
-        .bind(item.change_24h)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to upsert ticker_snapshot: {}", e)))?;
-        Ok(rows_affected.rows_affected() as u64)
-    }
-
     /// Upsert a batch of klines in a single transaction (live forming-bar updates).
     ///
     /// Batching collapses the high-frequency per-message round-trips into one
@@ -490,32 +421,6 @@ impl MarketDataRepository {
         Ok(rows.into_iter().map(|(s,)| s).collect())
     }
 
-    /// Insert a single ticker snapshot record
-    #[instrument(skip(self))]
-    pub async fn insert_ticker_snapshot(&self, item: &NewTickerSnapshot) -> Result<u64> {
-        let rows_affected = sqlx::query(
-            r#"
-            INSERT INTO ticker_snapshots (instrument_id, ts, last_px, open_24h, high_24h, low_24h, vol_24h, vol_ccy_24h, change_24h)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT DO NOTHING
-            "#,
-        )
-        .bind(&item.instrument_id)
-        .bind(item.ts)
-        .bind(item.last_px)
-        .bind(item.open_24h)
-        .bind(item.high_24h)
-        .bind(item.low_24h)
-        .bind(item.vol_24h)
-        .bind(item.vol_ccy_24h)
-        .bind(item.change_24h)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to insert ticker_snapshot: {}", e)))?;
-
-        Ok(rows_affected.rows_affected() as u64)
-    }
-
     /// Insert a single account snapshot record
     #[instrument(skip(self))]
     pub async fn insert_account_snapshot(&self, item: &NewAccountSnapshot) -> Result<u64> {
@@ -563,48 +468,6 @@ impl MarketDataRepository {
         Ok(rows_affected.rows_affected() as u64)
     }
 
-    /// Insert a single funding rate record
-    #[instrument(skip(self))]
-    pub async fn insert_funding_rate(&self, item: &NewFundingRate) -> Result<u64> {
-        let rows_affected = sqlx::query(
-            r#"
-            INSERT INTO funding_rates (inst_id, ts, funding_rate, next_funding_rate, funding_time)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT DO NOTHING
-            "#,
-        )
-        .bind(&item.inst_id)
-        .bind(item.ts)
-        .bind(item.funding_rate)
-        .bind(item.next_funding_rate)
-        .bind(item.funding_time)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to insert funding_rate: {}", e)))?;
-
-        Ok(rows_affected.rows_affected() as u64)
-    }
-
-    /// Insert a single mark price record
-    #[instrument(skip(self))]
-    pub async fn insert_mark_price(&self, item: &NewMarkPrice) -> Result<u64> {
-        let rows_affected = sqlx::query(
-            r#"
-            INSERT INTO mark_prices (inst_id, ts, mark_px, idx_px)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT DO NOTHING
-            "#,
-        )
-        .bind(&item.inst_id)
-        .bind(item.ts)
-        .bind(item.mark_px)
-        .bind(item.idx_px)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to insert mark_price: {}", e)))?;
-
-        Ok(rows_affected.rows_affected() as u64)
-    }
     /// Query ticker snapshots by instrument, optional time range, newest first.
     #[instrument(skip(self), fields(instrument_id = %instrument_id, from = ?from, to = ?to))]
     pub async fn query_ticker_snapshots(
@@ -759,48 +622,6 @@ impl MarketDataRepository {
         .await
         .map_err(|e| Error::Database(format!("Failed to query mark_prices: {}", e)))?;
         Ok(records)
-    }
-
-    /// Append a stream trade (remote WS `@trade`).
-    #[instrument(skip(self), fields(symbol = %item.symbol))]
-    pub async fn insert_stream_trade(&self, item: &NewStreamTrade) -> Result<u64> {
-        let r = sqlx::query(
-            r#"
-            INSERT INTO stream_trades (symbol, price, quantity, trade_time, is_buyer_maker)
-            VALUES ($1, $2, $3, $4, $5)
-            "#,
-        )
-        .bind(&item.symbol)
-        .bind(item.price)
-        .bind(item.quantity)
-        .bind(item.trade_time)
-        .bind(item.is_buyer_maker)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to insert stream_trade: {}", e)))?;
-        Ok(r.rows_affected() as u64)
-    }
-
-    /// Upsert the latest orderbook snapshot per symbol (remote WS `@depth`).
-    #[instrument(skip(self), fields(symbol = %item.symbol))]
-    pub async fn upsert_orderbook_snapshot(&self, item: &NewOrderbookSnapshot) -> Result<u64> {
-        let r = sqlx::query(
-            r#"
-            INSERT INTO orderbook_snapshots (symbol, bids, asks, ts)
-            VALUES ($1, $2, $3, now())
-            ON CONFLICT (symbol) DO UPDATE SET
-                bids = EXCLUDED.bids,
-                asks = EXCLUDED.asks,
-                ts = now()
-            "#,
-        )
-        .bind(&item.symbol)
-        .bind(&item.bids)
-        .bind(&item.asks)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| Error::Database(format!("Failed to upsert orderbook_snapshot: {}", e)))?;
-        Ok(r.rows_affected() as u64)
     }
 
     /// Latest N stream trades for a symbol (newest first), read from DB.
@@ -969,23 +790,6 @@ pub struct NewPositionSnapshot {
     pub upl: Option<Decimal>,
     pub upl_ratio: Option<Decimal>,
     pub mark_px: Option<Decimal>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewFundingRate {
-    pub inst_id: String,
-    pub ts: DateTime<Utc>,
-    pub funding_rate: Option<Decimal>,
-    pub next_funding_rate: Option<Decimal>,
-    pub funding_time: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewMarkPrice {
-    pub inst_id: String,
-    pub ts: DateTime<Utc>,
-    pub mark_px: Option<Decimal>,
-    pub idx_px: Option<Decimal>,
 }
 
 #[derive(Debug, Clone)]
