@@ -2,9 +2,9 @@
 
 use super::*;
 use async_trait::async_trait;
+use data_layer::{RepoError, StrategyStats, StrategySummaryRow};
 use mockall::mock;
 use quant_common::config::SchedulerConfig;
-use data_layer::{RepoError, StrategyStats, StrategySummaryRow};
 use rust_decimal::prelude::FromPrimitive;
 
 fn make_service_no_db() -> StrategyService {
@@ -604,40 +604,230 @@ async fn test_list_strategies_page_size_max() {
 
 // ── save_strategy ─────────────────────────────────────────────────────────
 
-#[tokio::test]
-async fn test_save_strategy_existing_calls_update() {
-    let mut mock_repo = MockStrategyRepo::new();
+struct SavingStrategyRepo {
+    state: parking_lot::Mutex<Option<StrategyParams>>,
+    reads: Option<tokio::sync::Barrier>,
+}
 
-    let existing = mock_strategy_params(StrategyStatus::Draft);
-    mock_repo
-        .expect_find_by_id()
-        .withf(|s: &str| s == "test_001")
-        .returning(|_| Ok(Some(mock_strategy_params(StrategyStatus::Draft))));
-    mock_repo.expect_update().returning(|_| Ok(true));
+impl SavingStrategyRepo {
+    fn new(strategy: Option<StrategyParams>, concurrent: bool) -> Self {
+        Self {
+            state: parking_lot::Mutex::new(strategy),
+            reads: concurrent.then(|| tokio::sync::Barrier::new(2)),
+        }
+    }
+}
 
-    let svc = make_mock_service(mock_repo, false);
-    let result = svc.save_strategy(&existing).await;
+#[async_trait]
+impl StRepo for SavingStrategyRepo {
+    async fn find_by_id(&self, _: &str) -> Result<Option<StrategyParams>, RepoError> {
+        let snapshot = self.state.lock().clone();
+        if let Some(reads) = &self.reads {
+            // Both requests must observe the same version (or absence) before either writes.
+            reads.wait().await;
+        }
+        Ok(snapshot)
+    }
 
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "test_001");
+    async fn insert(&self, params: &StrategyParams) -> Result<i32, RepoError> {
+        let mut state = self.state.lock();
+        if state.is_some() {
+            return Err(RepoError::VersionConflict {
+                entity: "strategy",
+                id: params.strategy_id.clone(),
+                version: 0,
+            });
+        }
+        *state = Some(params.clone());
+        Ok(1)
+    }
+
+    async fn update(&self, params: &StrategyParams) -> Result<bool, RepoError> {
+        let mut state = self.state.lock();
+        let Some(current) = state.as_ref() else {
+            return Ok(false);
+        };
+        let mut updated = params.clone();
+        updated.version = current.version + 1;
+        *state = Some(updated);
+        Ok(true)
+    }
+
+    async fn update_with_version(
+        &self,
+        _: &str,
+        params: &StrategyParams,
+        expected_version: i64,
+    ) -> Result<bool, RepoError> {
+        let mut state = self.state.lock();
+        if state.as_ref().map(|current| current.version) != Some(expected_version) {
+            return Ok(false);
+        }
+        let mut updated = params.clone();
+        updated.version = expected_version + 1;
+        *state = Some(updated);
+        Ok(true)
+    }
+
+    async fn find_all(
+        &self,
+        _: Option<&str>,
+        _: Option<StrategyType>,
+        _: Option<StrategyStatus>,
+        _: Option<bool>,
+        _: i64,
+        _: i64,
+    ) -> Result<(Vec<StrategySummaryRow>, i64), RepoError> {
+        unreachable!("save tests do not list strategies")
+    }
+
+    async fn count(
+        &self,
+        _: Option<&str>,
+        _: Option<StrategyType>,
+        _: Option<StrategyStatus>,
+        _: Option<bool>,
+    ) -> Result<i64, RepoError> {
+        unreachable!("save tests do not count strategies")
+    }
+
+    async fn delete_by_id(&self, _: &str) -> Result<bool, RepoError> {
+        unreachable!("save tests do not delete strategies")
+    }
+
+    async fn update_status(
+        &self,
+        _: &str,
+        _: StrategyStatus,
+        _: Option<&str>,
+    ) -> Result<bool, RepoError> {
+        unreachable!("save tests do not change lifecycle status")
+    }
+
+    async fn update_status_if(
+        &self,
+        _: &str,
+        _: StrategyStatus,
+        _: StrategyStatus,
+        _: Option<&str>,
+    ) -> Result<bool, RepoError> {
+        unreachable!("save tests do not change lifecycle status")
+    }
+
+    async fn stats(&self) -> Result<StrategyStats, RepoError> {
+        unreachable!("save tests do not query statistics")
+    }
 }
 
 #[tokio::test]
-async fn test_save_strategy_new_calls_insert() {
-    let mut mock_repo = MockStrategyRepo::new();
+async fn test_save_strategy_concurrent_updates_preserve_winner() {
+    let mut existing = mock_strategy_params(StrategyStatus::Draft);
+    existing.version = 7;
+    let repo = Arc::new(SavingStrategyRepo::new(Some(existing.clone()), true));
+    let svc = StrategyService::new(None, None, None, Some(repo.clone()), None);
+    let mut first = existing.clone();
+    first.strategy_name = "First edit".into();
+    let mut second = existing;
+    second.strategy_name = "Second edit".into();
 
-    let new_strategy = mock_strategy_params(StrategyStatus::Draft);
-    mock_repo
-        .expect_find_by_id()
-        .withf(|s: &str| s == "test_001")
-        .returning(|_| Ok(None));
-    mock_repo.expect_insert().returning(|_| Ok(1));
+    let (a, b) = tokio::join!(svc.save_strategy(&first), svc.save_strategy(&second));
 
-    let svc = make_mock_service(mock_repo, false);
-    let result = svc.save_strategy(&new_strategy).await;
+    let winner = match (a, b) {
+        (Ok(id), Err(ServiceError::Conflict(_))) if id == first.strategy_id => first,
+        (Err(ServiceError::Conflict(_)), Ok(id)) if id == second.strategy_id => second,
+        outcomes => panic!("expected one successful save and one conflict: {outcomes:?}"),
+    };
+    let stored = repo.state.lock();
+    let stored = stored.as_ref().unwrap();
+    assert_eq!(stored.strategy_name, winner.strategy_name);
+    assert_eq!(stored.version, 8);
+}
 
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "test_001");
+#[tokio::test]
+async fn test_save_strategy_concurrent_inserts_preserve_winner() {
+    let repo = Arc::new(SavingStrategyRepo::new(None, true));
+    let svc = StrategyService::new(None, None, None, Some(repo.clone()), None);
+    let mut first = mock_strategy_params(StrategyStatus::Draft);
+    first.strategy_name = "First insert".into();
+    let mut second = first.clone();
+    second.strategy_name = "Second insert".into();
+
+    let (a, b) = tokio::join!(svc.save_strategy(&first), svc.save_strategy(&second));
+
+    let winner = match (a, b) {
+        (Ok(_), Err(ServiceError::Conflict(_))) => first,
+        (Err(ServiceError::Conflict(_)), Ok(_)) => second,
+        outcomes => panic!("expected one successful insert and one conflict: {outcomes:?}"),
+    };
+    assert_eq!(
+        repo.state.lock().as_ref().unwrap().strategy_name,
+        winner.strategy_name
+    );
+}
+
+#[tokio::test]
+async fn test_save_and_update_strategy_share_version_guard() {
+    let mut existing = mock_strategy_params(StrategyStatus::Draft);
+    existing.version = 3;
+    let repo = Arc::new(SavingStrategyRepo::new(Some(existing.clone()), true));
+    let svc = StrategyService::new(None, None, None, Some(repo.clone()), None);
+    let mut save = existing.clone();
+    save.strategy_name = "Saved edit".into();
+    let mut update = existing;
+    update.strategy_name = "Updated edit".into();
+
+    let (a, b) = tokio::join!(svc.save_strategy(&save), svc.update_strategy(&update));
+
+    let winner = match (a, b) {
+        (Ok(_), Err(ServiceError::Conflict(_))) => save,
+        (Err(ServiceError::Conflict(_)), Ok(_)) => update,
+        outcomes => panic!("expected one successful write and one conflict: {outcomes:?}"),
+    };
+    let stored = repo.state.lock();
+    let stored = stored.as_ref().unwrap();
+    assert_eq!(stored.strategy_name, winner.strategy_name);
+    assert_eq!(stored.version, 4);
+}
+
+#[tokio::test]
+async fn test_save_strategy_persists_defaults_without_overwriting_user_parameters() {
+    let existing = mock_strategy_params(StrategyStatus::Draft);
+    let repo = Arc::new(SavingStrategyRepo::new(Some(existing.clone()), false));
+    let mut svc = StrategyService::new(None, None, None, Some(repo.clone()), None);
+    svc.set_registry(Arc::new(strategy_engine::registry::default_registry()));
+
+    svc.save_strategy(&existing).await.unwrap();
+    let mut saved = svc
+        .strategy_repo
+        .as_ref()
+        .unwrap()
+        .find_by_id(&existing.strategy_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.params["lookback_period"], serde_json::json!(20));
+    assert_eq!(saved.params["entry_threshold"], serde_json::json!(2.0));
+    assert_eq!(saved.params["exit_threshold"], serde_json::json!(0.5));
+
+    saved.params["lookback_period"] = serde_json::json!(50);
+    saved.params["entry_threshold"] = serde_json::json!(3.0);
+    saved
+        .params
+        .as_object_mut()
+        .unwrap()
+        .remove("exit_threshold");
+    svc.save_strategy(&saved).await.unwrap();
+    let saved = svc
+        .strategy_repo
+        .as_ref()
+        .unwrap()
+        .find_by_id(&existing.strategy_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.params["lookback_period"], serde_json::json!(50));
+    assert_eq!(saved.params["entry_threshold"], serde_json::json!(3.0));
+    assert_eq!(saved.params["exit_threshold"], serde_json::json!(0.5));
 }
 
 // ── create_strategy with defaults ──────────────────────────────────────
@@ -725,91 +915,6 @@ async fn test_create_strategy_rejects_unregistered_type() {
             unregistered
         );
     }
-}
-
-// ── save_strategy update path with defaults ─────────────────────────────────
-
-#[tokio::test]
-async fn test_save_strategy_update_fills_defaults() {
-    let mut mock_repo = MockStrategyRepo::new();
-
-    // Existing strategy with empty params
-    let existing = StrategyParams::builder(
-        "test_001".to_string(),
-        "Test".to_string(),
-        StrategyType::MeanReversion,
-    )
-    .params(serde_json::json!({}))
-    .max_position(Decimal::from(10000))
-    .max_daily_loss(Decimal::from(500))
-    .build();
-
-    let existing_for_mock = existing.clone();
-    mock_repo
-        .expect_find_by_id()
-        .withf(|s: &str| s == "test_001")
-        .returning(move |_| Ok(Some(existing_for_mock.clone())));
-
-    // The update should receive params with schema defaults filled
-    mock_repo
-        .expect_update()
-        .withf(|params: &StrategyParams| {
-            params.params.get("lookback_period") == Some(&serde_json::json!(20))
-                && params.params.get("entry_threshold") == Some(&serde_json::json!(2.0))
-                && params.params.get("exit_threshold") == Some(&serde_json::json!(0.5))
-        })
-        .returning(|_| Ok(true));
-
-    let mut svc = make_mock_service(mock_repo, false);
-    let registry = Arc::new(strategy_engine::registry::default_registry());
-    svc.set_registry(registry);
-
-    let result = svc.save_strategy(&existing).await;
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "test_001");
-}
-
-#[tokio::test]
-async fn test_save_strategy_update_preserves_existing_params() {
-    let mut mock_repo = MockStrategyRepo::new();
-
-    // Existing strategy with some params already set
-    let existing = StrategyParams::builder(
-        "test_001".to_string(),
-        "Test".to_string(),
-        StrategyType::MeanReversion,
-    )
-    .params(serde_json::json!({
-        "lookback_period": 50,
-        "entry_threshold": 3.0,
-    }))
-    .max_position(Decimal::from(10000))
-    .max_daily_loss(Decimal::from(500))
-    .build();
-
-    let existing_for_mock = existing.clone();
-    mock_repo
-        .expect_find_by_id()
-        .withf(|s: &str| s == "test_001")
-        .returning(move |_| Ok(Some(existing_for_mock.clone())));
-
-    // Should keep user-provided values and only fill missing ones (exit_threshold)
-    mock_repo
-        .expect_update()
-        .withf(|params: &StrategyParams| {
-            params.params.get("lookback_period") == Some(&serde_json::json!(50))
-                && params.params.get("entry_threshold") == Some(&serde_json::json!(3.0))
-                && params.params.get("exit_threshold") == Some(&serde_json::json!(0.5))
-        })
-        .returning(|_| Ok(true));
-
-    let mut svc = make_mock_service(mock_repo, false);
-    let registry = Arc::new(strategy_engine::registry::default_registry());
-    svc.set_registry(registry);
-
-    let result = svc.save_strategy(&existing).await;
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "test_001");
 }
 
 // ── get_strategy_type_info ─────────────────────────────────────────────

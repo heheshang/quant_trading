@@ -61,7 +61,8 @@ pub async fn get_trades(
     state: State<'_, AppState>,
     symbol: String,
     limit: Option<i64>,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::StreamTradeRecord>>> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::StreamTradeRecord>>>
+{
     if let Err(e) = state.require_auth().await {
         return err_result(code::UNAUTHORIZED, e);
     }
@@ -80,14 +81,19 @@ pub async fn get_trades(
 pub async fn get_orderbook(
     state: State<'_, AppState>,
     symbol: String,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Option<data_layer::OrderbookSnapshotRecord>>> {
+) -> quant_common::api::ApiResult<
+    quant_common::api::ApiResponse<Option<data_layer::OrderbookSnapshotRecord>>,
+> {
     if let Err(e) = state.require_auth().await {
         return err_result(code::UNAUTHORIZED, e);
     }
     let Some(services) = state.app_services.as_ref() else {
         return err_result(code::NOT_INITIALIZED, "行情服务未初始化（无数据库连接）");
     };
-    let data = services.market_service.get_orderbook_from_db(&symbol).await?;
+    let data = services
+        .market_service
+        .get_orderbook_from_db(&symbol)
+        .await?;
     ok_result(data)
 }
 
@@ -110,7 +116,8 @@ pub async fn get_balances(
 #[tauri::command]
 pub async fn get_last_prices(
     state: State<'_, AppState>,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::LastPriceRecord>>> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<data_layer::LastPriceRecord>>>
+{
     if let Err(e) = state.require_auth().await {
         return err_result(code::UNAUTHORIZED, e);
     }

@@ -44,17 +44,25 @@ async fn main() -> anyhow::Result<()> {
     let repo = MarketDataRepository::new(pool);
 
     let symbol = env::var("BACKTEST_SYMBOL").unwrap_or_else(|_| "BTC-USDT".into());
-    let days: i64 = env::var("BACKTEST_DAYS").unwrap_or_else(|_| "30".into()).parse()?;
+    let days: i64 = env::var("BACKTEST_DAYS")
+        .unwrap_or_else(|_| "30".into())
+        .parse()?;
     let timeframe = env::var("BACKTEST_TIMEFRAME").unwrap_or_else(|_| "1H".into());
     let strategy_type = env::var("BACKTEST_STRATEGY").unwrap_or_else(|_| "TrendFollowing".into());
-    let initial: f64 = env::var("BACKTEST_CAPITAL").unwrap_or_else(|_| "10000".into()).parse()?;
+    let initial: f64 = env::var("BACKTEST_CAPITAL")
+        .unwrap_or_else(|_| "10000".into())
+        .parse()?;
 
     let end = Utc::now();
     let start = end - chrono::Duration::days(days);
     let records = repo
         .query_by_range(&symbol, &timeframe, start, end, Some(100_000))
         .await?;
-    println!("fetched {} candles for {} ({days}d, {timeframe})", records.len(), symbol);
+    println!(
+        "fetched {} candles for {} ({days}d, {timeframe})",
+        records.len(),
+        symbol
+    );
 
     if records.len() < 50 {
         println!("WARN: not enough candles (<50); backtest may be trivial");
@@ -78,8 +86,8 @@ async fn main() -> anyhow::Result<()> {
 
     let mut engine = strategy_layer::BacktestEngine::new(
         Decimal::from_f64_retain(initial).ok_or_else(|| anyhow::anyhow!("bad capital"))?,
-        Decimal::new(3, 4),  // 0.03% commission
-        Decimal::new(1, 4),  // 0.01% slippage
+        Decimal::new(3, 4), // 0.03% commission
+        Decimal::new(1, 4), // 0.01% slippage
     );
     let result = engine
         .run_with_options(&*strategy, market_data, Default::default())

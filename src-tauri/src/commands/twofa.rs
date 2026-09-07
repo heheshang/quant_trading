@@ -10,10 +10,16 @@ pub async fn enable_2fa(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<quant_services::Enable2faResult>> {
     use crate::commands::{auth_err, not_init_err};
     use quant_common::api::ok_result;
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
+    let user = state.require_auth().await.map_err(auth_err)?;
+    if user.user_id != user_id {
+        return Err(auth_err(
+            "Permission denied: 2FA belongs to another user".to_string(),
+        ));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let data = services.auth_service.enable_2fa(user_id).await?;
     ok_result(data)
 }
@@ -29,11 +35,20 @@ pub async fn verify_2fa_code(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
     use crate::commands::{auth_err, not_init_err};
     use quant_common::api::ok_result;
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
+    let user = state.require_auth().await.map_err(auth_err)?;
+    if user.user_id != user_id {
+        return Err(auth_err(
+            "Permission denied: 2FA belongs to another user".to_string(),
+        ));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let data = services.auth_service.verify_2fa_code(user_id, &code).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services
+        .auth_service
+        .verify_2fa_code(user_id, &code)
+        .await?;
     ok_result(data)
 }
 
@@ -47,10 +62,16 @@ pub async fn disable_2fa(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
     use crate::commands::{auth_err, not_init_err};
     use quant_common::api::ok_result;
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
+    let user = state.require_auth().await.map_err(auth_err)?;
+    if user.user_id != user_id {
+        return Err(auth_err(
+            "Permission denied: 2FA belongs to another user".to_string(),
+        ));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let data = services.auth_service.disable_2fa(user_id, &code).await?;
     ok_result(data)
 }

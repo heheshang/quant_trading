@@ -39,85 +39,112 @@ function makeLifecycleError(): Record<LifecycleKey, string | null> {
 export const useStrategyLifecycleStore = defineStore('strategyLifecycle', () => {
   const strategyStore = useStrategyStore()
   const error = reactive<Record<LifecycleKey, string | null>>(makeLifecycleError())
+  let generation = 0
 
   async function startStrategy(strategyId: string) {
+    const requestGeneration = generation
     error.start = null
     try {
       await apiStartStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await strategyStore.fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.start = '启动策略失败'
       throw err
     }
   }
 
   async function stopStrategy(strategyId: string) {
+    const requestGeneration = generation
     error.stop = null
     try {
       await apiStopStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await strategyStore.fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.stop = '停止策略失败'
       throw err
     }
   }
 
   async function pauseStrategy(strategyId: string) {
+    const requestGeneration = generation
     error.pause = null
     try {
       await apiPauseStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await strategyStore.fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.pause = '暂停策略失败'
       throw err
     }
   }
 
   async function resumeStrategy(strategyId: string) {
+    const requestGeneration = generation
     error.resume = null
     try {
       await apiResumeStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await strategyStore.fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.resume = '恢复策略失败'
       throw err
     }
   }
 
   async function deployStrategy(strategyId: string) {
+    const requestGeneration = generation
     error.deploy = null
     try {
       await apiDeployStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await strategyStore.fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.deploy = '部署策略失败'
       throw err
     }
   }
 
   async function archiveStrategy(strategyId: string) {
+    const requestGeneration = generation
     error.archive = null
     try {
       await apiArchiveStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await strategyStore.fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.archive = '归档策略失败'
       throw err
     }
   }
 
   async function toggleStrategy(strategyId: string, enabled: boolean) {
+    const requestGeneration = generation
     error.toggle = null
     try {
       await apiToggleStrategy(strategyId, enabled)
+      if (requestGeneration !== generation) return
       const found = strategyStore.strategies.find((s) => s.strategy_id === strategyId)
       if (found) {
         found.enabled = enabled
       }
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.toggle = '更新策略状态失败'
       throw err
     }
+  }
+
+  function reset() {
+    generation += 1
+    Object.assign(error, makeLifecycleError())
   }
 
   return {
@@ -129,5 +156,6 @@ export const useStrategyLifecycleStore = defineStore('strategyLifecycle', () => 
     deployStrategy,
     archiveStrategy,
     toggleStrategy,
+    reset,
   }
 })

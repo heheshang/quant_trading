@@ -136,9 +136,16 @@ impl Strategy for MeanReversionStrategy {
                 last_rsi = %last_rsi,
                 "Buy signal triggered: mean reversion entry"
             );
-            let quantity = super::net_quantity(context, &symbol, OrderSide::Buy, self.params.max_position, last_close);
+            let quantity = super::net_quantity(
+                context,
+                &symbol,
+                OrderSide::Buy,
+                self.params.max_position,
+                last_close,
+            );
             if quantity > Decimal::ZERO {
-                orders.push(Order { order_id: 0,
+                orders.push(Order {
+                    order_id: 0,
                     strategy_id: self.params.strategy_id.clone(),
                     symbol: symbol.clone(),
                     order_type: OrderType::Limit,
@@ -150,7 +157,9 @@ impl Strategy for MeanReversionStrategy {
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                     commission: Decimal::ZERO,
-                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+                    slippage: Decimal::ZERO,
+                    exchange: "paper".to_string(),
+                });
             }
         }
 
@@ -165,9 +174,16 @@ impl Strategy for MeanReversionStrategy {
                 last_rsi = %last_rsi,
                 "Sell signal triggered: mean reversion entry"
             );
-            let quantity = super::net_quantity(context, &symbol, OrderSide::Sell, self.params.max_position, last_close);
+            let quantity = super::net_quantity(
+                context,
+                &symbol,
+                OrderSide::Sell,
+                self.params.max_position,
+                last_close,
+            );
             if quantity > Decimal::ZERO {
-                orders.push(Order { order_id: 0,
+                orders.push(Order {
+                    order_id: 0,
                     strategy_id: self.params.strategy_id.clone(),
                     symbol: symbol.clone(),
                     order_type: OrderType::Limit,
@@ -179,7 +195,9 @@ impl Strategy for MeanReversionStrategy {
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                     commission: Decimal::ZERO,
-                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+                    slippage: Decimal::ZERO,
+                    exchange: "paper".to_string(),
+                });
             }
         }
 

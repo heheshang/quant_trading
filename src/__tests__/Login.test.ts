@@ -34,6 +34,7 @@ describe('Login.vue - 按钮测试', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'login') return 'test-token-123'
       if (cmd === 'verify_token') return true
+      if (cmd === 'get_user_profile') return { user_id: 41, username: 'admin' }
       return {}
     })
   })
@@ -157,6 +158,7 @@ describe('Login.vue - 按钮测试', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'login') return 'test-token-123'
       if (cmd === 'verify_token') return true
+      if (cmd === 'get_user_profile') return { user_id: 41, username: 'admin' }
       return {}
     })
 

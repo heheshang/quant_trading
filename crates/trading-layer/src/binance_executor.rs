@@ -6,7 +6,7 @@
 //! into [`OrderDetails`].
 //!
 //! Binance order responses carry no fee field, so [`OrderDetails::fee`] is
-//! surfaced as `Some(Zero)` and commission is resolved downstream.
+//! surfaced as `None` and commission is estimated downstream.
 
 use crate::live_exchange::{LiveExchange, OrderDetails};
 use exchange_binance::types::{
@@ -139,8 +139,8 @@ impl BinanceExecutor {
             avg_price,
             filled_quantity: o.executed_qty,
             status: Self::map_binance_status(&o.status).unwrap_or(OrderStatus::Filled),
-            // BinanceOrder 无 fee 字段：本阶段固定为 0，由下游按配置费率兜底估算。
-            fee: Some(Decimal::ZERO),
+            // BinanceOrder 无 fee 字段，由下游按配置费率估算。
+            fee: None,
         }
     }
 
@@ -213,19 +213,22 @@ mod tests {
         symbol: &str,
         price: Option<Decimal>,
     ) -> Order {
-        Order { order_id: 1001,
-        strategy_id: "test".to_string(),
-        symbol: symbol.to_string(),
-        order_type,
-        side,
-        price,
-        quantity: dec!(2),
-        filled_quantity: Decimal::ZERO,
-        status: OrderStatus::Submitted,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        commission: Decimal::ZERO,
-        slippage: Decimal::ZERO, exchange: "live".to_string(), }
+        Order {
+            order_id: 1001,
+            strategy_id: "test".to_string(),
+            symbol: symbol.to_string(),
+            order_type,
+            side,
+            price,
+            quantity: dec!(2),
+            filled_quantity: Decimal::ZERO,
+            status: OrderStatus::Submitted,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            commission: Decimal::ZERO,
+            slippage: Decimal::ZERO,
+            exchange: "live".to_string(),
+        }
     }
 
     fn make_executor(mock: MockBinanceClient) -> BinanceExecutor {
@@ -348,7 +351,7 @@ mod tests {
         assert_eq!(d.avg_price, dec!(10005)); // 20010 / 2
         assert_eq!(d.filled_quantity, dec!(2));
         assert_eq!(d.status, OrderStatus::Filled);
-        assert_eq!(d.fee, Some(Decimal::ZERO));
+        assert_eq!(d.fee, None);
     }
 
     #[tokio::test]

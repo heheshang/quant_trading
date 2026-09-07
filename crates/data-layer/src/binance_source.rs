@@ -5,8 +5,8 @@ use exchange_binance::types::{
 };
 use exchange_binance::ClientInterface;
 use quant_common::types::MarketData;
-use quant_common::Result;
 use quant_common::utils::datetime_from_millis_or_now;
+use quant_common::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::instrument;

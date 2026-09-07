@@ -54,12 +54,20 @@ pub mod code {
 impl<T> ApiResponse<T> {
     /// 成功响应。
     pub fn ok(data: T) -> Self {
-        Self { code: code::OK, message: "ok".to_string(), data: Some(data) }
+        Self {
+            code: code::OK,
+            message: "ok".to_string(),
+            data: Some(data),
+        }
     }
 
     /// 失败响应（携带业务码 + 真实错误信息）。
     pub fn err(code: i32, message: impl Into<String>) -> Self {
-        Self { code, message: message.into(), data: None }
+        Self {
+            code,
+            message: message.into(),
+            data: None,
+        }
     }
 }
 
@@ -68,7 +76,11 @@ pub type ApiEmpty = ApiResponse<serde_json::Value>;
 
 /// `() -> ApiEmpty`。
 pub fn ok_empty() -> ApiEmpty {
-    ApiResponse { code: code::OK, message: "ok".to_string(), data: Some(serde_json::Value::Null) }
+    ApiResponse {
+        code: code::OK,
+        message: "ok".to_string(),
+        data: Some(serde_json::Value::Null),
+    }
 }
 
 /// 命令失败载荷（Tauri `Result<_, ApiFailure>` 的 Err 序列化为 `{code,message}`）。
@@ -80,7 +92,10 @@ pub struct ApiFailure {
 
 impl ApiFailure {
     pub fn new(code: i32, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::error::{ServiceError, ServiceResult};
 use chrono::Utc;
-use quant_common::types::{Account, Order, OrderStatus, Position};
 use data_layer::PostgresClient;
+use quant_common::types::{Account, Order, OrderStatus, Position};
 use rust_decimal::Decimal;
 use sqlx::Row;
 use std::sync::Arc;
@@ -151,17 +151,19 @@ impl AccountService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let pool = client.pool();
-        sqlx::query(
-            "INSERT INTO account_snapshots (ccy, ts, eq) VALUES ('USDT', now(), $1)",
-        )
-        .bind(eq)
-        .execute(pool)
-        .await
-        .map_err(ServiceError::Database)?;
+        sqlx::query("INSERT INTO account_snapshots (ccy, ts, eq) VALUES ('USDT', now(), $1)")
+            .bind(eq)
+            .execute(pool)
+            .await
+            .map_err(ServiceError::Database)?;
         Ok(())
     }
 
-    pub async fn get_recent_orders(&self, limit: u32, exchange: Option<&str>) -> ServiceResult<Vec<Order>> {
+    pub async fn get_recent_orders(
+        &self,
+        limit: u32,
+        exchange: Option<&str>,
+    ) -> ServiceResult<Vec<Order>> {
         let client = self
             .postgres
             .as_ref()
@@ -238,16 +240,15 @@ impl AccountService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let pool = client.pool();
-        let row = sqlx::query(
-            "SELECT eq FROM account_snapshots WHERE ccy = $1 ORDER BY ts DESC LIMIT 1",
-        )
-        .bind(ccy)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to fetch latest equity: {}", e);
-            ServiceError::from(e)
-        })?;
+        let row =
+            sqlx::query("SELECT eq FROM account_snapshots WHERE ccy = $1 ORDER BY ts DESC LIMIT 1")
+                .bind(ccy)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| {
+                    error!("Failed to fetch latest equity: {}", e);
+                    ServiceError::from(e)
+                })?;
         Ok(row.and_then(|r| r.try_get::<Option<Decimal>, _>("eq").ok().flatten()))
     }
 
@@ -301,7 +302,8 @@ impl AccountService {
             return Ok(Decimal::ZERO);
         }
         let latest = today_eq.last().copied().unwrap_or(Decimal::ZERO);
-        let baseline = before_eq.unwrap_or_else(|| today_eq.first().copied().unwrap_or(Decimal::ZERO));
+        let baseline =
+            before_eq.unwrap_or_else(|| today_eq.first().copied().unwrap_or(Decimal::ZERO));
         Ok(latest - baseline)
     }
 
@@ -313,26 +315,23 @@ impl AccountService {
                 let otype_str: String = row.get("order_type");
                 let side_str: String = row.get("side");
 
-                let status =
-                    serde_json::from_value(serde_json::Value::String(status_str)).map_err(
-                        |e| ServiceError::Deserialization {
-                            field: "status",
-                            source: e,
-                        },
-                    )?;
-                let order_type =
-                    serde_json::from_value(serde_json::Value::String(otype_str)).map_err(
-                        |e| ServiceError::Deserialization {
-                            field: "order_type",
-                            source: e,
-                        },
-                    )?;
-                let side = serde_json::from_value(serde_json::Value::String(side_str)).map_err(
-                    |e| ServiceError::Deserialization {
-                        field: "side",
+                let status = serde_json::from_value(serde_json::Value::String(status_str))
+                    .map_err(|e| ServiceError::Deserialization {
+                        field: "status",
                         source: e,
-                    },
-                )?;
+                    })?;
+                let order_type = serde_json::from_value(serde_json::Value::String(otype_str))
+                    .map_err(|e| ServiceError::Deserialization {
+                        field: "order_type",
+                        source: e,
+                    })?;
+                let side =
+                    serde_json::from_value(serde_json::Value::String(side_str)).map_err(|e| {
+                        ServiceError::Deserialization {
+                            field: "side",
+                            source: e,
+                        }
+                    })?;
 
                 Ok(Order {
                     order_id: row.get("order_id"),
@@ -385,7 +384,6 @@ impl AccountService {
                                 price, quantity, filled_quantity, commission, slippage, status,
                                 exchange, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-            ON CONFLICT (order_id) DO NOTHING
             "#,
         )
         .bind(order.order_id)
@@ -410,15 +408,15 @@ impl AccountService {
         Ok(())
     }
 
-    /// Cancel an order persisted in the database (sets status to 'Cancelled').
     /// 订单执行完成回写终态（成交/部分成交等）；避免重启后 DB 停留在提交状态。
     #[instrument(skip(self), fields(order_id = %order_id, status = ?status))]
     pub async fn update_order_status(
         &self,
         order_id: i64,
+        exchange: &str,
         status: OrderStatus,
         filled_quantity: Decimal,
-        commission: Decimal,
+        commission: Option<Decimal>,
     ) -> ServiceResult<()> {
         let client = self
             .postgres
@@ -429,21 +427,44 @@ impl AccountService {
             .ok()
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| "Submitted".to_string());
-        sqlx::query(
+        let previous_status: Option<String> = sqlx::query_scalar(
             r#"
-            UPDATE orders
-            SET status = $1, filled_quantity = $2, commission = $3, updated_at = now()
-            WHERE order_id = $4
-              AND status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
+            WITH previous AS MATERIALIZED (
+                SELECT order_id, status FROM orders
+                WHERE order_id = $4 AND exchange = $5 FOR UPDATE
+            )
+            UPDATE orders AS target
+            SET status = $1, filled_quantity = $2, commission = COALESCE($3, target.commission), updated_at = now()
+            FROM previous
+            WHERE target.order_id = previous.order_id AND target.exchange = $5
+              AND (
+                  (target.status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
+                   AND target.filled_quantity <= $2 AND ($3 IS NULL OR target.commission <= $3))
+                  OR (target.status = $1 AND target.filled_quantity = $2 AND ($3 IS NULL OR target.commission = $3))
+              )
+            RETURNING previous.status
             "#,
         )
         .bind(&status_str)
         .bind(filled_quantity)
         .bind(commission)
         .bind(order_id)
-        .execute(pool)
+        .bind(exchange)
+        .fetch_optional(pool)
         .await
         .map_err(ServiceError::Database)?;
+        if previous_status.is_none() {
+            return Err(ServiceError::Conflict(format!(
+                "Order {} is absent or already terminal",
+                order_id
+            )));
+        }
+        if status == OrderStatus::Filled
+            && previous_status.as_deref() != Some("Filled")
+            && matches!(exchange, "paper" | "algorithm")
+        {
+            monitor_engine::MetricsCollector::inc_orders_filled();
+        }
         info!(order_id = %order_id, status = %status_str, "Order status updated in DB");
         Ok(())
     }
@@ -467,6 +488,7 @@ impl AccountService {
             SET status = 'Cancelled', updated_at = NOW()
             WHERE order_id = $1
               AND status NOT IN ('Filled', 'Cancelled', 'Rejected', 'Expired')
+              AND exchange IN ('paper', 'algorithm')
             "#,
         )
         .bind(order_id)
@@ -491,15 +513,18 @@ impl AccountService {
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
         let pool = client.pool();
+        let account_id = self.current_account_id().await?;
 
         let rows = sqlx::query(
             r#"
             SELECT symbol, quantity, available_quantity, avg_price,
                    market_value, unrealized_pnl, realized_pnl, updated_at
             FROM positions
+            WHERE account_id = $1
             ORDER BY market_value DESC
             "#,
         )
+        .bind(account_id)
         .fetch_all(pool)
         .await
         .map_err(|e| {
@@ -620,12 +645,12 @@ impl AccountService {
         Ok(())
     }
 
-    /// 纸面持仓：由 `orders` 表已成交单净额推导（买 − 卖），供纸面卖单风控校验。
+    /// 纸面持仓：由指定账户 paper/algorithm 的全部成交量推导，包括已撤单的部分成交。
     ///
     /// `positions` 表是静态账本，纸面成交不会更新它；为避免裸卖空误判，纸面
     /// 持仓需从真实成交记录聚合。
     #[instrument(skip_all)]
-    pub async fn get_paper_positions(&self) -> ServiceResult<Vec<Position>> {
+    pub async fn get_paper_positions(&self, account_id: i64) -> ServiceResult<Vec<Position>> {
         let client = self
             .postgres
             .as_ref()
@@ -639,10 +664,13 @@ impl AccountService {
                    SUM(CASE WHEN side = 'Buy' THEN COALESCE(price, 0) * filled_quantity ELSE 0 END) AS buy_cost,
                    SUM(CASE WHEN side = 'Buy' THEN filled_quantity ELSE 0 END) AS buy_qty
             FROM orders
-            WHERE status = 'Filled'
+            WHERE account_id = $1
+              AND exchange IN ('paper', 'algorithm')
+              AND filled_quantity > 0
             GROUP BY symbol
             "#,
         )
+        .bind(account_id)
         .fetch_all(pool)
         .await
         .map_err(|e| {

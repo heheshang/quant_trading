@@ -7,16 +7,16 @@
 
 use crate::types::*;
 use async_trait::async_trait;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
+use ed25519_dalek::pkcs8::DecodePrivateKey;
+use ed25519_dalek::{Signer as _, SigningKey};
 use hmac::{Hmac, Mac};
-use quant_common::{Error, Result};
 use quant_common::utils::{floor_to_step, now_millis, round_to_tick};
+use quant_common::{Error, Result};
 use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use sha2::Sha256;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine as _;
-use ed25519_dalek::{SigningKey, Signer as _};
-use ed25519_dalek::pkcs8::DecodePrivateKey;
 use std::collections::HashMap;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -73,7 +73,9 @@ impl SigningScheme {
                     .map_err(|e| Error::Config(format!("invalid Ed25519 private key: {e}")))?;
                 Ok(SigningScheme::Ed25519(key))
             }
-            other => Err(Error::Config(format!("unsupported BINANCE_KEY_TYPE: {other}"))),
+            other => Err(Error::Config(format!(
+                "unsupported BINANCE_KEY_TYPE: {other}"
+            ))),
         }
     }
 
@@ -195,10 +197,12 @@ impl Client {
             for filt in filters {
                 match filt.get("filterType").and_then(|t| t.as_str()) {
                     Some("LOT_SIZE") => {
-                        f.step_size =
-                            parse_decimal(filt.get("stepSize").and_then(|v| v.as_str()).unwrap_or("1"));
-                        f.min_qty =
-                            parse_decimal(filt.get("minQty").and_then(|v| v.as_str()).unwrap_or("0"));
+                        f.step_size = parse_decimal(
+                            filt.get("stepSize").and_then(|v| v.as_str()).unwrap_or("1"),
+                        );
+                        f.min_qty = parse_decimal(
+                            filt.get("minQty").and_then(|v| v.as_str()).unwrap_or("0"),
+                        );
                     }
                     Some("PRICE_FILTER") => {
                         f.tick_size = parse_decimal(
@@ -208,17 +212,17 @@ impl Client {
                         );
                     }
                     Some("NOTIONAL") | Some("MIN_NOTIONAL") => {
-                        f.min_notional =
-                            parse_decimal(filt.get("minNotional").and_then(|v| v.as_str()).unwrap_or("0"));
+                        f.min_notional = parse_decimal(
+                            filt.get("minNotional")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("0"),
+                        );
                     }
                     _ => {}
                 }
             }
         }
-        let _ = self
-            .filters
-            .write()
-            .insert(symbol.to_string(), f.clone());
+        let _ = self.filters.write().insert(symbol.to_string(), f.clone());
         f
     }
 
@@ -241,11 +245,14 @@ impl Client {
     {
         let mut attempt = 0usize;
         loop {
-            let resp = build().send().await.map_err(|e| Error::Network(e.to_string()))?;
+            let resp = build()
+                .send()
+                .await
+                .map_err(|e| Error::Network(e.to_string()))?;
             let status = resp.status();
             if status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::IM_A_TEAPOT {
-                let retry_after = Self::retry_after_secs(&resp)
-                    .unwrap_or_else(|| 1u64 << attempt.min(3));
+                let retry_after =
+                    Self::retry_after_secs(&resp).unwrap_or_else(|| 1u64 << attempt.min(3));
                 let banned = status == StatusCode::IM_A_TEAPOT;
                 if banned || attempt >= Self::RATE_LIMIT_MAX_RETRIES {
                     return Err(Error::RateLimited {

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::strategy::MeanReversionStrategy;
+use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 
 fn make_market_data(timestamp: DateTime<Utc>, close: Decimal, symbol: &str) -> MarketData {
@@ -46,19 +47,22 @@ fn make_order(
     price: Decimal,
     quantity: Decimal,
 ) -> Order {
-    Order { order_id: 0,
-    strategy_id: "test".to_string(),
-    symbol: symbol.to_string(),
-    order_type: quant_common::types::OrderType::Limit,
-    side,
-    price: Some(price),
-    quantity,
-    filled_quantity: Decimal::ZERO,
-    status: quant_common::types::OrderStatus::Pending,
-    created_at: Utc::now(),
-    updated_at: Utc::now(),
-    commission: Decimal::ZERO,
-    slippage: Decimal::ZERO, exchange: "paper".to_string(), }
+    Order {
+        order_id: 0,
+        strategy_id: "test".to_string(),
+        symbol: symbol.to_string(),
+        order_type: quant_common::types::OrderType::Limit,
+        side,
+        price: Some(price),
+        quantity,
+        filled_quantity: Decimal::ZERO,
+        status: quant_common::types::OrderStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: Decimal::ZERO,
+        slippage: Decimal::ZERO,
+        exchange: "paper".to_string(),
+    }
 }
 
 #[tokio::test]
@@ -324,4 +328,128 @@ async fn test_backtest_executes_at_next_bar_open() {
     assert_eq!(pos.avg_price, Decimal::from(111));
     assert_eq!(pos.quantity, Decimal::ONE);
     assert_eq!(result.total_trades, 1);
+}
+
+struct RoundTripStrategy {
+    params: quant_common::types::StrategyParams,
+}
+
+#[async_trait::async_trait]
+impl Strategy for RoundTripStrategy {
+    async fn initialize(&mut self, params: quant_common::types::StrategyParams) -> Result<()> {
+        self.params = params;
+        Ok(())
+    }
+
+    async fn generate_signals(
+        &self,
+        context: &crate::strategy::StrategyContext,
+    ) -> Result<Vec<Order>> {
+        use quant_common::types::OrderSide;
+        let side = match context.market_data.len() {
+            1 => OrderSide::Buy,
+            2 => OrderSide::Sell,
+            _ => return Ok(vec![]),
+        };
+        let bar = context.market_data.last().unwrap();
+        Ok(vec![make_order(&bar.symbol, side, bar.close, Decimal::ONE)])
+    }
+
+    fn name(&self) -> &str {
+        &self.params.strategy_name
+    }
+
+    fn params(&self) -> &quant_common::types::StrategyParams {
+        &self.params
+    }
+
+    fn params_mut(&mut self) -> &mut quant_common::types::StrategyParams {
+        &mut self.params
+    }
+}
+
+async fn run_portfolio_round_trips(quotes: &[(&str, &[i64])]) -> BacktestResult {
+    use quant_common::types::{StrategyParams, StrategyType};
+    let params = StrategyParams::builder("round_trip", "RoundTrip", StrategyType::MeanReversion)
+        .symbols(
+            quotes
+                .iter()
+                .map(|(symbol, _)| symbol.to_string())
+                .collect(),
+        )
+        .build();
+    let start = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let mut data = Vec::new();
+    for (symbol, prices) in quotes {
+        for (index, price) in prices.iter().enumerate() {
+            data.push(make_market_data(
+                start + chrono::Duration::hours(index as i64),
+                Decimal::from(*price),
+                symbol,
+            ));
+        }
+    }
+    run_backtest_multi(
+        vec![(Box::new(RoundTripStrategy { params }), "round_trip".into())],
+        data,
+        Decimal::from(10000),
+        Decimal::ZERO,
+        Decimal::ZERO,
+    )
+    .await
+    .unwrap()
+    .results
+    .remove(0)
+    .1
+}
+
+#[tokio::test]
+async fn portfolio_losing_sale_is_not_profit() {
+    let result =
+        run_portfolio_round_trips(&[("A", &[100, 100, 80]), ("B", &[100, 100, 100])]).await;
+    assert_eq!(result.final_capital, Decimal::from(9980));
+    assert_eq!(result.winning_trades, 0);
+    assert_eq!(result.losing_trades, 1);
+    assert_eq!(result.profit_loss_ratio, Decimal::ZERO);
+}
+
+#[tokio::test]
+async fn portfolio_combines_realized_profits_and_losses_and_orders_trades() {
+    let result =
+        run_portfolio_round_trips(&[("A", &[100, 100, 140]), ("B", &[100, 100, 90])]).await;
+    assert_eq!(result.final_capital, Decimal::from(10030));
+    assert_eq!(result.winning_trades, 1);
+    assert_eq!(result.losing_trades, 1);
+    assert_eq!(result.profit_loss_ratio, Decimal::from(4));
+    let start = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    assert_eq!(
+        result
+            .trades
+            .iter()
+            .map(|trade| trade.date)
+            .collect::<Vec<_>>(),
+        vec![
+            start + chrono::Duration::hours(1),
+            start + chrono::Duration::hours(1),
+            start + chrono::Duration::hours(2),
+            start + chrono::Duration::hours(2),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn portfolio_all_winners_keep_bounded_profit_ratio() {
+    let result =
+        run_portfolio_round_trips(&[("A", &[100, 100, 120]), ("B", &[100, 100, 110])]).await;
+    assert_eq!(result.winning_trades, 2);
+    assert_eq!(result.losing_trades, 0);
+    assert_eq!(result.profit_loss_ratio, Decimal::from(100));
+}
+
+#[tokio::test]
+async fn portfolio_without_fills_has_zero_profit_ratio() {
+    let result = run_portfolio_round_trips(&[("A", &[100]), ("B", &[100])]).await;
+    assert_eq!(result.total_trades, 0);
+    assert!(result.trades.is_empty());
+    assert_eq!(result.profit_loss_ratio, Decimal::ZERO);
 }

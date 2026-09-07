@@ -65,7 +65,7 @@ impl BacktestResultRow {
             profit_loss_ratio: self.profit_loss_ratio.unwrap_or(Decimal::ZERO),
             total_trades: self.total_trades.unwrap_or(0),
             winning_trades: self.winning_trades.unwrap_or(0),
-                        losing_trades: self.losing_trades.unwrap_or(0),
+            losing_trades: self.losing_trades.unwrap_or(0),
             equity_curve,
             trades,
         }

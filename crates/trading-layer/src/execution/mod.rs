@@ -117,12 +117,21 @@ impl ExecutionEngine {
         result
     }
 
-    /// 立即撮合（跳过模拟延迟），供纸面调度器在订单到期时调用。
+    /// 立即撮合并提交内存状态（跳过模拟延迟）。
     pub async fn fill_order(
         &self,
         order: Order,
         market_data: &MarketData,
     ) -> Result<ExecutionResult> {
         self.strategy.fill_now(order, market_data).await
+    }
+
+    /// 仅计算纸面成交，不修改内存、回调或指标；调用方须先成功持久化再发布。
+    pub async fn calculate_paper_fill(
+        &self,
+        order: Order,
+        market_data: &MarketData,
+    ) -> Result<ExecutionResult> {
+        self.strategy.calculate_paper_fill(order, market_data).await
     }
 }

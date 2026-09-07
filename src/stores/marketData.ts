@@ -6,7 +6,7 @@ import {
   startBinanceStream,
   stopBinanceStream,
   type BinanceEventHandlers,
-} from '@/services/binanceWS'
+} from '@/services/binanceWs'
 import {
   subscribeBinanceTicker,
   subscribeBinanceTrades,
@@ -40,7 +40,6 @@ export const MAX_SUBSCRIBE = 30
  */
 export const useMarketDataStore = defineStore('marketData', () => {
   const running = ref(false)
-  const starting = ref(false)
   const status = ref('idle')
   const activeSymbol = ref(DEFAULT_MARKET_SYMBOLS[0])
   const symbols = ref<string[]>([])
@@ -50,7 +49,10 @@ export const useMarketDataStore = defineStore('marketData', () => {
   const candles = ref<Record<string, BinanceWsKline[]>>({})
 
   let unlisteners: UnlistenFn[] = []
-  let handlers: BinanceEventHandlers | null = null
+  let generation = 0
+  let startTask: Promise<void> | null = null
+  let stopTask: Promise<void> | null = null
+  let backendRequested = false
   let dbPollTimer: ReturnType<typeof setInterval> | null = null
 
   const tickerList = computed(() => Object.values(tickers.value))
@@ -112,10 +114,11 @@ export const useMarketDataStore = defineStore('marketData', () => {
     }
   }
 
-  /** 预取某标的近 100 根历史 1m K 线（从数据库），先填 chart。 */
-  async function prefetchCandles(sym: string) {
+  /** 预取某标的近 100 根历史 1h K 线（从数据库），先填 chart。 */
+  async function prefetchCandles(sym: string, currentGeneration = generation) {
     try {
-      const rows = await getKlines(sym, '1m', 100)
+      const rows = await getKlines(sym, '1h', 100)
+      if (currentGeneration !== generation) return
       candles.value = {
         ...candles.value,
         [sym]: rows.map(dbKlineToWs),
@@ -126,22 +129,25 @@ export const useMarketDataStore = defineStore('marketData', () => {
   }
 
   /** 从数据库拉取活跃标的 K 线 + 逐笔成交 + 订单簿 + 全部订阅标的的最新 ticker（纯 DB 读）。 */
-  async function pollDb() {
+  async function pollDb(currentGeneration = generation) {
     const act = activeSymbol.value
     try {
-      const rows = await getKlines(act, '1m', 120)
+      const rows = await getKlines(act, '1h', 120)
+      if (currentGeneration !== generation) return
       candles.value = { ...candles.value, [act]: rows.map(dbKlineToWs) }
     } catch {
       // 忽略：下次轮询重试
     }
     try {
       const rows = await getTrades(act, 100)
+      if (currentGeneration !== generation) return
       trades.value = { ...trades.value, [act]: rows.map(dbTradeToWs) }
     } catch {
       // 忽略
     }
     try {
       const r = await getOrderbook(act)
+      if (currentGeneration !== generation) return
       if (r) orderBooks.value = { ...orderBooks.value, [act]: dbOrderbookToWs(r) }
     } catch {
       // 忽略
@@ -150,6 +156,7 @@ export const useMarketDataStore = defineStore('marketData', () => {
     for (const sym of syms.slice(0, MAX_SUBSCRIBE)) {
       try {
         const rows = await getTickerSnapshots(sym, 1)
+        if (currentGeneration !== generation) return
         const last = rows[0]
         if (last) tickers.value = { ...tickers.value, [sym]: dbTickerToWs(last) }
       } catch {
@@ -158,59 +165,105 @@ export const useMarketDataStore = defineStore('marketData', () => {
     }
   }
 
-  async function buildHandlers(): Promise<BinanceEventHandlers> {
+  function buildHandlers(currentGeneration: number): BinanceEventHandlers {
     return {
       // 全部行情数据（K线/ticker/逐笔/订单簿）改由 DB 轮询（pollDb）驱动。
       // WS 事件仅保留连接状态/错误感知。
       onStatus: (s) => {
-        status.value = s.status
+        if (currentGeneration === generation) status.value = s.status
       },
       onError: () => {
-        status.value = 'error'
+        if (currentGeneration === generation) status.value = 'error'
       },
     }
   }
 
   /** 订阅某标的的重流（trade/orderbook/candle）——只给活跃标的用，防 N×4 洪泛。 */
   async function subscribeHeavy(sym: string): Promise<void> {
-    await Promise.all([
+    const results = await Promise.allSettled([
       subscribeBinanceTrades(sym),
       subscribeBinanceOrderbook(sym),
-      subscribeBinanceCandle(sym, '1m'),
+      subscribeBinanceCandle(sym, '1h'),
     ])
+    const failure = results.find((result) => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
   }
 
-  async function ensureSubscribed(syms: string[]) {
+  async function ensureSubscribed(syms: string[], currentGeneration: number) {
     // 行情概览：只订阅轻量 ticker（每个标的一条流）；重流仅活跃标的订阅。
     // 上限 MAX_SUBSCRIBE 个标的，防止大标的列表导致流数无界（默认仅 2）。
     for (const sym of syms.slice(0, MAX_SUBSCRIBE)) {
       await subscribeBinanceTicker(sym)
+      if (currentGeneration !== generation) return
     }
     symbols.value = Array.from(new Set([...symbols.value, ...syms]))
     await subscribeHeavy(activeSymbol.value)
   }
 
-  /** Start the stream once (idempotent). Subsequent calls no-op. */
+  function detachLocalResources() {
+    const listeners = unlisteners
+    unlisteners = []
+    for (const unlisten of listeners) {
+      try {
+        unlisten()
+      } catch {
+        // Continue releasing the remaining listeners if one is already detached.
+      }
+    }
+    if (dbPollTimer) {
+      clearInterval(dbPollTimer)
+      dbPollTimer = null
+    }
+  }
+
+  /** Start once; a stop invalidates any in-flight startup before it can commit. */
   async function start(syms: string[] = DEFAULT_MARKET_SYMBOLS) {
-    if (running.value || starting.value) return
-    starting.value = true
+    const queuedGeneration = generation
+    if (stopTask) {
+      await stopTask
+      if (queuedGeneration !== generation) return
+    }
+    if (running.value) return
+    if (startTask) return startTask
+    const currentGeneration = ++generation
+    startTask = (async () => {
+      try {
+        backendRequested = true
+        await startBinanceStream()
+        if (currentGeneration !== generation) return
+        unlisteners = await listenToBinanceEvents(buildHandlers(currentGeneration))
+        if (currentGeneration !== generation) return
+        await ensureSubscribed(syms, currentGeneration)
+        if (currentGeneration !== generation) return
+        activeSymbol.value = syms[0] ?? activeSymbol.value
+        // 首屏预取历史 K 线，避免 chart 空白等 DB 首批轮询。
+        await prefetchCandles(activeSymbol.value, currentGeneration)
+        if (currentGeneration !== generation) return
+        await pollDb(currentGeneration)
+        if (currentGeneration !== generation) return
+        dbPollTimer = setInterval(() => void pollDb(currentGeneration), 5000)
+        running.value = true
+        status.value = 'connected'
+      } catch {
+        if (currentGeneration === generation) {
+          // Invalidate queued events and DB responses before rolling back.
+          generation++
+          detachLocalResources()
+          try {
+            await stopBinanceStream()
+          } catch {
+            // Backend failure must not retain local listeners or prevent retry.
+          } finally {
+            backendRequested = false
+            if (!stopTask) status.value = 'error'
+          }
+        }
+      }
+    })()
     try {
-      await startBinanceStream()
-      handlers = await buildHandlers()
-      unlisteners = await listenToBinanceEvents(handlers)
-      await ensureSubscribed(syms)
-      activeSymbol.value = syms[0] ?? activeSymbol.value
-      // 首屏预取历史 K 线，避免 chart 空白等 DB 首批轮询。
-      await prefetchCandles(activeSymbol.value)
-      await pollDb()
-      if (dbPollTimer) clearInterval(dbPollTimer)
-      dbPollTimer = setInterval(pollDb, 5000)
-      running.value = true
-      status.value = 'connected'
-    } catch {
-      status.value = 'error'
+      await startTask
     } finally {
-      starting.value = false
+      startTask = null
     }
   }
 
@@ -223,19 +276,29 @@ export const useMarketDataStore = defineStore('marketData', () => {
     symbols.value = []
   }
 
-    /** Stop the stream and detach all listeners. */
+  /** Stop even during startup; local cleanup does not depend on backend success. */
   async function stop() {
-    if (!running.value) return
-    unlisteners.forEach((u) => u())
-    unlisteners = []
-    if (dbPollTimer) {
-      clearInterval(dbPollTimer)
-      dbPollTimer = null
-    }
-    await stopBinanceStream()
+    generation++
+    if (stopTask) return stopTask
     running.value = false
     status.value = 'idle'
-    clear()
+    detachLocalResources()
+    stopTask = (async () => {
+      try {
+        await startTask
+        // Listener registration may have completed after the first detach.
+        detachLocalResources()
+        if (backendRequested) await stopBinanceStream()
+      } finally {
+        backendRequested = false
+        clear()
+      }
+    })()
+    try {
+      await stopTask
+    } finally {
+      stopTask = null
+    }
   }
 
   function setActiveSymbol(sym: string) {

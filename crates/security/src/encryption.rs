@@ -18,7 +18,10 @@ impl DataEncryption {
     /// 创建新的加密服务
     pub fn new(key: &[u8; 32]) -> Self {
         let cipher = Aes256Gcm::new(key.into());
-        Self { cipher, legacy_cipher: None }
+        Self {
+            cipher,
+            legacy_cipher: None,
+        }
     }
 
     /// 从密钥字符串创建：hex 长密钥解码存满熵；短密钥用 Argon2id 派生；并保留旧派生兼容。
@@ -139,12 +142,10 @@ impl DataEncryption {
             Err(e) => {
                 // 兼容升级前旧派生密钥加密的数据。
                 if let Some(legacy) = &self.legacy_cipher {
-                    return legacy
-                        .decrypt(nonce, ciphertext)
-                        .map_err(|le| {
-                            error!(error = %e, legacy = %le, "decryption failed (both ciphers)");
-                            Error::Internal("Decryption failed".to_string())
-                        });
+                    return legacy.decrypt(nonce, ciphertext).map_err(|le| {
+                        error!(error = %e, legacy = %le, "decryption failed (both ciphers)");
+                        Error::Internal("Decryption failed".to_string())
+                    });
                 }
                 error!(error = %e, "decryption failed");
                 Err(Error::Internal(format!("Decryption failed: {}", e)))

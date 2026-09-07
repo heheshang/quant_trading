@@ -17,9 +17,8 @@ pub use market_data_repo::{
 };
 pub use postgres::PostgresClient;
 pub use repository::{
-    AlertRepository, ApiKeyRecord, ApiKeyRepository, AuditFilter, AuditLogRecord,
-    AuditRepository, BacktestRepository, BacktestResultSummaryRow, BacktestResultsPage,
-    NewApiKey, NewAuditLog, PgAlertRepository, PgApiKeyRepository, PgAuditRepository,
-    PgBacktestRepository, PgStrategyRepository, RepoError, StrategyRepository, StrategyStats,
-    StrategySummaryRow,
+    AlertRepository, ApiKeyRecord, ApiKeyRepository, AuditFilter, AuditLogRecord, AuditRepository,
+    BacktestRepository, BacktestResultSummaryRow, BacktestResultsPage, NewApiKey, NewAuditLog,
+    PgAlertRepository, PgApiKeyRepository, PgAuditRepository, PgBacktestRepository,
+    PgStrategyRepository, RepoError, StrategyRepository, StrategyStats, StrategySummaryRow,
 };

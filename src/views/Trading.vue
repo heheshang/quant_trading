@@ -66,7 +66,7 @@ import { cancelBinanceOrder, placeBinanceOrder } from '@/services/binanceOrder'
 import { getBalances, getLastPrices } from '@/services/market'
 import { useOrderStore } from '@/stores/order'
 import { usePaperAccountOverview } from '@/composables/usePaperAccountOverview'
-import { listenToBinanceEvents, startUserDataStream, stopUserDataStream } from '@/services/binanceWS'
+import { listenToBinanceEvents, startUserDataStream, stopUserDataStream } from '@/services/binanceWs'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import type {
   AccountInfo,

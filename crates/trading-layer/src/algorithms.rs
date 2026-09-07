@@ -58,7 +58,8 @@ impl AlgorithmicOrderSlicer {
             } else {
                 slice_quantity
             };
-            let order = Order { order_id: 0,
+            let order = Order {
+                order_id: 0,
                 strategy_id: format!("TWAP_{}", i),
                 symbol: symbol.clone(),
                 order_type: OrderType::Market,
@@ -70,7 +71,9 @@ impl AlgorithmicOrderSlicer {
                 created_at: t,
                 updated_at: t,
                 commission: Decimal::ZERO,
-                slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
+                slippage: Decimal::ZERO,
+                exchange: "algorithm".to_string(),
+            };
 
             orders.push(order);
         }
@@ -112,7 +115,8 @@ impl AlgorithmicOrderSlicer {
             };
             placed += slice_quantity;
 
-            let order = Order { order_id: 0,
+            let order = Order {
+                order_id: 0,
                 strategy_id: format!("VWAP_{}", i),
                 symbol: symbol.clone(),
                 order_type: OrderType::Market,
@@ -124,7 +128,9 @@ impl AlgorithmicOrderSlicer {
                 created_at: *timestamp,
                 updated_at: *timestamp,
                 commission: Decimal::ZERO,
-                slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
+                slippage: Decimal::ZERO,
+                exchange: "algorithm".to_string(),
+            };
 
             orders.push(order);
         }
@@ -159,19 +165,22 @@ impl AlgorithmicOrderSlicer {
                 remaining
             };
 
-            let order = Order { order_id: 0,
-            strategy_id: format!("ICEBERG_{}", i),
-            symbol: symbol.clone(),
-            order_type: OrderType::Limit,
-            side: side.clone(),
-            price,
-            quantity,
-            filled_quantity: Decimal::ZERO,
-            status: quant_common::types::OrderStatus::Pending,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            commission: Decimal::ZERO,
-            slippage: Decimal::ZERO, exchange: "algorithm".to_string(), };
+            let order = Order {
+                order_id: 0,
+                strategy_id: format!("ICEBERG_{}", i),
+                symbol: symbol.clone(),
+                order_type: OrderType::Limit,
+                side: side.clone(),
+                price,
+                quantity,
+                filled_quantity: Decimal::ZERO,
+                status: quant_common::types::OrderStatus::Pending,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                commission: Decimal::ZERO,
+                slippage: Decimal::ZERO,
+                exchange: "algorithm".to_string(),
+            };
 
             orders.push(order);
             remaining -= quantity;

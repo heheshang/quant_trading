@@ -40,33 +40,44 @@ export async function listenToBinanceEvents(
   handlers: BinanceEventHandlers,
 ): Promise<UnlistenFn[]> {
   const unlisteners: UnlistenFn[] = []
-  unlisteners.push(
-    await listen<BinanceWsTicker>('binance:ticker', (ev) => handlers.onTicker?.(ev.payload)),
-  )
-  unlisteners.push(
-    await listen<BinanceWsTrade>('binance:trade', (ev) => handlers.onTrade?.(ev.payload)),
-  )
-  unlisteners.push(
-    await listen<BinanceWsDepth>('binance:orderbook', (ev) => handlers.onOrderBook?.(ev.payload)),
-  )
-  unlisteners.push(
-    await listen<BinanceWsKline>('binance:kline', (ev) => handlers.onCandle?.(ev.payload)),
-  )
-  unlisteners.push(
-    await listen<BinanceStreamStatus>('binance:status', (ev) => handlers.onStatus?.(ev.payload)),
-  )
-  unlisteners.push(await listen<string>('binance:error', (ev) => handlers.onError?.(ev.payload)))
-  unlisteners.push(
-    await listen<BinanceWsAccountPosition>('binance:account', (ev) =>
-      handlers.onAccount?.(ev.payload),
-    ),
-  )
-  unlisteners.push(
-    await listen<BinanceWsOrderUpdate>('binance:order', (ev) =>
-      handlers.onOrder?.(ev.payload),
-    ),
-  )
-  return unlisteners
+  try {
+    unlisteners.push(
+      await listen<BinanceWsTicker>('binance:ticker', (ev) => handlers.onTicker?.(ev.payload)),
+    )
+    unlisteners.push(
+      await listen<BinanceWsTrade>('binance:trade', (ev) => handlers.onTrade?.(ev.payload)),
+    )
+    unlisteners.push(
+      await listen<BinanceWsDepth>('binance:orderbook', (ev) => handlers.onOrderBook?.(ev.payload)),
+    )
+    unlisteners.push(
+      await listen<BinanceWsKline>('binance:kline', (ev) => handlers.onCandle?.(ev.payload)),
+    )
+    unlisteners.push(
+      await listen<BinanceStreamStatus>('binance:status', (ev) => handlers.onStatus?.(ev.payload)),
+    )
+    unlisteners.push(await listen<string>('binance:error', (ev) => handlers.onError?.(ev.payload)))
+    unlisteners.push(
+      await listen<BinanceWsAccountPosition>('binance:account', (ev) =>
+        handlers.onAccount?.(ev.payload),
+      ),
+    )
+    unlisteners.push(
+      await listen<BinanceWsOrderUpdate>('binance:order', (ev) =>
+        handlers.onOrder?.(ev.payload),
+      ),
+    )
+    return unlisteners
+  } catch (error) {
+    for (const unlisten of unlisteners) {
+      try {
+        unlisten()
+      } catch {
+        // Release every successful registration, preserving the setup error.
+      }
+    }
+    throw error
+  }
 }
 
 /** Start the backend Binance WebSocket. */

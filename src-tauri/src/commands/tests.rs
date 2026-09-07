@@ -68,7 +68,10 @@ async fn test_binance_orders_uninitialized_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_binance_orders(state_guard, "BTC-USDT".to_string(), None, None).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -106,7 +109,10 @@ async fn test_get_account_info_without_db_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_account_info(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -116,26 +122,32 @@ async fn test_get_positions_without_db_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_positions(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
 async fn test_get_active_orders_returns_submitted() {
     let state = make_test_state();
     // Submit an order first so OrderManager has a submitted order
-    let order = Order { order_id: 0,
-    strategy_id: "test_strategy".to_string(),
-    symbol: "600519.SH".to_string(),
-    order_type: quant_common::types::OrderType::Limit,
-    side: quant_common::types::OrderSide::Buy,
-    price: Some(dec!(1685.00)),
-    quantity: dec!(100),
-    filled_quantity: dec!(0),
-    status: quant_common::types::OrderStatus::Pending,
-    created_at: Utc::now(),
-    updated_at: Utc::now(),
-    commission: dec!(0),
-    slippage: dec!(0), exchange: "paper".to_string(), };
+    let order = Order {
+        order_id: 0,
+        strategy_id: "test_strategy".to_string(),
+        symbol: "600519.SH".to_string(),
+        order_type: quant_common::types::OrderType::Limit,
+        side: quant_common::types::OrderSide::Buy,
+        price: Some(dec!(1685.00)),
+        quantity: dec!(100),
+        filled_quantity: dec!(0),
+        status: quant_common::types::OrderStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: dec!(0),
+        slippage: dec!(0),
+        exchange: "paper".to_string(),
+    };
     state.order_manager.submit_order(order).await.unwrap();
 
     let state_guard: tauri::State<'_, AppState> =
@@ -154,19 +166,22 @@ async fn test_get_active_orders_returns_submitted() {
 async fn test_cancel_order_cancels_paper_order() {
     let state = make_test_state();
     // Submit a paper order into the OrderManager.
-    let order = Order { order_id: 0,
-    strategy_id: "test_strategy".to_string(),
-    symbol: "600519.SH".to_string(),
-    order_type: quant_common::types::OrderType::Limit,
-    side: quant_common::types::OrderSide::Buy,
-    price: Some(dec!(1685.00)),
-    quantity: dec!(100),
-    filled_quantity: dec!(0),
-    status: quant_common::types::OrderStatus::Pending,
-    created_at: Utc::now(),
-    updated_at: Utc::now(),
-    commission: dec!(0),
-    slippage: dec!(0), exchange: "paper".to_string(), };
+    let order = Order {
+        order_id: 0,
+        strategy_id: "test_strategy".to_string(),
+        symbol: "600519.SH".to_string(),
+        order_type: quant_common::types::OrderType::Limit,
+        side: quant_common::types::OrderSide::Buy,
+        price: Some(dec!(1685.00)),
+        quantity: dec!(100),
+        filled_quantity: dec!(0),
+        status: quant_common::types::OrderStatus::Pending,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: dec!(0),
+        slippage: dec!(0),
+        exchange: "paper".to_string(),
+    };
     let order_id = state.order_manager.submit_order(order).await.unwrap();
 
     let result = crate::commands::core::cancel_order_core(&state, order_id).await;
@@ -183,19 +198,22 @@ async fn test_cancel_order_cancels_paper_order() {
 #[tokio::test]
 async fn test_cancel_order_rejects_already_filled() {
     let state = make_test_state();
-    let order = Order { order_id: 0,
-    strategy_id: "test_strategy".to_string(),
-    symbol: "600519.SH".to_string(),
-    order_type: quant_common::types::OrderType::Limit,
-    side: quant_common::types::OrderSide::Buy,
-    price: Some(dec!(1685.00)),
-    quantity: dec!(100),
-    filled_quantity: dec!(100),
-    status: quant_common::types::OrderStatus::Filled,
-    created_at: Utc::now(),
-    updated_at: Utc::now(),
-    commission: dec!(0),
-    slippage: dec!(0), exchange: "paper".to_string(), };
+    let order = Order {
+        order_id: 0,
+        strategy_id: "test_strategy".to_string(),
+        symbol: "600519.SH".to_string(),
+        order_type: quant_common::types::OrderType::Limit,
+        side: quant_common::types::OrderSide::Buy,
+        price: Some(dec!(1685.00)),
+        quantity: dec!(100),
+        filled_quantity: dec!(100),
+        status: quant_common::types::OrderStatus::Filled,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        commission: dec!(0),
+        slippage: dec!(0),
+        exchange: "paper".to_string(),
+    };
     let order_id = state.order_manager.submit_order(order).await.unwrap();
     // Mark it filled so it is no longer cancellable.
     state
@@ -206,7 +224,15 @@ async fn test_cancel_order_rejects_already_filled() {
 
     let result = crate::commands::core::cancel_order_core(&state, order_id).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("not in a cancellable state"));
+    assert_eq!(
+        state
+            .order_manager
+            .get_order(order_id)
+            .await
+            .unwrap()
+            .status,
+        quant_common::types::OrderStatus::Filled
+    );
 }
 
 #[tokio::test]
@@ -214,7 +240,37 @@ async fn test_cancel_order_not_found_returns_error() {
     let state = make_test_state();
     let result = crate::commands::core::cancel_order_core(&state, 999_999).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("no active order found"));
+}
+
+#[tokio::test]
+async fn test_cancel_order_rejects_live_and_unknown_venues_offline() {
+    let state = make_test_state();
+    for exchange in ["live", "unknown"] {
+        let order = Order {
+            order_id: 0,
+            strategy_id: "test".to_string(),
+            symbol: "BTC-USDT".to_string(),
+            order_type: quant_common::types::OrderType::Limit,
+            side: quant_common::types::OrderSide::Buy,
+            price: Some(dec!(100)),
+            quantity: dec!(1),
+            filled_quantity: dec!(0),
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: dec!(0),
+            slippage: dec!(0),
+            exchange: exchange.to_string(),
+        };
+        let id = state.order_manager.submit_order(order).await.unwrap();
+        assert!(crate::commands::core::cancel_order_core(&state, id)
+            .await
+            .is_err());
+        assert_eq!(
+            state.order_manager.get_order(id).await.unwrap().status,
+            quant_common::types::OrderStatus::Submitted
+        );
+    }
 }
 
 #[tokio::test]
@@ -224,7 +280,10 @@ async fn test_check_redis_status_without_redis_returns_error() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = check_redis_status(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -234,7 +293,10 @@ async fn test_get_strategies_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_strategies(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -254,7 +316,10 @@ async fn test_save_strategy_requires_services() {
     .build();
     let result = save_strategy(state_guard, strategy).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -264,7 +329,10 @@ async fn test_delete_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = delete_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -274,7 +342,10 @@ async fn test_toggle_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = toggle_strategy(state_guard, "test_001".to_string(), false).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -291,21 +362,9 @@ async fn test_get_risk_metrics_contains_var() {
 }
 
 #[tokio::test]
-async fn test_get_risk_config_returns_defaults() {
+async fn test_update_risk_config_failure_preserves_active_config() {
     let state = make_test_state();
-    let state_guard: tauri::State<'_, AppState> =
-        unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
-    let result = get_risk_config(state_guard).await;
-    assert!(result.is_ok());
-    let config = result.unwrap().data.unwrap();
-    assert_eq!(config.max_position_size, 0.2);
-    assert_eq!(config.max_daily_loss, 0.05);
-    assert!(config.enable_pre_trade_check);
-}
-
-#[tokio::test]
-async fn test_update_risk_config_returns_true() {
-    let state = make_test_state();
+    let before = serde_json::to_value(&state.config.read().await.risk).unwrap();
     let state_guard: tauri::State<'_, AppState> =
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let new_config = quant_common::config::RiskConfig {
@@ -318,8 +377,11 @@ async fn test_update_risk_config_returns_true() {
         var_confidence_level: 0.99,
     };
     let result = update_risk_config(state_guard, new_config).await;
-    assert!(result.is_ok());
-    assert!(result.unwrap().data.unwrap());
+    assert!(result.is_err());
+    assert_eq!(
+        serde_json::to_value(&state.config.read().await.risk).unwrap(),
+        before
+    );
 }
 
 #[tokio::test]
@@ -335,7 +397,10 @@ async fn test_login_without_db_returns_error() {
     )
     .await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().message, "Authentication unavailable: no database connection");
+    assert_eq!(
+        result.unwrap_err().message,
+        "Authentication unavailable: no database connection"
+    );
 }
 
 #[tokio::test]
@@ -376,7 +441,10 @@ async fn test_deploy_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = deploy_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -386,7 +454,10 @@ async fn test_start_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = start_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -396,7 +467,10 @@ async fn test_stop_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = stop_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -406,7 +480,10 @@ async fn test_pause_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = pause_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -416,7 +493,10 @@ async fn test_resume_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = resume_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 
 #[tokio::test]
@@ -426,7 +506,10 @@ async fn test_archive_strategy_requires_services() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = archive_strategy(state_guard, "test_001".to_string()).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, quant_common::api::code::NOT_INITIALIZED);
+    assert_eq!(
+        result.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }
 // ── RBAC / Auth Session Tests ──
 
@@ -438,7 +521,10 @@ async fn test_unauthenticated_access_to_protected_command_rejected() {
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
     let result = get_config(state_guard).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().message, "Authentication required: not logged in");
+    assert_eq!(
+        result.unwrap_err().message,
+        "Authentication required: not logged in"
+    );
 }
 
 #[tokio::test]
@@ -485,7 +571,11 @@ async fn test_verify_token_restores_session_and_enforces_rbac() {
     // verify_token validates the token and re-establishes the session.
     let state_guard: tauri::State<'_, AppState> =
         unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
-    let valid = verify_token(state_guard, token.clone()).await.unwrap().data.unwrap();
+    let valid = verify_token(state_guard, token.clone())
+        .await
+        .unwrap()
+        .data
+        .unwrap();
     assert!(valid);
     let session = state.auth_session.read().await.clone().unwrap();
     assert_eq!(session.role, "trader");
@@ -498,4 +588,42 @@ async fn test_verify_token_restores_session_and_enforces_rbac() {
     let result = update_config(state_guard2, AppConfig::default()).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().message.contains("Permission denied"));
+}
+
+#[tokio::test]
+async fn private_user_commands_reject_other_users_before_accessing_services() {
+    let state = make_test_state();
+    *state.auth_session.write().await = Some(AuthedUser {
+        user_id: 7,
+        username: "alice".to_string(),
+        role: "viewer".to_string(),
+    });
+    let guard = || unsafe { std::mem::transmute::<&AppState, tauri::State<'_, AppState>>(&state) };
+    for result in [
+        get_api_keys(guard(), 8).await.map(|_| ()),
+        get_user_profile(guard(), Some("bob".to_string()))
+            .await
+            .map(|_| ()),
+        enable_2fa(guard(), 8).await.map(|_| ()),
+        verify_2fa_code(guard(), 8, "123456".to_string())
+            .await
+            .map(|_| ()),
+        disable_2fa(guard(), 8, "123456".to_string())
+            .await
+            .map(|_| ()),
+    ] {
+        assert_eq!(
+            result.unwrap_err().code,
+            quant_common::api::code::UNAUTHORIZED
+        );
+    }
+    // 自己的请求能通过主体检查，到达未初始化服务边界。
+    assert_eq!(
+        get_api_keys(guard(), 7).await.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
+    assert_eq!(
+        enable_2fa(guard(), 7).await.unwrap_err().code,
+        quant_common::api::code::NOT_INITIALIZED
+    );
 }

@@ -11,11 +11,11 @@ use crate::live_exchange::LiveExchange;
 use crate::order_manager::OrderManager;
 use chrono::Utc;
 use quant_common::config::TradingConfig;
-use quant_common::types::{MarketData, Order, OrderSide, OrderStatus};
+use quant_common::types::{MarketData, Order, OrderSide, OrderStatus, OrderType};
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 
 use super::ExecutionResult;
 
@@ -28,9 +28,20 @@ pub trait ExecutionStrategy: Send + Sync {
     /// 执行一笔订单，返回执行结果。
     async fn execute(&self, order: Order, market_data: &MarketData) -> Result<ExecutionResult>;
 
-    /// 立即执行（跳过模拟延迟）：由纸面调度器在订单到期时调用。默认走 `execute`。
+    /// 立即执行并提交内存状态（跳过模拟延迟）。
     async fn fill_now(&self, order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
         self.execute(order, market_data).await
+    }
+
+    /// 仅计算纸面成交；实盘策略不支持该入口，不能隐式发出委托。
+    async fn calculate_paper_fill(
+        &self,
+        _order: Order,
+        _market_data: &MarketData,
+    ) -> Result<ExecutionResult> {
+        Err(Error::Trading(
+            "Paper fill calculation requires a paper strategy".to_string(),
+        ))
     }
 }
 
@@ -57,6 +68,33 @@ impl PaperExecutionStrategy {
         order: &Order,
         market_data: &MarketData,
     ) -> Result<Decimal> {
+        if order.quantity <= Decimal::ZERO || market_data.close <= Decimal::ZERO {
+            return Err(Error::Validation(
+                "Order quantity and market price must be positive".to_string(),
+            ));
+        }
+        if order.price.is_some_and(|price| price <= Decimal::ZERO) {
+            return Err(Error::Validation(
+                "Order price must be positive".to_string(),
+            ));
+        }
+        let limit = if order.order_type == OrderType::Limit {
+            let limit = order
+                .price
+                .ok_or_else(|| Error::Validation("Limit order requires a price".to_string()))?;
+            let touched = match order.side {
+                OrderSide::Buy => market_data.close <= limit,
+                OrderSide::Sell => market_data.close >= limit,
+            };
+            if !touched {
+                return Err(Error::Trading(
+                    "Limit price has not been reached".to_string(),
+                ));
+            }
+            Some(limit)
+        } else {
+            None
+        };
         // 以市价为成交基准（非限价），避免「限价±滑点」永远劣于限价。
         let base_price = market_data.close;
         let slippage_factor =
@@ -69,11 +107,16 @@ impl PaperExecutionStrategy {
             OrderSide::Sell => base_price - slippage_amount,
         };
         // 限价单：成交价不得劣于限价（买入 ≤ limit，卖出 ≥ limit）。
-        if let Some(limit) = order.price {
+        if let Some(limit) = limit {
             execution_price = match order.side {
                 OrderSide::Buy => execution_price.min(limit),
                 OrderSide::Sell => execution_price.max(limit),
             };
+        }
+        if execution_price <= Decimal::ZERO {
+            return Err(Error::Validation(
+                "Execution price must be positive".to_string(),
+            ));
         }
 
         Ok(execution_price)
@@ -91,50 +134,62 @@ impl ExecutionStrategy for PaperExecutionStrategy {
         self.fill_now(order, market_data).await
     }
 
-    /// 立即撮合（跳过模拟延迟）——调度器在订单到期时调用。
+    /// 立即撮合并提交内存事实；仅 DB 恢复单缺失于内存时允许继续。
     #[instrument(skip(self, market_data), fields(order_id = %order.order_id, symbol = %order.symbol, strategy = "paper"))]
-    async fn fill_now(&self, mut order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
+    async fn fill_now(&self, order: Order, market_data: &MarketData) -> Result<ExecutionResult> {
+        let result = self.calculate_paper_fill(order, market_data).await?;
+        match self.order_manager.apply_execution_result(&result).await {
+            Ok(()) | Err(Error::NotFound(_)) => {}
+            Err(error) => return Err(error),
+        }
+        monitor_engine::MetricsCollector::inc_orders_filled();
+        info!(
+            "Order {} filled at price {}",
+            result.order_id, result.avg_price
+        );
+        Ok(result)
+    }
+
+    async fn calculate_paper_fill(
+        &self,
+        order: Order,
+        market_data: &MarketData,
+    ) -> Result<ExecutionResult> {
+        if !order.status.is_active() {
+            return Err(Error::Trading(format!(
+                "Order {} is terminal",
+                order.order_id
+            )));
+        }
         let execution_price = self.calculate_execution_price(&order, market_data)?;
-
-        let total_value = execution_price * order.quantity;
-        let commission = total_value
-            * Decimal::from_f64_retain(self.config.default_commission_rate)
-                .unwrap_or(Decimal::ZERO);
-
-        order.filled_quantity = order.quantity;
-        order.commission = commission;
-        order.status = OrderStatus::Filled;
-        order.updated_at = Utc::now();
-
-        // Best-effort：写入内存 OrderManager。调度器可能处理 DB 恢复的单
-        // （不在内存 OrderManager），此时忽略 NotFound，仍返回 Filled 结果
-        // 供上层把 DB 状态更新成功。
-        let _ = self
-            .order_manager
-            .update_order_status(order.order_id, OrderStatus::Filled)
-            .await;
-
-        let result = ExecutionResult {
+        let remaining_quantity = order.quantity - order.filled_quantity;
+        if order.filled_quantity < Decimal::ZERO || remaining_quantity <= Decimal::ZERO {
+            return Err(Error::Validation(
+                "Order must have a positive remaining quantity".to_string(),
+            ));
+        }
+        let commission = order.commission
+            + execution_price
+                * remaining_quantity
+                * Decimal::from_f64_retain(self.config.default_commission_rate)
+                    .unwrap_or(Decimal::ZERO);
+        Ok(ExecutionResult {
             order_id: order.order_id,
-            strategy_id: order.strategy_id.clone(),
-            symbol: order.symbol.clone(),
-            filled_quantity: order.filled_quantity,
+            strategy_id: order.strategy_id,
+            symbol: order.symbol,
+            filled_quantity: order.quantity,
             avg_price: execution_price,
             commission,
             status: OrderStatus::Filled,
             executed_at: Utc::now(),
-        };
-
-        monitor_engine::MetricsCollector::inc_orders_filled();
-        info!("Order {} filled at price {}", order.order_id, execution_price);
-        Ok(result)
+        })
     }
 }
 
 /// 实盘订单执行核心逻辑。
 ///
-/// 下单成功后查询真实成交明细回填成交价/成交量/状态/手续费；查询失败时保守回退到
-/// 订单参数与全额成交假定。`label` 仅用于日志与错误文案，经 [`LiveExchange`] 抽象
+/// 下单成功后查询真实成交明细回填成交价/成交量/状态/手续费；查询失败时保留
+/// Submitted 和零成交，不重复提交委托。`label` 仅用于日志与错误文案，经 [`LiveExchange`] 抽象
 /// 由 Binance 策略消费。
 async fn execute_live(
     order: Order,
@@ -160,21 +215,17 @@ async fn execute_live(
         label
     );
 
-    // 拉取真实成交明细（成交价/成交量/状态）；查询失败时回退到订单参数
+    // 拉取真实成交明细；查询失败只代表成交事实未知，不代表委托失败。
     let detail = executor
         .get_order_details(&order.symbol, &live_order_id)
         .await;
 
     let (avg_price, filled_quantity, status, fee) = match detail {
         Ok(d) => (d.avg_price, d.filled_quantity, d.status, d.fee),
-        Err(_) => {
-            // 查询失败：保守回退（假定全额成交、以订单价成交）
-            (
-                order.price.unwrap_or(Decimal::ZERO),
-                order.quantity,
-                OrderStatus::Filled,
-                None,
-            )
+        Err(error) => {
+            warn!(order_id = %order.order_id, live_order_id = %live_order_id, error = %error,
+                "{} accepted order but fill details are unavailable; retaining Submitted", label);
+            (Decimal::ZERO, Decimal::ZERO, OrderStatus::Submitted, None)
         }
     };
 
@@ -185,11 +236,7 @@ async fn execute_live(
             * Decimal::from_f64_retain(config.default_commission_rate).unwrap_or(Decimal::ZERO)
     });
 
-    order_manager
-        .update_order_status(order.order_id, status.clone())
-        .await?;
-
-    Ok(ExecutionResult {
+    let result = ExecutionResult {
         order_id: order.order_id,
         strategy_id: order.strategy_id,
         symbol: order.symbol,
@@ -198,13 +245,15 @@ async fn execute_live(
         commission,
         status,
         executed_at: Utc::now(),
-    })
+    };
+    order_manager.apply_execution_result(&result).await?;
+    Ok(result)
 }
 
 /// Binance 实盘执行策略。
 ///
 /// 经 [`LiveExchange`] 抽象向 Binance 下单，随后查询真实成交明细回填成交价/成交量/状态/手续费；
-/// 查询失败时保守回退到订单参数与全额成交假定。
+/// 查询失败时保留 Submitted 和零成交事实，不重复提交。
 pub struct BinanceExecutionStrategy {
     order_manager: Arc<OrderManager>,
     config: TradingConfig,

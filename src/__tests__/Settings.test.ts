@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Settings from '@/views/Settings.vue'
 import { invoke } from '@tauri-apps/api/core'
+import { createPinia } from 'pinia'
 
 vi.mock('element-plus', async () => {
   const mod = await vi.importActual<typeof import('element-plus')>('element-plus')
@@ -27,7 +28,7 @@ function mockFormRef() {
 let container: HTMLDivElement
 
 async function mountComponent(): Promise<any> {
-  const wrapper = mount(Settings, { attachTo: container, global: { plugins: [ElementPlus] } })
+  const wrapper = mount(Settings, { attachTo: container, global: { plugins: [ElementPlus, createPinia()] } })
   for (let i = 0; i < 5; i++) await wrapper.vm.$nextTick()
   await new Promise(r => setTimeout(r, 30))
   return wrapper
@@ -123,7 +124,7 @@ describe('Settings.vue - 按钮测试', () => {
   }, 30000)
 
   it('onMounted 调用 get_config', async () => {
-    mount(Settings, { attachTo: container, global: { plugins: [ElementPlus] } })
+    mount(Settings, { attachTo: container, global: { plugins: [ElementPlus, createPinia()] } })
     await new Promise(r => setTimeout(r, 50))
     expect(mockInvoke).toHaveBeenCalledWith('get_config')
   }, 30000)

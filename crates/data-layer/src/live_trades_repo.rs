@@ -97,7 +97,12 @@ impl LiveTradesRepository {
     /// Update only status / filled quantity (preserve `strategy_id`, price etc.).
     /// Used by the live-order monitor to keep tracked orders in sync with Binance.
     #[instrument(skip(self), fields(order_id = %order_id, status = %status))]
-    pub async fn update_status(&self, order_id: i64, status: &str, filled_quantity: Decimal) -> Result<()> {
+    pub async fn update_status(
+        &self,
+        order_id: i64,
+        status: &str,
+        filled_quantity: Decimal,
+    ) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE live_trades

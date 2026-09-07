@@ -268,10 +268,16 @@ async function onTypeChange(typeName: string) {
 
 async function save() {
   if (!formRef.value) return;
+  const user = authStore.currentUser;
+  if (!user) {
+    ElMessage.error('请先登录');
+    return;
+  }
   try {
     const valid = await formRef.value.validate();
     if (!valid) return;
   } catch { return; }
+  if (authStore.currentUser !== user) return;
 
   submitting.value = true;
   try {
@@ -283,10 +289,6 @@ async function save() {
         status: formData.value.status as StrategyStatus,
       } as StrategyParams);
     } else {
-      if (!authStore.currentUser) {
-        ElMessage.error('请先登录');
-        return;
-      }
       await store.createNewStrategy(
         formData.value.strategy_type,
         formData.value.strategy_name,
@@ -294,17 +296,19 @@ async function save() {
         formData.value.enabled,
         formData.value.max_position,
         formData.value.max_daily_loss,
-        authStore.currentUser.id,
+        user.id,
         formData.value.instance_label || undefined,
         formData.value.description || undefined,
         formData.value.tags?.length ? formData.value.tags : undefined,
         formData.value.symbols?.length ? formData.value.symbols : undefined,
       );
     }
+    if (authStore.currentUser !== user) return;
     ElMessage.success('策略保存成功');
     emit('saved');
     localVisible.value = false;
   } catch {
+    if (authStore.currentUser !== user) return;
     ElMessage.error('保存策略失败');
   } finally {
     submitting.value = false;

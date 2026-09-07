@@ -52,6 +52,7 @@ export const useStrategyStore = defineStore('strategy', () => {
   const error = reactive<Record<ErrorKey, string | null>>(makeErrorRecord())
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  let generation = 0
 
   const runningStrategies = computed(() =>
     strategies.value.filter((s) => {
@@ -75,15 +76,18 @@ export const useStrategyStore = defineStore('strategy', () => {
 
   async function fetchStrategies(force = false) {
     if (!force && strategies.value.length > 0) return
+    const requestGeneration = generation
     loading.list = true
     error.list = null
     try {
-      strategies.value = await getStrategies()
+      const result = await getStrategies()
+      if (requestGeneration === generation) strategies.value = result
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.list = '获取策略列表失败'
       console.error('Failed to fetch strategies:', err)
     } finally {
-      loading.list = false
+      if (requestGeneration === generation) loading.list = false
     }
   }
 
@@ -104,70 +108,85 @@ export const useStrategyStore = defineStore('strategy', () => {
   }
 
   async function createStrategy(strategy: StrategyParams) {
+    const requestGeneration = generation
     loading.create = true
     error.create = null
     try {
       await apiSaveStrategy(strategy)
+      if (requestGeneration !== generation) return
       await fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.create = '创建策略失败'
       throw err
     } finally {
-      loading.create = false
+      if (requestGeneration === generation) loading.create = false
     }
   }
 
   async function updateStrategy(strategy: StrategyParams) {
+    const requestGeneration = generation
     loading.update = true
     error.update = null
     try {
       await apiSaveStrategy(strategy)
+      if (requestGeneration !== generation) return
       await fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.update = '更新策略失败'
       throw err
     } finally {
-      loading.update = false
+      if (requestGeneration === generation) loading.update = false
     }
   }
 
   async function deleteStrategy(strategyId: string) {
+    const requestGeneration = generation
     loading.delete = true
     error.delete = null
     try {
       await apiDeleteStrategy(strategyId)
+      if (requestGeneration !== generation) return
       await fetchStrategies(true)
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.delete = '删除策略失败'
       throw err
     } finally {
-      loading.delete = false
+      if (requestGeneration === generation) loading.delete = false
     }
   }
 
   async function listStrategyTypes() {
+    const requestGeneration = generation
     loading.listTypes = true
     error.listTypes = null
     try {
-      strategyTypes.value = await apiListStrategyTypes()
+      const result = await apiListStrategyTypes()
+      if (requestGeneration === generation) strategyTypes.value = result
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.listTypes = '获取策略类型列表失败'
       console.error('Failed to fetch strategy types:', err)
     } finally {
-      loading.listTypes = false
+      if (requestGeneration === generation) loading.listTypes = false
     }
   }
 
   async function fetchStrategyTypeInfo(typeName: string) {
+    const requestGeneration = generation
     loading.fetchTypeInfo = true
     error.fetchTypeInfo = null
     try {
-      currentTypeInfo.value = await apiGetStrategyTypeInfo(typeName)
+      const result = await apiGetStrategyTypeInfo(typeName)
+      if (requestGeneration === generation) currentTypeInfo.value = result
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.fetchTypeInfo = '获取策略类型信息失败'
       console.error('Failed to fetch strategy type info:', err)
     } finally {
-      loading.fetchTypeInfo = false
+      if (requestGeneration === generation) loading.fetchTypeInfo = false
     }
   }
 
@@ -184,6 +203,7 @@ export const useStrategyStore = defineStore('strategy', () => {
     tags?: string[],
     symbols?: string[],
   ) {
+    const requestGeneration = generation
     loading.createNew = true
     error.createNew = null
     try {
@@ -192,13 +212,15 @@ export const useStrategyStore = defineStore('strategy', () => {
         maxPosition, maxDailyLoss, userId, instanceLabel,
         description, tags, symbols,
       )
+      if (requestGeneration !== generation) return
       await fetchStrategies(true)
       return id
     } catch (err) {
+      if (requestGeneration !== generation) throw err
       error.createNew = '创建策略失败'
       throw err
     } finally {
-      loading.createNew = false
+      if (requestGeneration === generation) loading.createNew = false
     }
   }
 
@@ -214,6 +236,17 @@ export const useStrategyStore = defineStore('strategy', () => {
       clearInterval(pollTimer)
       pollTimer = null
     }
+  }
+
+  function reset() {
+    generation += 1
+    stopPolling()
+    strategies.value = []
+    currentStrategy.value = null
+    strategyTypes.value = []
+    currentTypeInfo.value = null
+    Object.assign(loading, makeLoadingRecord())
+    Object.assign(error, makeErrorRecord())
   }
 
   return {
@@ -237,5 +270,6 @@ export const useStrategyStore = defineStore('strategy', () => {
     createNewStrategy,
     startPolling,
     stopPolling,
+    reset,
   }
 })

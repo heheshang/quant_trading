@@ -22,7 +22,7 @@ pub struct OrderDetails {
     pub status: OrderStatus,
     /// Exchange-reported commission. `None` means "unavailable", in which case
     /// the caller estimates from configuration. Binance responses carry no fee
-    /// field, so `BinanceExecutor` surfaces `Some(0)`.
+    /// field, so `BinanceExecutor` surfaces `None`.
     pub fee: Option<Decimal>,
 }
 

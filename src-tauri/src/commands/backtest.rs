@@ -18,24 +18,58 @@ pub async fn run_backtest(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<BacktestResult>> {
     use crate::commands::not_init_err;
     use quant_common::api::{ok_result, ApiFailure};
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
 
     let start = chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", start_date))
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid start date: {}", e)))?
+        .map_err(|e| {
+            ApiFailure::new(
+                quant_common::api::code::INVALID_PARAM,
+                format!("Invalid start date: {}", e),
+            )
+        })?
         .with_timezone(&chrono::Utc);
     let end = chrono::DateTime::parse_from_rfc3339(&format!("{}T23:59:59Z", end_date))
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid end date: {}", e)))?
+        .map_err(|e| {
+            ApiFailure::new(
+                quant_common::api::code::INVALID_PARAM,
+                format!("Invalid end date: {}", e),
+            )
+        })?
         .with_timezone(&chrono::Utc);
-    let init_cap = rust_decimal::Decimal::from_f64(initial_capital)
-        .ok_or_else(|| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid initial capital: {}", initial_capital)))?;
-    let comm_rate = rust_decimal::Decimal::from_f64(commission_rate)
-        .ok_or_else(|| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid commission rate: {}", commission_rate)))?;
-    let slip = rust_decimal::Decimal::from_f64(slippage)
-        .ok_or_else(|| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid slippage: {}", slippage)))?;
+    let init_cap = rust_decimal::Decimal::from_f64(initial_capital).ok_or_else(|| {
+        ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid initial capital: {}", initial_capital),
+        )
+    })?;
+    let comm_rate = rust_decimal::Decimal::from_f64(commission_rate).ok_or_else(|| {
+        ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid commission rate: {}", commission_rate),
+        )
+    })?;
+    let slip = rust_decimal::Decimal::from_f64(slippage).ok_or_else(|| {
+        ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid slippage: {}", slippage),
+        )
+    })?;
 
     let data = services
         .strategy_service
-        .run_backtest(&strategy_id, start, end, init_cap, comm_rate, slip, &symbols, &timeframe)
+        .run_backtest(
+            &strategy_id,
+            start,
+            end,
+            init_cap,
+            comm_rate,
+            slip,
+            &symbols,
+            &timeframe,
+        )
         .await?;
     ok_result(data)
 }
@@ -49,8 +83,14 @@ pub async fn get_backtest_results(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<data_layer::BacktestResultsPage>> {
     use crate::commands::not_init_err;
     use quant_common::api::ok_result;
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let data = services.strategy_service.get_backtest_results(limit, offset).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services
+        .strategy_service
+        .get_backtest_results(limit, offset)
+        .await?;
     ok_result(data)
 }
 
@@ -62,9 +102,20 @@ pub async fn get_backtest_result(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<BacktestResult>> {
     use crate::commands::not_init_err;
     use quant_common::api::{ok_result, ApiFailure};
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let id_num: i64 = id.parse().map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid ID: {}", e)))?;
-    let data = services.strategy_service.get_backtest_result(id_num).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let id_num: i64 = id.parse().map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid ID: {}", e),
+        )
+    })?;
+    let data = services
+        .strategy_service
+        .get_backtest_result(id_num)
+        .await?;
     ok_result(data)
 }
 
@@ -76,9 +127,20 @@ pub async fn delete_backtest_result(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
     use crate::commands::not_init_err;
     use quant_common::api::{ok_result, ApiFailure};
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let id_num: i64 = id.parse().map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid ID: {}", e)))?;
-    let data = services.strategy_service.delete_backtest_result(id_num).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let id_num: i64 = id.parse().map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid ID: {}", e),
+        )
+    })?;
+    let data = services
+        .strategy_service
+        .delete_backtest_result(id_num)
+        .await?;
     ok_result(data)
 }
 
@@ -103,19 +165,39 @@ pub async fn get_metrics(
                     metrics.insert("orders_open".to_string(), c.open as f64);
                 }
                 Err(_) => {
-                    metrics.insert("orders_total".to_string(), monitor_layer::ORDERS_TOTAL.get());
-                    metrics.insert("orders_filled".to_string(), monitor_layer::ORDERS_FILLED.get());
-                    metrics.insert("orders_cancelled".to_string(), monitor_layer::ORDERS_CANCELLED.get());
-                    metrics.insert("orders_rejected".to_string(), monitor_layer::ORDERS_REJECTED.get());
+                    metrics.insert(
+                        "orders_total".to_string(),
+                        monitor_layer::ORDERS_TOTAL.get(),
+                    );
+                    metrics.insert(
+                        "orders_filled".to_string(),
+                        monitor_layer::ORDERS_FILLED.get(),
+                    );
+                    metrics.insert(
+                        "orders_cancelled".to_string(),
+                        monitor_layer::ORDERS_CANCELLED.get(),
+                    );
+                    metrics.insert(
+                        "orders_rejected".to_string(),
+                        monitor_layer::ORDERS_REJECTED.get(),
+                    );
                 }
             }
             match services.account_service.get_latest_equity("USDT").await {
                 Ok(Some(equity)) => {
-                    metrics.insert("account_balance".to_string(), equity.to_f64().unwrap_or(0.0));
+                    metrics.insert(
+                        "account_balance".to_string(),
+                        equity.to_f64().unwrap_or(0.0),
+                    );
                     metrics.insert("position_value".to_string(), equity.to_f64().unwrap_or(0.0));
                 }
                 _ => {
-                    let fallback = services.account_service.get_account_info().await.map(|a| a.total_assets.to_f64().unwrap_or(0.0)).unwrap_or(monitor_layer::ACCOUNT_BALANCE.get());
+                    let fallback = services
+                        .account_service
+                        .get_account_info()
+                        .await
+                        .map(|a| a.total_assets.to_f64().unwrap_or(0.0))
+                        .unwrap_or(monitor_layer::ACCOUNT_BALANCE.get());
                     metrics.insert("account_balance".to_string(), fallback);
                     metrics.insert("position_value".to_string(), fallback);
                 }
@@ -125,18 +207,41 @@ pub async fn get_metrics(
                     metrics.insert("daily_pnl".to_string(), pnl.to_f64().unwrap_or(0.0));
                 }
                 Err(_) => {
-                    let fallback = services.account_service.get_account_info().await.map(|a| a.daily_pnl.to_f64().unwrap_or(0.0)).unwrap_or(monitor_layer::DAILY_PNL.get());
+                    let fallback = services
+                        .account_service
+                        .get_account_info()
+                        .await
+                        .map(|a| a.daily_pnl.to_f64().unwrap_or(0.0))
+                        .unwrap_or(monitor_layer::DAILY_PNL.get());
                     metrics.insert("daily_pnl".to_string(), fallback);
                 }
             }
         }
         None => {
-            metrics.insert("orders_total".to_string(), monitor_layer::ORDERS_TOTAL.get());
-            metrics.insert("orders_filled".to_string(), monitor_layer::ORDERS_FILLED.get());
-            metrics.insert("orders_cancelled".to_string(), monitor_layer::ORDERS_CANCELLED.get());
-            metrics.insert("orders_rejected".to_string(), monitor_layer::ORDERS_REJECTED.get());
-            metrics.insert("account_balance".to_string(), monitor_layer::ACCOUNT_BALANCE.get());
-            metrics.insert("position_value".to_string(), monitor_layer::POSITION_VALUE.get());
+            metrics.insert(
+                "orders_total".to_string(),
+                monitor_layer::ORDERS_TOTAL.get(),
+            );
+            metrics.insert(
+                "orders_filled".to_string(),
+                monitor_layer::ORDERS_FILLED.get(),
+            );
+            metrics.insert(
+                "orders_cancelled".to_string(),
+                monitor_layer::ORDERS_CANCELLED.get(),
+            );
+            metrics.insert(
+                "orders_rejected".to_string(),
+                monitor_layer::ORDERS_REJECTED.get(),
+            );
+            metrics.insert(
+                "account_balance".to_string(),
+                monitor_layer::ACCOUNT_BALANCE.get(),
+            );
+            metrics.insert(
+                "position_value".to_string(),
+                monitor_layer::POSITION_VALUE.get(),
+            );
             metrics.insert("daily_pnl".to_string(), monitor_layer::DAILY_PNL.get());
         }
     }
@@ -162,9 +267,12 @@ pub async fn acknowledge_alert(
     alert_id: String,
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<bool>> {
     use quant_common::api::{ok_result, ApiFailure};
-    let alert_id_num: i64 = alert_id
-        .parse()
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid alert ID: {}", e)))?;
+    let alert_id_num: i64 = alert_id.parse().map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid alert ID: {}", e),
+        )
+    })?;
 
     let acknowledged = state.alert_manager.acknowledge_alert(alert_id_num).await;
     if acknowledged {
@@ -186,7 +294,8 @@ pub async fn get_logs(
     state: State<'_, AppState>,
     level: Option<String>,
     limit: Option<u32>,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<quant_common::types::LogEntry>>> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<quant_common::types::LogEntry>>>
+{
     use quant_common::api::ok_result;
     let logs = if let Some(level_filter) = level {
         state.log_buffer.get_entries_by_level(&level_filter).await
@@ -217,7 +326,12 @@ pub async fn check_redis_status(
     use quant_common::api::{ok_result, ApiFailure};
     match state.redis_cache.as_ref() {
         Some(cache) => {
-            let ok = cache.health_check().await.map_err(|e| ApiFailure::new(quant_common::api::code::DATABASE, format!("Redis health check failed: {}", e)))?;
+            let ok = cache.health_check().await.map_err(|e| {
+                ApiFailure::new(
+                    quant_common::api::code::DATABASE,
+                    format!("Redis health check failed: {}", e),
+                )
+            })?;
             ok_result(ok)
         }
         None => Err(ApiFailure::new(

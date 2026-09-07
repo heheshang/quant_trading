@@ -465,7 +465,10 @@ impl StrategyService {
             .backtest_repo
             .as_ref()
             .ok_or(ServiceError::DatabaseNotConnected)?;
-        let rows = repo.find_all(limit, offset).await.map_err(ServiceError::from)?;
+        let rows = repo
+            .find_all(limit, offset)
+            .await
+            .map_err(ServiceError::from)?;
         let total = repo.count().await.map_err(ServiceError::from)?;
         Ok(data_layer::BacktestResultsPage { rows, total })
     }

@@ -1,9 +1,9 @@
 use crate::error::{ServiceError, ServiceResult};
 use data_layer::market_data::DataSource;
 use data_layer::{
-    AccountSnapshotRecord, BalanceRecord, FundingRateRecord, LastPriceRecord, MarketDataRecord,
-    MarketDataRepository, NewMarketDataRecord, OrderbookSnapshotRecord, PositionSnapshotRecord,
-    StreamTradeRecord, TickerSnapshotRecord, MarkPriceRecord,
+    AccountSnapshotRecord, BalanceRecord, FundingRateRecord, LastPriceRecord, MarkPriceRecord,
+    MarketDataRecord, MarketDataRepository, NewMarketDataRecord, OrderbookSnapshotRecord,
+    PositionSnapshotRecord, StreamTradeRecord, TickerSnapshotRecord,
 };
 use quant_common::types::MarketData;
 use rust_decimal::Decimal;
@@ -145,57 +145,60 @@ impl MarketService {
             .collect();
 
         match repo.insert_batch(&records).await {
-            Ok(n) => info!(symbol = %symbol, timeframe = %timeframe, inserted = n, "kline backfill persisted"),
-            Err(e) => error!(symbol = %symbol, timeframe = %timeframe, "kline backfill persist failed: {}", e),
+            Ok(n) => {
+                info!(symbol = %symbol, timeframe = %timeframe, inserted = n, "kline backfill persisted")
+            }
+            Err(e) => {
+                error!(symbol = %symbol, timeframe = %timeframe, "kline backfill persist failed: {}", e)
+            }
         }
     }
 
     /// Latest N stream trades for a symbol, read from DB (`stream_trades`).
     #[instrument(skip(self), fields(symbol = %symbol))]
-    pub async fn get_trades_from_db(&self, symbol: &str, limit: i64) -> ServiceResult<Vec<StreamTradeRecord>> {
+    pub async fn get_trades_from_db(
+        &self,
+        symbol: &str,
+        limit: i64,
+    ) -> ServiceResult<Vec<StreamTradeRecord>> {
         let repo = self.repo_or_err("trades not available (no database)")?;
-        repo.query_latest_trades(symbol, limit)
-            .await
-            .map_err(|e| {
-                error!("Failed to read stream trades from DB: {}", e);
-                ServiceError::Other(e.to_string())
-            })
+        repo.query_latest_trades(symbol, limit).await.map_err(|e| {
+            error!("Failed to read stream trades from DB: {}", e);
+            ServiceError::Other(e.to_string())
+        })
     }
 
     /// Latest orderbook snapshot for a symbol, read from DB (`orderbook_snapshots`).
     #[instrument(skip(self), fields(symbol = %symbol))]
-    pub async fn get_orderbook_from_db(&self, symbol: &str) -> ServiceResult<Option<OrderbookSnapshotRecord>> {
+    pub async fn get_orderbook_from_db(
+        &self,
+        symbol: &str,
+    ) -> ServiceResult<Option<OrderbookSnapshotRecord>> {
         let repo = self.repo_or_err("orderbook not available (no database)")?;
-        repo.query_latest_orderbook(symbol)
-            .await
-            .map_err(|e| {
-                error!("Failed to read orderbook from DB: {}", e);
-                ServiceError::Other(e.to_string())
-            })
+        repo.query_latest_orderbook(symbol).await.map_err(|e| {
+            error!("Failed to read orderbook from DB: {}", e);
+            ServiceError::Other(e.to_string())
+        })
     }
 
     /// Latest per-asset balances, read from DB (`balances`).
     #[instrument(skip(self))]
     pub async fn get_balances_from_db(&self) -> ServiceResult<Vec<BalanceRecord>> {
         let repo = self.repo_or_err("balances not available (no database)")?;
-        repo.query_latest_balances()
-            .await
-            .map_err(|e| {
-                error!("Failed to read balances from DB: {}", e);
-                ServiceError::Other(e.to_string())
-            })
+        repo.query_latest_balances().await.map_err(|e| {
+            error!("Failed to read balances from DB: {}", e);
+            ServiceError::Other(e.to_string())
+        })
     }
 
     /// Latest prices for all symbols, read from DB (`last_prices`).
     #[instrument(skip(self))]
     pub async fn get_last_prices_from_db(&self) -> ServiceResult<Vec<LastPriceRecord>> {
         let repo = self.repo_or_err("last_prices not available (no database)")?;
-        repo.query_all_last_prices()
-            .await
-            .map_err(|e| {
-                error!("Failed to read last_prices from DB: {}", e);
-                ServiceError::Other(e.to_string())
-            })
+        repo.query_all_last_prices().await.map_err(|e| {
+            error!("Failed to read last_prices from DB: {}", e);
+            ServiceError::Other(e.to_string())
+        })
     }
 
     /// Point-in-time行情快照，从 DB 读（优先最新 `ticker_snapshots`，缺失时回退 `last_prices` 取价）。

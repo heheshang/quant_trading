@@ -421,7 +421,9 @@ impl MarketDataRepository {
             sqlx::query_as("SELECT DISTINCT instrument_id FROM market_data ORDER BY instrument_id")
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| Error::Database(format!("Failed to list market_data symbols: {}", e)))?;
+                .map_err(|e| {
+                    Error::Database(format!("Failed to list market_data symbols: {}", e))
+                })?;
         Ok(rows.into_iter().map(|(s,)| s).collect())
     }
 
@@ -630,7 +632,11 @@ impl MarketDataRepository {
 
     /// Latest N stream trades for a symbol (newest first), read from DB.
     #[instrument(skip(self), fields(symbol = %symbol))]
-    pub async fn query_latest_trades(&self, symbol: &str, limit: i64) -> Result<Vec<StreamTradeRecord>> {
+    pub async fn query_latest_trades(
+        &self,
+        symbol: &str,
+        limit: i64,
+    ) -> Result<Vec<StreamTradeRecord>> {
         let records = sqlx::query_as::<_, StreamTradeRecord>(
             r#"
             SELECT id, symbol, price, quantity, trade_time, is_buyer_maker, created_at
@@ -650,7 +656,10 @@ impl MarketDataRepository {
 
     /// Latest orderbook snapshot for a symbol, read from DB.
     #[instrument(skip(self), fields(symbol = %symbol))]
-    pub async fn query_latest_orderbook(&self, symbol: &str) -> Result<Option<OrderbookSnapshotRecord>> {
+    pub async fn query_latest_orderbook(
+        &self,
+        symbol: &str,
+    ) -> Result<Option<OrderbookSnapshotRecord>> {
         let record = sqlx::query_as::<_, OrderbookSnapshotRecord>(
             r#"
             SELECT symbol, bids, asks, ts, created_at

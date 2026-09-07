@@ -11,12 +11,12 @@
 
 use data_layer::market_data::DataSource;
 use data_layer::market_data_repo::MarketDataRepository;
+use data_layer::{PgBacktestRepository, PgStrategyRepository, PostgresClient};
 use exchange_binance::ClientInterface as BinanceClientInterface;
 use monitor_engine::LogBuffer;
 use quant_clients::RedisCache;
 use quant_common::config::AppConfig;
 use quant_common::MarketDataProvider;
-use data_layer::{PgBacktestRepository, PgStrategyRepository, PostgresClient};
 use std::path::PathBuf;
 use std::sync::Arc;
 use strategy_engine::registry::default_registry;
@@ -32,8 +32,8 @@ use crate::account_service::AccountService;
 use crate::api_key_service::ApiKeyService;
 use crate::auth_service::AuthService;
 use crate::binance_service::BinanceService;
-use crate::live_trades_service::LiveTradesService;
 use crate::config_service::ConfigService;
+use crate::live_trades_service::LiveTradesService;
 use crate::market_data_provider::{
     resolve_default_timeframe, MarketDataStore, RepositoryMarketDataProvider,
 };
@@ -253,9 +253,9 @@ impl AppServices {
             .map(|c| c.security.encryption_key.clone())
             .ok();
         let api_key_service = ApiKeyService::new(encryption_key, api_key_repo);
-        let live_trades_repo = postgres.as_ref().map(|pg| {
-            Arc::new(data_layer::LiveTradesRepository::new(pg.pool().clone()))
-        });
+        let live_trades_repo = postgres
+            .as_ref()
+            .map(|pg| Arc::new(data_layer::LiveTradesRepository::new(pg.pool().clone())));
         let live_trades = LiveTradesService::new(live_trades_repo);
         let param_optimizer_config = config
             .try_read()

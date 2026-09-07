@@ -1,6 +1,6 @@
 use crate::error::{ServiceError, ServiceResult};
-use quant_common::config::AppConfig;
 use data_layer::PostgresClient;
+use quant_common::config::AppConfig;
 use security::encryption::{DataEncryption, PasswordHasher};
 use security::totp::{generate_totp_secret, verify_totp};
 use security::AuthService as SecAuthService;
@@ -177,7 +177,7 @@ impl AuthService {
 
         let row = sqlx::query(
             r#"
-            SELECT username, email, phone, full_name, company, address,
+            SELECT user_id, username, email, phone, full_name, company, address,
                    created_at, last_login
             FROM users
             WHERE username = $1
@@ -205,6 +205,7 @@ impl AuthService {
         let last_login: Option<chrono::DateTime<chrono::Utc>> = row.get("last_login");
 
         let profile = serde_json::json!({
+            "user_id": row.get::<i64, _>("user_id"),
             "username": username,
             "email": email.unwrap_or_default(),
             "phone": phone.unwrap_or_default(),
@@ -494,8 +495,8 @@ impl AuthService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quant_common::config::DatabaseConfig;
     use data_layer::PostgresClient;
+    use quant_common::config::DatabaseConfig;
     use security::encryption::PasswordHasher;
 
     /// 构建指向 docker 集成库的 PostgresClient(测试共用,消除重复 env 读取)。

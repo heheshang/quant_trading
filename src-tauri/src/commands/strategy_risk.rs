@@ -36,7 +36,10 @@ pub async fn save_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let data = services.strategy_service.save_strategy(&strategy).await?;
     ok_result(data)
 }
@@ -52,8 +55,14 @@ pub async fn delete_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let data = services.strategy_service.delete_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services
+        .strategy_service
+        .delete_strategy(&strategy_id)
+        .await?;
     ok_result(data)
 }
 
@@ -69,8 +78,14 @@ pub async fn toggle_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let data = services.strategy_service.toggle_strategy(&strategy_id, enabled).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let data = services
+        .strategy_service
+        .toggle_strategy(&strategy_id, enabled)
+        .await?;
     ok_result(data)
 }
 
@@ -85,8 +100,14 @@ pub async fn deploy_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let status = services.strategy_service.deploy_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services
+        .strategy_service
+        .deploy_strategy(&strategy_id)
+        .await?;
     ok_result(format!("{:?}", status))
 }
 
@@ -101,8 +122,14 @@ pub async fn start_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let status = services.strategy_service.start_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services
+        .strategy_service
+        .start_strategy(&strategy_id)
+        .await?;
     ok_result(format!("{:?}", status))
 }
 
@@ -117,8 +144,14 @@ pub async fn stop_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let status = services.strategy_service.stop_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services
+        .strategy_service
+        .stop_strategy(&strategy_id)
+        .await?;
     ok_result(format!("{:?}", status))
 }
 
@@ -133,8 +166,14 @@ pub async fn pause_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let status = services.strategy_service.pause_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services
+        .strategy_service
+        .pause_strategy(&strategy_id)
+        .await?;
     ok_result(format!("{:?}", status))
 }
 
@@ -149,8 +188,14 @@ pub async fn resume_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let status = services.strategy_service.resume_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services
+        .strategy_service
+        .resume_strategy(&strategy_id)
+        .await?;
     ok_result(format!("{:?}", status))
 }
 
@@ -165,8 +210,14 @@ pub async fn archive_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let status = services.strategy_service.archive_strategy(&strategy_id).await?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let status = services
+        .strategy_service
+        .archive_strategy(&strategy_id)
+        .await?;
     ok_result(format!("{:?}", status))
 }
 
@@ -174,10 +225,15 @@ pub async fn archive_strategy(
 #[tauri::command]
 pub async fn list_strategy_types(
     state: State<'_, AppState>,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<strategy_layer::registry::StrategyTypeInfo>>> {
+) -> quant_common::api::ApiResult<
+    quant_common::api::ApiResponse<Vec<strategy_layer::registry::StrategyTypeInfo>>,
+> {
     use crate::commands::not_init_err;
     use quant_common::api::{ok_result, ApiFailure};
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let data = services
         .strategy_service
         .list_strategy_types()
@@ -190,10 +246,15 @@ pub async fn list_strategy_types(
 pub async fn get_strategy_type_info(
     state: State<'_, AppState>,
     type_name: String,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<strategy_layer::registry::StrategyTypeInfo>> {
+) -> quant_common::api::ApiResult<
+    quant_common::api::ApiResponse<strategy_layer::registry::StrategyTypeInfo>,
+> {
     use crate::commands::not_init_err;
     use quant_common::api::{ok_result, ApiFailure};
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let data = services
         .strategy_service
         .get_strategy_type_info(&type_name)
@@ -223,12 +284,23 @@ pub async fn create_strategy(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
 
-    let max_pos = rust_decimal::Decimal::from_f64(max_position)
-        .ok_or_else(|| quant_common::api::ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid max_position: {}", max_position)))?;
-    let max_loss = rust_decimal::Decimal::from_f64(max_daily_loss)
-        .ok_or_else(|| quant_common::api::ApiFailure::new(quant_common::api::code::INVALID_PARAM, format!("Invalid max_daily_loss: {}", max_daily_loss)))?;
+    let max_pos = rust_decimal::Decimal::from_f64(max_position).ok_or_else(|| {
+        quant_common::api::ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid max_position: {}", max_position),
+        )
+    })?;
+    let max_loss = rust_decimal::Decimal::from_f64(max_daily_loss).ok_or_else(|| {
+        quant_common::api::ApiFailure::new(
+            quant_common::api::code::INVALID_PARAM,
+            format!("Invalid max_daily_loss: {}", max_daily_loss),
+        )
+    })?;
 
     let data = services
         .strategy_service
@@ -276,29 +348,47 @@ pub async fn get_risk_metrics(
     let var_99 = VaRCalculator::historical_simulation(&[dec!(0.0)], 0.99);
     metrics.insert("var_95".to_string(), var_95.to_f64().unwrap_or(0.0));
     metrics.insert("var_99".to_string(), var_99.to_f64().unwrap_or(0.0));
-    metrics.insert("max_position_size".to_string(), risk_config.max_position_size);
+    metrics.insert(
+        "max_position_size".to_string(),
+        risk_config.max_position_size,
+    );
     metrics.insert("max_daily_loss".to_string(), risk_config.max_daily_loss);
     metrics.insert("max_drawdown".to_string(), risk_config.max_drawdown);
     ok_result(metrics)
+}
+
+async fn effective_risk_config(
+    state: &AppState,
+) -> quant_services::ServiceResult<quant_common::config::RiskConfig> {
+    if let Some(services) = &state.app_services {
+        // Serialize DB reads and updates with cache publication so a stale read
+        // cannot overwrite a newer successfully persisted configuration.
+        let mut app_config = state.config.write().await;
+        match services.risk_service.get_risk_config().await {
+            Ok(config) => {
+                app_config.risk = config.clone();
+                return Ok(config);
+            }
+            Err(quant_services::ServiceError::DatabaseNotConnected) => {
+                return Ok(app_config.risk.clone());
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(state.config.read().await.risk.clone())
 }
 
 /// 获取风险配置
 #[tauri::command]
 pub async fn get_risk_config(
     state: State<'_, AppState>,
-) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<quant_common::config::RiskConfig>> {
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<quant_common::config::RiskConfig>>
+{
     use quant_common::api::{ok_result, ApiFailure};
     if let Err(e) = state.require_role("admin").await {
         return Err(ApiFailure::new(quant_common::api::code::FORBIDDEN, e));
     }
-    if let Some(ref services) = state.app_services {
-        if let Ok(config) = services.risk_service.get_risk_config().await {
-            state.config.write().await.risk = config.clone();
-            return ok_result(config);
-        }
-    }
-    let config = state.config.read().await;
-    ok_result(config.risk.clone())
+    ok_result(effective_risk_config(&state).await?)
 }
 
 /// 更新风险配置
@@ -312,82 +402,24 @@ pub async fn update_risk_config(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    match state.app_services.as_ref() {
-        Some(services) => {
-            let mut new_config = services.config_service.get_config().await;
-            new_config.risk = config.clone();
-            let status = services.config_service.update_config(new_config).await;
-            state
-                .log_buffer
-                .add_entry(quant_common::types::LogEntry {
-                    timestamp: Utc::now(),
-                    level: if status.contains("failed") {
-                        "warn".to_string()
-                    } else {
-                        "info".to_string()
-                    },
-                    message: status,
-                    module: Some("config".to_string()),
-                })
-                .await;
-
-            match services.risk_service.update_risk_config(&config).await {
-                Ok(true) => {
-                    state
-                        .log_buffer
-                        .add_entry(quant_common::types::LogEntry {
-                            timestamp: Utc::now(),
-                            level: "info".to_string(),
-                            message: "Risk config saved to database".to_string(),
-                            module: Some("risk".to_string()),
-                        })
-                        .await;
-                    ok_result(true)
-                }
-                Ok(false) => {
-                    state
-                        .log_buffer
-                        .add_entry(quant_common::types::LogEntry {
-                            timestamp: Utc::now(),
-                            level: "warn".to_string(),
-                            message: "Risk config row not found in database".to_string(),
-                            module: Some("risk".to_string()),
-                        })
-                        .await;
-                    ok_result(false)
-                }
-                Err(e) => {
-                    state
-                        .log_buffer
-                        .add_entry(quant_common::types::LogEntry {
-                            timestamp: Utc::now(),
-                            level: "warn".to_string(),
-                            message: format!(
-                                "Risk config DB update failed, kept memory/file config: {}",
-                                e
-                            ),
-                            module: Some("risk".to_string()),
-                        })
-                        .await;
-                    ok_result(true)
-                }
-            }
-        }
-        None => {
-            let mut app_config = state.config.write().await;
-            app_config.risk = config;
-            state
-                .log_buffer
-                .add_entry(quant_common::types::LogEntry {
-                    timestamp: Utc::now(),
-                    level: "warn".to_string(),
-                    message: "Risk config updated in memory only (no persistence)".to_string(),
-                    module: Some("config".to_string()),
-                })
-                .await;
-            ok_result(true)
-        }
-    }
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or(quant_services::ServiceError::DatabaseNotConnected)?;
+    let mut app_config = state.config.write().await;
+    services.risk_service.update_risk_config(&config).await?;
+    app_config.risk = config;
+    drop(app_config);
+    state
+        .log_buffer
+        .add_entry(quant_common::types::LogEntry {
+            timestamp: Utc::now(),
+            level: "info".to_string(),
+            message: "Risk config saved to database".to_string(),
+            module: Some("risk".to_string()),
+        })
+        .await;
+    ok_result(true)
 }
 
 /// 执行事前风控检查
@@ -401,13 +433,7 @@ pub async fn pre_trade_check(
     use quant_common::api::ok_result;
     use risk_layer::PreTradeRiskChecker;
 
-    // Use the application's live risk configuration instead of hardcoded defaults
-    let mut risk_config = state.config.read().await.risk.clone();
-    if let Some(ref services) = state.app_services {
-        if let Ok(db_risk_config) = services.risk_service.get_risk_config().await {
-            risk_config = db_risk_config;
-        }
-    }
+    let risk_config = effective_risk_config(&state).await?;
 
     let checker = PreTradeRiskChecker::new(risk_config);
 
@@ -454,3 +480,7 @@ pub async fn pre_trade_check(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "strategy_risk_tests.rs"]
+mod tests;

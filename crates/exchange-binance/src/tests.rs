@@ -31,7 +31,9 @@ fn ed25519_signature_is_64_byte_base64() {
     assert_eq!(sig.to_bytes().len(), 64, "Ed25519 signature is 64 bytes");
     let b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
     assert_eq!(b64.len(), 88, "base64(64 bytes) is 88 chars");
-    assert!(b64.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
+    assert!(b64
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
 }
 
 #[test]

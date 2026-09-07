@@ -79,7 +79,6 @@ impl PostgresClient {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

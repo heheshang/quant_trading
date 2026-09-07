@@ -171,8 +171,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::Utc;
-    use parking_lot::Mutex;
     use data_layer::RepoError;
+    use parking_lot::Mutex;
 
     #[derive(Debug, Clone)]
     struct ApiKeyRecordClone {

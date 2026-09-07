@@ -4,7 +4,9 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use quant_common::types::{Order, OrderSide, OrderType, ParameterSchema, StrategyParams, StrategyType};
+use quant_common::types::{
+    Order, OrderSide, OrderType, ParameterSchema, StrategyParams, StrategyType,
+};
 use quant_common::Result;
 use rust_decimal::Decimal;
 use tracing::{info, instrument, warn};
@@ -27,19 +29,15 @@ impl RsiStrategy {
     #[instrument]
     pub fn new() -> Self {
         Self {
-            params: StrategyParams::builder(
-                "rsi-default",
-                "RSI 反转策略",
-                StrategyType::Rsi,
-            )
-            .params(serde_json::json!({
-                "period": DEFAULT_PERIOD,
-                "oversold": DEFAULT_OVERSOLD,
-                "overbought": DEFAULT_OVERBOUGHT,
-            }))
-            .max_position(Decimal::from(100000))
-            .max_daily_loss(Decimal::from(5000))
-            .build(),
+            params: StrategyParams::builder("rsi-default", "RSI 反转策略", StrategyType::Rsi)
+                .params(serde_json::json!({
+                    "period": DEFAULT_PERIOD,
+                    "oversold": DEFAULT_OVERSOLD,
+                    "overbought": DEFAULT_OVERBOUGHT,
+                }))
+                .max_position(Decimal::from(100000))
+                .max_daily_loss(Decimal::from(5000))
+                .build(),
             period: DEFAULT_PERIOD as usize,
             oversold: Decimal::from(DEFAULT_OVERSOLD),
             overbought: Decimal::from(DEFAULT_OVERBOUGHT),
@@ -99,9 +97,16 @@ impl Strategy for RsiStrategy {
         // Buy when RSI is oversold.
         if last_rsi < self.oversold {
             info!(strategy_id = %self.params.strategy_id, %last_rsi, "RSI buy signal (oversold)");
-            let quantity = super::net_quantity(context, &symbol, OrderSide::Buy, self.params.max_position, last_close);
+            let quantity = super::net_quantity(
+                context,
+                &symbol,
+                OrderSide::Buy,
+                self.params.max_position,
+                last_close,
+            );
             if quantity > Decimal::ZERO {
-                orders.push(Order { order_id: 0,
+                orders.push(Order {
+                    order_id: 0,
                     strategy_id: self.params.strategy_id.clone(),
                     symbol: symbol.clone(),
                     order_type: OrderType::Limit,
@@ -113,13 +118,22 @@ impl Strategy for RsiStrategy {
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                     commission: Decimal::ZERO,
-                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+                    slippage: Decimal::ZERO,
+                    exchange: "paper".to_string(),
+                });
             }
         } else if last_rsi > self.overbought {
             info!(strategy_id = %self.params.strategy_id, %last_rsi, "RSI sell signal (overbought)");
-            let quantity = super::net_quantity(context, &symbol, OrderSide::Sell, self.params.max_position, last_close);
+            let quantity = super::net_quantity(
+                context,
+                &symbol,
+                OrderSide::Sell,
+                self.params.max_position,
+                last_close,
+            );
             if quantity > Decimal::ZERO {
-                orders.push(Order { order_id: 0,
+                orders.push(Order {
+                    order_id: 0,
                     strategy_id: self.params.strategy_id.clone(),
                     symbol: symbol.clone(),
                     order_type: OrderType::Limit,
@@ -131,7 +145,9 @@ impl Strategy for RsiStrategy {
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                     commission: Decimal::ZERO,
-                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+                    slippage: Decimal::ZERO,
+                    exchange: "paper".to_string(),
+                });
             }
         }
 

@@ -1,10 +1,10 @@
 use crate::error::{ServiceError, ServiceResult};
 use crate::market_data_provider::MarketDataProvider;
+use data_layer::StrategyRepository as StRepo;
+use data_layer::{BacktestRepository, PostgresClient};
 use quant_common::types::{
     MarketData, ParamType, ParameterSchema, StrategyParams, StrategyStatus, StrategyType,
 };
-use data_layer::StrategyRepository as StRepo;
-use data_layer::{BacktestRepository, PostgresClient};
 use rust_decimal::Decimal;
 use std::sync::Arc;
 use strategy_engine::registry::StrategyRegistry;
@@ -307,6 +307,8 @@ impl StrategyService {
         Ok(strategies)
     }
 
+    /// Save using the version read during this call, rejecting intervening writes.
+    /// This does not detect stale edits made before the call (no client version contract).
     #[instrument(skip(self, strategy), fields(strategy_id = %strategy.strategy_id))]
     pub async fn save_strategy(&self, strategy: &StrategyParams) -> ServiceResult<String> {
         let repo = self
@@ -329,8 +331,16 @@ impl StrategyService {
 
         let existing = repo.find_by_id(&strategy.strategy_id).await?;
 
-        if existing.is_some() {
-            repo.update(&strategy).await?;
+        if let Some(existing) = existing {
+            let updated = repo
+                .update_with_version(&strategy.strategy_id, &strategy, existing.version)
+                .await?;
+            if !updated {
+                return Err(ServiceError::Conflict(format!(
+                    "Strategy '{}' changed while saving (version {})",
+                    strategy.strategy_id, existing.version
+                )));
+            }
             info!(strategy_id = %strategy.strategy_id, "Strategy updated");
         } else {
             repo.insert(&strategy).await?;
@@ -342,6 +352,7 @@ impl StrategyService {
 
     /// Update an existing strategy. Uses optimistic locking via `update_with_version`.
     /// Returns the strategy_id on success, or `ServiceError::Conflict` on version mismatch.
+    /// The version is read here, so only intervening writes within this call are protected.
     #[instrument(skip(self, strategy), fields(strategy_id = %strategy.strategy_id))]
     pub async fn update_strategy(&self, strategy: &StrategyParams) -> ServiceResult<String> {
         let repo = self
@@ -363,7 +374,7 @@ impl StrategyService {
 
         if !updated {
             return Err(ServiceError::Conflict(format!(
-                "Strategy '{}' was modified by another session (version {})",
+                "Strategy '{}' changed while saving (version {})",
                 strategy.strategy_id, expected_version
             )));
         }

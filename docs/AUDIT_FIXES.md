@@ -1,7 +1,29 @@
 # 系统审计修复纪要
 
-> 对「下单 / 回测 / 策略管理 / 风控 / 实盘」全链路审计后，按严重度修复的 23 项。
+> 对「下单 / 回测 / 策略管理 / 风控 / 实盘」全链路审计后，按严重度修复的 27 项。
 > 提交：`c30fcb8`（🔴）、`04e34d8`（🟠 ⑥-⑨）、`f83e73b`（🟠 ⑩-⑬）、`524becb`（🟡 ⑮-⑲）、`5646f55`（🟡 ⑱⑳21）。
+
+## 2026-09-07 逻辑与架构复审
+
+本轮修复：实盘查询失败虚构成交、订单终态和累计事实被覆盖、纸面撤单未持久化、落库失败遗留可执行订单、纸面与实盘持仓混用、市价风险估值绕过、风险配置故障放行、组合权益错位及盈亏比失真、策略保存绕过 CAS、用户元数据授权缺失、占位身份与跨会话缓存、行情启停竞争、实盘终态对账被镜像写入失败阻塞。
+
+架构沿用现有分层：订单编排和数据库一致性放在服务层；命令层负责认证和适配；策略保存复用版本仓储；前端统一通过会话身份及请求代次隔离私有状态。无新增运行依赖、数据库迁移或真实交易操作。
+
+### 验证结果
+
+- `cargo test --workspace`：558 passed、0 failed、27 ignored；忽略项不计为通过。
+- 显式运行隔离 PostgreSQL 回归：订单编排 8 项、风险服务 1 项、风险配置写失败 1 项，全部通过；使用独立容器和连接局部临时表。
+- `npm test`：25 文件、269 项通过；`npm run build`（vue-tsc + Vite）通过。
+- `cargo fmt --all -- --check` 通过；`cargo clippy --workspace --all-targets` 成功，仍有参数过多、冗余借用及 `as_bytes` 警告，未达到零警告门禁。登录节流的 MSRV 不兼容错误已修复，未在 Rust 1.77 工具链上重编整个依赖树。
+- 浏览器运行真实 Vue 页面、使用离线 IPC 边界：无效身份不发布会话；策略页到设置页再返回保留策略；退出返回登录页、token 清除、策略不再显示。不是桌面 Tauri 或真实 Binance 联调。
+- 执行/生命周期、风控/回测、授权/策略、实盘对账、会话、行情六个独立评审切片最终通过，无剩余 MUST FIX；评审为静态检查，运行验证由主代理执行。
+
+### 明确保留的边界
+
+- 本次未运行真实下单、真实交易所故障恢复、完整桌面运行或远程 CI，不部署、不提交 git。
+- 策略 DTO 无客户端版本，只防服务端 CAS 竞争，不声称防跨编辑会话的陈旧覆盖。
+- 实盘订单镜像缺失时，对账保留重试并能写入终态交易事实，但不新增自动重建镜像机制。
+- Wiki 当前描述 Harness 流程和文件元数据；本次无其模型变更。业务及接口变化记录在本文件和 `docs/API_CONTRACT.md`，追踪见 `.harness/changes/fix-trading-audit-20260907/tasks.md`。
 
 ## 🔴 严重（资金安全 / 数据丢失）
 
@@ -37,6 +59,11 @@
 | 19 | 纸面限价成交价 `limit±滑点` 永远更差 / 单永不失效 | 成交价以市价为基础 + 限价 clamp；调度器消费 `order_timeout_seconds` → 超时 Expired |
 | 20 | 前端 `restoreSession` fail-open 留失效 token | 改 fail-closed：无法确认有效即清除会话 |
 | 21 | WS 启停 TOCTOU / 订阅洪泛 | `compare_exchange` 原子抢锁 + 失败释放锁；概览只订阅 ticker，重流仅活跃标的 |
+| 22 | **前端空数据（页面空数据）**：前端按 `1m` 读 K 线，但行情管线只落 `1h`（`DATA_PULLER_CANDLE_BARS=1H`），且 DB 中 `1m` 仅 BTC-USDT 有数据 → 切换任一其他标的（如 ETH-USDT）后 K 线/实时行情/预填价全空 | 前端所有 `1m` 读/订阅统一为 `1h`（`marketData.ts` prefetchCandles/pollDb/subscribeHeavy、`Binance.vue` prefillPrice/pollLiveData/startStream、`getKlines` 默认周期）；`domainSymbol` 幂等防 `BTC--USDT`；测试同步断言 `1h` | `src/stores/marketData.ts`/`src/views/Binance.vue`/`src/services/market.ts` |
+| 23 | **实时行情表仍空（实时行情 还是没有数据）**：22 修复后 `pollLiveData` 仍只挂在 `startStream()` 内订阅之后——未点「开始」或 WS 启动/订阅任一失败（`subscribe_binance_candle` 在 WS 未启动时返回 NOT_INITIALIZED，启动失败又被 `.catch(()=>{})` 吞掉）→ try 块 reject → DB 轮询永不启动，即便 DB 已有 8760 行 `1h` 数据 | 行情显示与 WS 启停解耦：`onMounted` 无条件起 DB 轮询（立即 + 5s 定时）；`startStream`/`stopStream` 回归纯 WS 导入开关（订阅逐个 `.catch` 容错）；切换标的即刷新行情表；空态文案改「暂无 K 线数据」 | `src/views/Binance.vue` |
+| 24 | **订单卡默认空（订单（0）数据为空）**：卡默认「活动」态只查未成交单（`get_active_orders`），而 DB 全部订单（4 笔 live + 21 笔 paper）均为 Filled/Expired 终态 → 空结果；2）时间列绑 `row.time`（仅 `BinanceOrder` 有该字段），DB `Order` 行恒显 `-` | 1）默认改「历史」态，挂载即 `get_recent_orders(100,'live')` 展示最近订单（含成交），与 `Trading.vue` 一致；2）时间列改用 `created_at`，`fmtTime` 兼容 ISO 字符串 | `src/views/Binance.vue` |
+| 25 | **实盘风控订单符号被二次转换（`BTC--USDT`）**：前端已传 domain 符号，`live_request_to_order` 再经 `from_binance_symbol` 插 `-` → 风控按 symbol 精确匹配持仓落空：实盘卖单被误拒（Available: 0）、买单集中度少计（现金检查仍生效） | `live_request_to_order` 符号幂等：已含 `-` 原样使用，仅对 Binance 原始拼接（如 `BTCUSDT`）转换；新增 2 单测 | `src-tauri/src/commands/binance.rs` |
+| 26 | **撤单按钮仅「活动」tab 渲染（`v-if="!ordersHistory"`）**：默认「历史」页未成交单无撤单入口 | 操作列改按行状态渲染：非终态（非 Filled/Cancelled/Rejected/Expired）任意 tab 均显示撤单 | `src/views/Binance.vue` |
 
 ## 深挖补充（回测/多标的）
 

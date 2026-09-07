@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! resolve market data → pre-trade risk check → in-memory submission
-//!     → persistence (graceful) → event descriptor → async execution
+//!     → persistence (required) → event descriptor → database-led execution
 //! ```
 //!
 //! This is the **single place** that orchestrates order submission, so the
@@ -185,14 +185,12 @@ impl OrderProcessor {
 
     /// Submit an order through the full pipeline.
     ///
-    /// Returns the assigned order id plus the UI event descriptor. Order
-    /// execution is dispatched on a background task after the event is built,
-    /// matching the previous behaviour.
+    /// Returns the assigned order id plus the UI event descriptor only after
+    /// persistence succeeds. The scheduler executes persisted paper orders.
     #[instrument(skip(self, order), fields(symbol = %order.symbol, side = ?order.side))]
     pub async fn place_order(&self, order: Order) -> ServiceResult<OrderPlacement> {
         let trading_config = self.config.read().await.trading.clone();
         let mut risk_config = self.config.read().await.risk.clone();
-        let enable_pre_trade = risk_config.enable_pre_trade_check;
 
         // Enforce `max_orders_per_second` (fail-closed: reject when throttled,
         // so an over-limit order is never silently dropped).
@@ -206,10 +204,20 @@ impl OrderProcessor {
             )));
         }
 
-        // Prefer the persisted risk config (DB) when available.
-        if let Ok(db_risk_config) = self.risk_service.get_risk_config().await {
-            risk_config = db_risk_config;
+        // Only an explicitly disconnected service may use the supplied offline config.
+        match self.risk_service.get_risk_config().await {
+            Ok(db_risk_config) => risk_config = db_risk_config,
+            Err(ServiceError::DatabaseNotConnected) => {}
+            Err(e) => return Err(e),
         }
+        let enable_pre_trade = risk_config.enable_pre_trade_check;
+        if !matches!(order.exchange.as_str(), "paper" | "algorithm") {
+            return Err(ServiceError::InvalidParameter(
+                "OrderProcessor only accepts paper/algorithm orders".to_string(),
+            ));
+        }
+        // No database means there is no durable work for the scheduler to execute.
+        let account = self.account_service.get_account_info().await?;
 
         // 1. Resolve market data。市价单在数据源中断时 fail-closed（无法定价风控）；
         //    限价单用限价作参考价。
@@ -245,14 +253,8 @@ impl OrderProcessor {
         //    silently letting it through without risk validation.
         if enable_pre_trade {
             let checker = PreTradeRiskChecker::new(risk_config);
-            let account = self.account_service.get_account_info().await.map_err(|e| {
-                ServiceError::Other(format!(
-                    "Pre-trade risk check failed: unable to fetch account info (fail-closed): {}",
-                    e
-                ))
-            })?;
             // 纸面账号：持仓从已成交单净额推导（positions 表是静态账本，纸面成交不更新）。
-            let positions = self.account_service.get_paper_positions().await.map_err(|e| {
+            let positions = self.account_service.get_paper_positions(account.account_id).await.map_err(|e| {
                 ServiceError::Other(format!(
                     "Pre-trade risk check failed: unable to fetch paper positions (fail-closed): {}",
                     e
@@ -268,8 +270,7 @@ impl OrderProcessor {
                 .map_err(|e| ServiceError::Other(format!("Risk check failed: {}", e)))?;
         }
 
-        // 3. 提交到内存 OrderManager（Paper 由后台调度器在到期后撮合；现场由
-        //    execution engine 在 `place_order` 之外处理）。这里只记录为 Submitted。
+        // Reserve an in-memory id, then persist; failures must not leave an active ghost.
         let mut order = order;
         let order_id = self
             .order_manager
@@ -281,12 +282,23 @@ impl OrderProcessor {
         // 否则 `persist_order` 会落库成入参的 `Pending`（待提交）。
         order.status = OrderStatus::Submitted;
 
-        // 4. Log submission.
-        self.log_order(&order).await;
-
         // 5. Persist to PostgreSQL。活跃订单以数据库为准：落库失败则下单失败（fail-closed），
         //    避免订单只在内存、重启/活跃列表丢失。
-        self.persist_order(&order).await?;
+        if let Err(e) = self
+            .account_service
+            .persist_order(&order, &account.account_id, &order.exchange)
+            .await
+        {
+            if let Err(sync_error) = self
+                .order_manager
+                .update_order_status(order_id, OrderStatus::Rejected)
+                .await
+            {
+                error!(order_id, %sync_error, "Failed to reject unpersisted order");
+            }
+            return Err(e);
+        }
+        self.log_order(&order).await;
 
         // 6. Build the UI event descriptor.
         // Clone event fields so the order can still be moved into execution.
@@ -328,34 +340,54 @@ impl OrderProcessor {
             .await;
     }
 
-    async fn persist_order(&self, order: &Order) -> ServiceResult<()> {
-        match self.account_service.get_account_info().await {
-            Ok(account) => {
-                self.account_service
-                    .persist_order(order, &account.account_id, &order.exchange)
-                    .await
-                    .map_err(|e| {
-                        error!("Order persisted to DB failed: {}", e);
-                        ServiceError::Other(format!("无法下单：订单写入数据库失败（{}）", e))
-                    })?;
-                Ok(())
-            }
-            Err(ServiceError::DatabaseNotConnected) => {
-                // 无数据库（测试/离线降级）→ 尽力而为，不阻塞内存下单。
-                Ok(())
-            }
-            Err(e) => Err(ServiceError::Other(format!(
-                "无法下单：账户信息不可用（未落库）：{}",
-                e
-            ))),
+    /// Commit cancellation before publishing it to the in-memory view.
+    pub async fn cancel_order(&self, order_id: i64) -> ServiceResult<()> {
+        self.account_service.cancel_order(order_id).await?;
+        Self::sync_order_status(&self.order_manager, order_id, OrderStatus::Cancelled).await;
+        Ok(())
+    }
+
+    async fn sync_order_status(order_manager: &OrderManager, order_id: i64, status: OrderStatus) {
+        match order_manager.update_order_status(order_id, status).await {
+            Ok(()) | Err(quant_common::Error::NotFound(_)) => {}
+            Err(e) => error!(order_id, %e, "Database committed but memory status sync failed"),
         }
     }
 
-    /// Run execution asynchronously; failures are logged, not surfaced (best-effort).
+    async fn execute_paper_order(
+        account_service: &AccountService,
+        order_manager: &OrderManager,
+        engine: &ExecutionEngine,
+        order: Order,
+        market_data: &MarketData,
+    ) -> ServiceResult<()> {
+        let exchange = order.exchange.clone();
+        let result = engine
+            .calculate_paper_fill(order, market_data)
+            .await
+            .map_err(|e| ServiceError::Other(e.to_string()))?;
+        account_service
+            .update_order_status(
+                result.order_id,
+                &exchange,
+                result.status.clone(),
+                result.filled_quantity,
+                Some(result.commission),
+            )
+            .await?;
+        match order_manager.apply_execution_result(&result).await {
+            Ok(()) | Err(quant_common::Error::NotFound(_)) => {}
+            Err(e) => {
+                error!(order_id = result.order_id, %e, "Database committed but memory fill sync failed")
+            }
+        }
+        Ok(())
+    }
+
     /// 启动纸面订单执行调度器（后台定时任务）。
     ///
     /// 周期性扫描 `orders` 表中已到期（`created_at + simulation_delay_ms <= now`）
-    /// 且未成交的纸面单，用 `ExecutionEngine::fill_order` 立即撮合并回写 DB。
+    /// 且未成交的纸面单，纯计算后条件更新 DB，成功后才同步内存。
     /// 以 DB 为事实来源 → App 重启后可恢复处理，不再丢单。
     pub async fn start_paper_execution_scheduler(&self) {
         // 纸面调度器**永远**用纸面引擎（即使 enable_paper_trading=false）——它只处理
@@ -372,6 +404,7 @@ impl OrderProcessor {
         let account_service = self.account_service.clone();
         let market_service = self.market_service.clone();
         let log = self.log_buffer.clone();
+        let order_manager = self.order_manager.clone();
 
         tokio::spawn(async move {
             let interval = std::time::Duration::from_secs(1);
@@ -383,31 +416,44 @@ impl OrderProcessor {
                 let now = chrono::Utc::now();
                 for order in orders {
                     // 只处理纸面/算法单；实盘单（exchange='live'）走 Binance 实时路径，跳过。
-                    if order.exchange == "live" {
+                    if !matches!(order.exchange.as_str(), "paper" | "algorithm") {
                         continue;
                     }
                     // 订单超时未成交（如限价长时间未触及）→ 标记 Expired，避免永挂活跃。
-                    let created_clock = order.created_at + chrono::Duration::from_std(timeout)
-                        .unwrap_or_else(|_| chrono::Duration::seconds(30));
+                    let created_clock = order.created_at
+                        + chrono::Duration::from_std(timeout)
+                            .unwrap_or_else(|_| chrono::Duration::seconds(30));
                     if now > created_clock {
-                        let _ = account_service
+                        match account_service
                             .update_order_status(
                                 order.order_id,
-                                quant_common::types::OrderStatus::Expired,
+                                &order.exchange,
+                                OrderStatus::Expired,
                                 order.filled_quantity,
-                                order.commission,
+                                Some(order.commission),
                             )
-                            .await;
+                            .await
+                        {
+                            Ok(()) => {
+                                Self::sync_order_status(
+                                    &order_manager,
+                                    order.order_id,
+                                    OrderStatus::Expired,
+                                )
+                                .await
+                            }
+                            Err(e) => {
+                                error!(order_id = order.order_id, %e, "Order expiry was not committed")
+                            }
+                        }
                         continue;
                     }
-                    let due = order.created_at
-                        + chrono::Duration::milliseconds(delay_ms as i64)
-                        <= now;
+                    let due =
+                        order.created_at + chrono::Duration::milliseconds(delay_ms as i64) <= now;
                     if !due {
                         continue;
                     }
-                    let market_data = match market_service.get_realtime_data(&order.symbol).await
-                    {
+                    let market_data = match market_service.get_realtime_data(&order.symbol).await {
                         Ok(md) => md,
                         Err(e) => {
                             log.add_entry(LogEntry {
@@ -435,17 +481,16 @@ impl OrderProcessor {
                             }
                         }
                     }
-                    match engine.fill_order(order, &market_data).await {
-                        Ok(result) => {
-                            let _ = account_service
-                                .update_order_status(
-                                    result.order_id,
-                                    result.status,
-                                    result.filled_quantity,
-                                    result.commission,
-                                )
-                                .await;
-                        }
+                    match Self::execute_paper_order(
+                        &account_service,
+                        &order_manager,
+                        &engine,
+                        order,
+                        &market_data,
+                    )
+                    .await
+                    {
+                        Ok(()) => {}
                         Err(e) => {
                             log.add_entry(LogEntry {
                                 timestamp: chrono::Utc::now(),
@@ -674,53 +719,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pre_trade_risk_fails_closed_when_account_unavailable() {
+    async fn test_submission_without_database_is_rejected() {
         let processor = make_order_processor();
-        // Default config has enable_pre_trade_check = true and no DB, so
-        // account/positions are unavailable → the order must be rejected.
-        let result = processor.place_order(sample_order()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("fail-closed"), "unexpected error: {}", err);
+        assert!(matches!(
+            processor.place_order(sample_order()).await,
+            Err(ServiceError::DatabaseNotConnected)
+        ));
+        assert!(processor.order_manager.get_active_orders().await.is_empty());
+        processor.config.write().await.risk.enable_pre_trade_check = false;
+        assert!(matches!(
+            processor.place_order(sample_order()).await,
+            Err(ServiceError::DatabaseNotConnected)
+        ));
+        assert!(processor.order_manager.get_active_orders().await.is_empty());
     }
 
-    #[tokio::test]
-    async fn test_rate_limit_rejects_second_order_in_window() {
-        let config = Arc::new(RwLock::new(AppConfig::default()));
-        {
-            let mut cfg = config.write().await;
-            cfg.trading.max_orders_per_second = 1;
-            cfg.risk.enable_pre_trade_check = false;
-        }
-        let processor = OrderProcessor::new(
-            config,
-            Arc::new(RwLock::new(None)),
-            Arc::new(OrderManager::new()),
-            Arc::new(LogBuffer::new(1000)),
-            Arc::new(MarketService::new(Arc::new(RwLock::new(None)), None)),
-            Arc::new(RiskService::new(None)),
-            Arc::new(AccountService::new(None)),
-        );
-
-        // First order within the window is admitted.
-        let first = processor.place_order(sample_order()).await;
-        assert!(
-            first.is_ok(),
-            "first order should pass, got {:?}",
-            first.err()
-        );
-
-        // Immediately placing a second one exceeds the 1/sec cap → rejected.
-        let second = processor.place_order(sample_order()).await;
-        assert!(second.is_err());
-        assert!(matches!(second.unwrap_err(), ServiceError::RateLimited(_)));
+    #[test]
+    fn test_rate_limit_rejects_second_order_in_window() {
+        let limiter = RateLimiter::new(1.0);
+        assert!(limiter.try_acquire(1.0));
+        assert!(!limiter.try_acquire(1.0));
     }
 
     // ── Algorithmic orders (TWAP / VWAP / Iceberg) ──────────────────────────
 
-    /// A processor configured for paper trading without the pre-trade gate
-    /// (so orders go through in a DB-less environment) plus the shared
-    /// in-memory [`OrderManager`] we assert against.
+    /// Explicit offline configuration; placement must fail without durable storage.
     async fn make_paper_order_processor() -> (OrderProcessor, Arc<OrderManager>) {
         let config = Arc::new(RwLock::new(AppConfig::default()));
         {
@@ -737,7 +760,9 @@ mod tests {
             order_manager.clone(),
             Arc::new(LogBuffer::new(1000)),
             Arc::new(MarketService::new(
-                Arc::new(RwLock::new(Some(Arc::new(FakeDataSource) as Arc<dyn DataSource>))),
+                Arc::new(RwLock::new(Some(
+                    Arc::new(FakeDataSource) as Arc<dyn DataSource>
+                ))),
                 None,
             )),
             Arc::new(RiskService::new(None)),
@@ -775,8 +800,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
     async fn test_place_algorithmic_order_twap_generates_equal_slices() {
-        let (processor, order_manager) = make_paper_order_processor().await;
+        let (processor, _) = make_database_processor().await;
+        let order_manager = processor.order_manager.clone();
         let placements = processor
             .place_algorithmic_order(big_order(), "TWAP", &twap_params(Some(60), Some(10)))
             .await
@@ -796,8 +823,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
     async fn test_place_algorithmic_order_iceberg_places_limit_slices() {
-        let (processor, order_manager) = make_paper_order_processor().await;
+        let (processor, _) = make_database_processor().await;
+        let order_manager = processor.order_manager.clone();
         let params = AlgorithmicOrderParams {
             duration_minutes: None,
             num_slices: None,
@@ -827,13 +856,7 @@ mod tests {
         let result = processor
             .place_algorithmic_order(big_order(), "TWAP", &twap_params(Some(0), Some(10)))
             .await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("duration_minutes"),
-            "unexpected error: {}",
-            err
-        );
+        assert!(matches!(result, Err(ServiceError::InvalidParameter(_))));
     }
 
     #[tokio::test]
@@ -842,9 +865,7 @@ mod tests {
         let result = processor
             .place_algorithmic_order(big_order(), "TWAP", &twap_params(Some(60), Some(0)))
             .await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("num_slices"), "unexpected error: {}", err);
+        assert!(matches!(result, Err(ServiceError::InvalidParameter(_))));
     }
 
     #[tokio::test]
@@ -853,20 +874,16 @@ mod tests {
         let result = processor
             .place_algorithmic_order(big_order(), "FOO", &twap_params(Some(60), Some(10)))
             .await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("Unknown algorithmic"),
-            "unexpected error: {}",
-            err
-        );
+        assert!(matches!(result, Err(ServiceError::InvalidParameter(_))));
     }
 
     #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
     async fn test_live_pipeline_routes_order_to_in_memory_order_manager() {
         use strategy_engine::signals::{Signal, SignalSource, SignalType};
 
-        let (processor, order_manager) = make_paper_order_processor().await;
+        let (processor, _) = make_database_processor().await;
+        let order_manager = processor.order_manager.clone();
         // A minimal "real" pipeline wired to OrderProcessor (passthrough risk so
         // the authoritative pre-trade check in `place_order` is not duplicated).
         let pipeline = crate::pipeline::make_live_pipeline(Arc::new(processor));
@@ -904,5 +921,394 @@ mod tests {
         assert_eq!(active[0].symbol, "BTC-USDT");
         assert_eq!(active[0].quantity, dec!(2));
         assert_eq!(active[0].strategy_id, "strat-1");
+    }
+
+    async fn make_database_processor() -> (OrderProcessor, Arc<data_layer::PostgresClient>) {
+        let url = std::env::var("AUDIT_DATABASE_URL").expect("set AUDIT_DATABASE_URL explicitly");
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
+        // All names shadow production tables on this one connection; no migrations or .env.
+        sqlx::raw_sql(r#"
+            CREATE TEMP TABLE accounts (
+                account_id bigint PRIMARY KEY, total_assets numeric DEFAULT 100000,
+                available_cash numeric DEFAULT 100000, frozen_cash numeric DEFAULT 0,
+                market_value numeric DEFAULT 0, total_pnl numeric DEFAULT 0,
+                daily_pnl numeric DEFAULT 0, margin numeric DEFAULT 0,
+                margin_ratio numeric DEFAULT 0, updated_at timestamptz DEFAULT now()
+            );
+            INSERT INTO accounts (account_id) VALUES (1);
+            CREATE TEMP TABLE orders (
+                order_id bigint PRIMARY KEY, account_id bigint, strategy_id text,
+                symbol text, order_type text, side text, price numeric, quantity numeric,
+                filled_quantity numeric, commission numeric, slippage numeric, status text,
+                exchange text, created_at timestamptz, updated_at timestamptz
+            );
+            CREATE TEMP TABLE positions (
+                account_id bigint, symbol text, quantity numeric, available_quantity numeric,
+                avg_price numeric, market_value numeric, unrealized_pnl numeric,
+                realized_pnl numeric, updated_at timestamptz DEFAULT now()
+            );
+            CREATE TEMP TABLE risk_config (
+                id integer PRIMARY KEY, max_position_size float8 DEFAULT 1,
+                max_daily_loss float8 DEFAULT 1, max_drawdown float8 DEFAULT 1,
+                max_concentration float8 DEFAULT 1, enable_pre_trade_check boolean DEFAULT false,
+                enable_real_time_monitor boolean DEFAULT false, var_confidence_level float8 DEFAULT 0.95
+            );
+            INSERT INTO risk_config (id) VALUES (1);
+        "#).execute(&pool).await.unwrap();
+        let client = Arc::new(data_layer::PostgresClient::from_pool(pool));
+        let (mut processor, _) = make_paper_order_processor().await;
+        processor.account_service = Arc::new(AccountService::new(Some(client.clone())));
+        processor.risk_service = Arc::new(RiskService::new(Some(client.clone())));
+        (processor, client)
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
+    async fn test_database_cancellation_blocks_stale_fill_and_live_cancellation() {
+        let (processor, client) = make_database_processor().await;
+        let placement = processor.place_order(sample_order()).await.unwrap();
+        let stale = processor
+            .account_service
+            .get_active_orders(None)
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+        processor.cancel_order(placement.order_id).await.unwrap();
+        let engine = ExecutionEngine::new_binance(
+            processor.order_manager.clone(),
+            processor.config.read().await.trading.clone(),
+            None,
+        );
+        let market = FakeDataSource
+            .get_realtime_data(&stale.symbol)
+            .await
+            .unwrap();
+        assert!(matches!(
+            OrderProcessor::execute_paper_order(
+                &processor.account_service,
+                &processor.order_manager,
+                &engine,
+                stale,
+                &market
+            )
+            .await,
+            Err(ServiceError::Conflict(_))
+        ));
+        let memory = processor
+            .order_manager
+            .get_order(placement.order_id)
+            .await
+            .unwrap();
+        assert_eq!(memory.status, OrderStatus::Cancelled);
+        assert_eq!(memory.filled_quantity, Decimal::ZERO);
+        let persisted: (String, Decimal) =
+            sqlx::query_as("SELECT status, filled_quantity FROM orders WHERE order_id = $1")
+                .bind(placement.order_id)
+                .fetch_one(client.pool())
+                .await
+                .unwrap();
+        assert_eq!(persisted, ("Cancelled".to_string(), Decimal::ZERO));
+        assert!(matches!(
+            processor.cancel_order(-1).await,
+            Err(ServiceError::NotFound(_))
+        ));
+        for (id, exchange) in [(41, "live"), (42, "unknown")] {
+            let mut order = sample_order();
+            order.order_id = id;
+            processor
+                .account_service
+                .persist_order(&order, &1, exchange)
+                .await
+                .unwrap();
+            assert!(matches!(
+                processor.cancel_order(id).await,
+                Err(ServiceError::NotFound(_))
+            ));
+            let status: String =
+                sqlx::query_scalar("SELECT status FROM orders WHERE order_id = $1")
+                    .bind(id)
+                    .fetch_one(client.pool())
+                    .await
+                    .unwrap();
+            assert_eq!(status, "Pending");
+        }
+        let memory_only = processor
+            .order_manager
+            .submit_order(sample_order())
+            .await
+            .unwrap();
+        assert!(matches!(
+            processor.cancel_order(memory_only).await,
+            Err(ServiceError::NotFound(_))
+        ));
+        assert_eq!(
+            processor
+                .order_manager
+                .get_order(memory_only)
+                .await
+                .unwrap()
+                .status,
+            OrderStatus::Submitted
+        );
+        let durable = processor.place_order(sample_order()).await.unwrap();
+        sqlx::query("ALTER TABLE orders ADD CONSTRAINT reject_cancel CHECK (status <> 'Cancelled') NOT VALID")
+            .execute(client.pool()).await.unwrap();
+        assert!(matches!(
+            processor.cancel_order(durable.order_id).await,
+            Err(ServiceError::Database(_))
+        ));
+        assert_eq!(
+            processor
+                .order_manager
+                .get_order(durable.order_id)
+                .await
+                .unwrap()
+                .status,
+            OrderStatus::Submitted
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
+    async fn test_database_restored_order_executes_without_memory_entry() {
+        let (processor, client) = make_database_processor().await;
+        let mut order = sample_order();
+        order.order_id = 71;
+        order.status = OrderStatus::Submitted;
+        processor
+            .account_service
+            .persist_order(&order, &1, "paper")
+            .await
+            .unwrap();
+        let engine = ExecutionEngine::new_binance(
+            processor.order_manager.clone(),
+            processor.config.read().await.trading.clone(),
+            None,
+        );
+        let market = FakeDataSource
+            .get_realtime_data(&order.symbol)
+            .await
+            .unwrap();
+        OrderProcessor::execute_paper_order(
+            &processor.account_service,
+            &processor.order_manager,
+            &engine,
+            order,
+            &market,
+        )
+        .await
+        .unwrap();
+        let persisted: (String, Decimal) =
+            sqlx::query_as("SELECT status, filled_quantity FROM orders WHERE order_id = 71")
+                .fetch_one(client.pool())
+                .await
+                .unwrap();
+        assert_eq!(persisted, ("Filled".to_string(), dec!(1)));
+        assert!(processor.order_manager.get_active_orders().await.is_empty());
+        assert!(matches!(
+            processor
+                .account_service
+                .update_order_status(
+                    -1,
+                    "paper",
+                    OrderStatus::Filled,
+                    dec!(1),
+                    Some(Decimal::ZERO)
+                )
+                .await,
+            Err(ServiceError::Conflict(_))
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
+    async fn test_database_paper_positions_include_cancelled_fills_and_isolate_accounts() {
+        let (processor, client) = make_database_processor().await;
+        for (id, account, exchange, status, quantity, side) in [
+            (
+                1,
+                1,
+                "paper",
+                OrderStatus::Cancelled,
+                dec!(3),
+                OrderSide::Buy,
+            ),
+            (
+                2,
+                1,
+                "algorithm",
+                OrderStatus::PartiallyFilled,
+                dec!(2),
+                OrderSide::Buy,
+            ),
+            (
+                3,
+                1,
+                "paper",
+                OrderStatus::Cancelled,
+                dec!(1),
+                OrderSide::Sell,
+            ),
+            (4, 1, "live", OrderStatus::Filled, dec!(100), OrderSide::Buy),
+            (
+                5,
+                2,
+                "paper",
+                OrderStatus::Filled,
+                dec!(100),
+                OrderSide::Buy,
+            ),
+            (
+                6,
+                1,
+                "unknown",
+                OrderStatus::Filled,
+                dec!(100),
+                OrderSide::Buy,
+            ),
+        ] {
+            let mut order = sample_order();
+            order.order_id = id;
+            order.status = status;
+            order.quantity = quantity;
+            order.filled_quantity = quantity;
+            order.side = side;
+            processor
+                .account_service
+                .persist_order(&order, &account, exchange)
+                .await
+                .unwrap();
+        }
+        let positions = processor
+            .account_service
+            .get_paper_positions(1)
+            .await
+            .unwrap();
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].quantity, dec!(4));
+        assert_eq!(positions[0].available_quantity, dec!(4));
+        sqlx::raw_sql(
+            "INSERT INTO positions (account_id, symbol, quantity, available_quantity, avg_price,
+            market_value, unrealized_pnl, realized_pnl) VALUES
+            (1, 'BTC-USDT', 8, 2, 100, 800, 0, 0), (2, 'ETH-USDT', 99, 99, 100, 9900, 0, 0)",
+        )
+        .execute(client.pool())
+        .await
+        .unwrap();
+        let positions = processor.account_service.get_positions().await.unwrap();
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].symbol, "BTC-USDT");
+        assert_eq!(positions[0].available_quantity, dec!(2));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
+    async fn test_database_risk_toggle_and_persistence_failure_fail_closed() {
+        let (processor, client) = make_database_processor().await;
+        sqlx::query("UPDATE risk_config SET enable_pre_trade_check = true, max_position_size = 0")
+            .execute(client.pool())
+            .await
+            .unwrap();
+        assert!(processor.place_order(sample_order()).await.is_err());
+        assert!(processor.order_manager.get_active_orders().await.is_empty());
+        sqlx::query("ALTER TABLE risk_config RENAME COLUMN max_position_size TO unavailable")
+            .execute(client.pool())
+            .await
+            .unwrap();
+        assert!(matches!(
+            processor.place_order(sample_order()).await,
+            Err(ServiceError::Database(_))
+        ));
+        assert!(processor.order_manager.get_active_orders().await.is_empty());
+        sqlx::query("ALTER TABLE risk_config RENAME COLUMN unavailable TO max_position_size")
+            .execute(client.pool())
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM risk_config")
+            .execute(client.pool())
+            .await
+            .unwrap();
+        assert!(matches!(
+            processor.place_order(sample_order()).await,
+            Err(ServiceError::NotFound(_))
+        ));
+        sqlx::query("INSERT INTO risk_config (id) VALUES (1)")
+            .execute(client.pool())
+            .await
+            .unwrap();
+        sqlx::query("ALTER TABLE orders ADD CONSTRAINT reject_insert CHECK (quantity < 0)")
+            .execute(client.pool())
+            .await
+            .unwrap();
+        assert!(matches!(
+            processor.place_order(sample_order()).await,
+            Err(ServiceError::Database(_))
+        ));
+        assert!(processor.order_manager.get_active_orders().await.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
+    async fn test_database_status_updates_preserve_terminal_and_cumulative_facts() {
+        let (processor, client) = make_database_processor().await;
+        let service = &processor.account_service;
+        let mut order = sample_order();
+        order.order_id = 81;
+        order.quantity = dec!(10);
+        service.persist_order(&order, &1, "live").await.unwrap();
+        service
+            .update_order_status(
+                81,
+                "live",
+                OrderStatus::PartiallyFilled,
+                dec!(2),
+                Some(dec!(1)),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            service
+                .update_order_status(81, "live", OrderStatus::Submitted, dec!(1), None)
+                .await,
+            Err(ServiceError::Conflict(_))
+        ));
+        assert!(matches!(
+            service
+                .update_order_status(81, "paper", OrderStatus::Filled, dec!(10), None)
+                .await,
+            Err(ServiceError::Conflict(_))
+        ));
+        service
+            .update_order_status(81, "live", OrderStatus::Cancelled, dec!(2), None)
+            .await
+            .unwrap();
+        service
+            .update_order_status(81, "live", OrderStatus::Cancelled, dec!(2), Some(dec!(1)))
+            .await
+            .unwrap();
+        assert!(matches!(
+            service
+                .update_order_status(81, "live", OrderStatus::Filled, dec!(10), None)
+                .await,
+            Err(ServiceError::Conflict(_))
+        ));
+        assert!(matches!(
+            service
+                .update_order_status(81, "live", OrderStatus::Cancelled, dec!(3), None)
+                .await,
+            Err(ServiceError::Conflict(_))
+        ));
+        let facts: (String, Decimal, Decimal) = sqlx::query_as(
+            "SELECT status, filled_quantity, commission FROM orders WHERE order_id=81",
+        )
+        .fetch_one(client.pool())
+        .await
+        .unwrap();
+        assert_eq!(facts, ("Cancelled".to_string(), dec!(2), dec!(1)));
     }
 }

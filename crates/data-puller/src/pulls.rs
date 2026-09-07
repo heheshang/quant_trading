@@ -64,11 +64,7 @@ impl DataPuller {
                 || async {
                     let client = client_lock.read().await;
                     client
-                        .get_candles(
-                            &to_binance_symbol(&symbol),
-                            &bar_lower,
-                            Some(config.limit),
-                        )
+                        .get_candles(&to_binance_symbol(&symbol), &bar_lower, Some(config.limit))
                         .await
                 },
             )

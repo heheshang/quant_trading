@@ -147,6 +147,7 @@ pub trait StrategyRepository: Send + Sync + 'static {
     async fn find_by_id(&self, strategy_id: &str) -> Result<Option<StrategyParams>, RepoError>;
 
     /// Insert a new strategy. Returns the auto-generated `id`.
+    /// A duplicate `strategy_id` returns `VersionConflict` rather than overwriting the row.
     async fn insert(&self, params: &StrategyParams) -> Result<i32, RepoError>;
 
     /// Update an existing strategy (identified by `strategy_id`). Returns `true` if updated.
@@ -230,6 +231,52 @@ mod tests {
     use rust_decimal_macros::dec;
     use serde_json::json;
 
+    #[tokio::test]
+    #[ignore = "requires AUDIT_DATABASE_URL; uses connection-local TEMP tables"]
+    async fn database_insert_preserves_owner_and_rejects_duplicate_without_overwrite() {
+        let url = std::env::var("AUDIT_DATABASE_URL").expect("set AUDIT_DATABASE_URL explicitly");
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            r#"
+            CREATE TEMP TABLE strategies (
+                id serial PRIMARY KEY, strategy_id text UNIQUE NOT NULL,
+                strategy_name text NOT NULL, strategy_type text NOT NULL,
+                params jsonb NOT NULL, enabled boolean NOT NULL,
+                max_position numeric NOT NULL, max_daily_loss numeric NOT NULL,
+                status text NOT NULL, description text, tags jsonb NOT NULL,
+                symbols jsonb NOT NULL, instance_label text,
+                created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL,
+                version bigint NOT NULL, user_id bigint
+            );
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let repo = PgStrategyRepository::new(Arc::new(pool));
+        let mut original = make_row().to_domain().unwrap();
+        original.user_id = 42;
+        repo.insert(&original).await.unwrap();
+        let mut duplicate = original.clone();
+        duplicate.strategy_name = "must not overwrite".into();
+        duplicate.user_id = 99;
+        assert!(matches!(
+            repo.insert(&duplicate).await,
+            Err(RepoError::VersionConflict { .. })
+        ));
+        let stored = repo
+            .find_by_id(&original.strategy_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.user_id, 42);
+        assert_eq!(stored.strategy_name, original.strategy_name);
+        assert_eq!(stored.version, original.version);
+    }
     // ── helpers ───────────────────────────────────────────────────────────────
 
     fn make_row() -> StrategyRow {

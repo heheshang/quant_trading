@@ -428,7 +428,10 @@ impl AppConfig {
             return Err("JWT 密钥过短(<32字节)，拒绝启动。".to_string());
         }
         if is_placeholder(&self.security.encryption_key) {
-            return Err("加密密钥为空或仍为占位值，拒绝启动。请设置足够强(≥32字节)的 ENCRYPTION_KEY。".to_string());
+            return Err(
+                "加密密钥为空或仍为占位值，拒绝启动。请设置足够强(≥32字节)的 ENCRYPTION_KEY。"
+                    .to_string(),
+            );
         }
         if self.security.encryption_key.len() < 32 {
             return Err("加密密钥过短(<32字节)，拒绝启动。".to_string());

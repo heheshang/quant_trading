@@ -5,7 +5,6 @@ use quant_common::utils::{
     calculate_annual_return, calculate_annualized_sharpe_ratio, calculate_max_drawdown,
 };
 use quant_common::{Error, Result};
-use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,6 +50,25 @@ pub struct BacktestEngine {
     fill_time: DateTime<Utc>,
 }
 
+/// Internal realized amounts; trade notionals cannot recover these statistics.
+#[derive(Default)]
+struct RealizedPnl {
+    total_profit: Decimal,
+    total_loss: Decimal,
+}
+
+impl RealizedPnl {
+    fn profit_loss_ratio(&self) -> Decimal {
+        if self.total_loss > Decimal::ZERO {
+            self.total_profit / self.total_loss
+        } else if self.total_profit > Decimal::ZERO {
+            Decimal::from(100)
+        } else {
+            Decimal::ZERO
+        }
+    }
+}
+
 impl BacktestEngine {
     pub fn new(initial_capital: Decimal, commission_rate: Decimal, slippage: Decimal) -> Self {
         Self {
@@ -77,6 +95,13 @@ impl BacktestEngine {
             total_loss: Decimal::ZERO,
             trades: Vec::new(),
             fill_time: Utc::now(),
+        }
+    }
+
+    fn realized_pnl(&self) -> RealizedPnl {
+        RealizedPnl {
+            total_profit: self.total_profit,
+            total_loss: self.total_loss,
         }
     }
 
@@ -194,10 +219,8 @@ impl BacktestEngine {
                     .find(|d| d.symbol == order.symbol)
                     .map(|d| d.open)
                     .unwrap_or(Decimal::ZERO);
-                if fill_price > Decimal::ZERO {
-                    if self.execute_order_at_price(order, fill_price)? {
-                        total_trades += 1;
-                    }
+                if fill_price > Decimal::ZERO && self.execute_order_at_price(order, fill_price)? {
+                    total_trades += 1;
                 }
             }
 
@@ -289,13 +312,7 @@ impl BacktestEngine {
             sharpe_ratio,
             max_drawdown,
             win_rate,
-            profit_loss_ratio: if self.total_loss > Decimal::ZERO {
-                self.total_profit / self.total_loss
-            } else if self.total_profit > Decimal::ZERO {
-                Decimal::from_f64(100.0).unwrap_or(Decimal::ONE)
-            } else {
-                Decimal::ZERO
-            },
+            profit_loss_ratio: self.realized_pnl().profit_loss_ratio(),
             total_trades,
             winning_trades: self.winning_trades,
             losing_trades: self.losing_trades,

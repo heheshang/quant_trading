@@ -151,8 +151,13 @@ impl Strategy for TrendFollowingStrategy {
         );
 
         let symbol = context.market_data[0].symbol.clone();
-        let quantity =
-            super::net_quantity(context, &symbol, side.clone(), self.params.max_position, last_close);
+        let quantity = super::net_quantity(
+            context,
+            &symbol,
+            side.clone(),
+            self.params.max_position,
+            last_close,
+        );
         if quantity <= Decimal::ZERO {
             return Ok(Vec::new());
         }

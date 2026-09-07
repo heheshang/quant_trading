@@ -7,9 +7,7 @@ use chrono::Utc;
 use data_layer::LiveTrade;
 use data_puller::market_import::MarketImporter;
 use exchange_binance::types::{BinanceBalance, BinanceEnvironment};
-use exchange_binance::{
-    websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient,
-};
+use exchange_binance::{websocket::BinanceWsMessage, BinanceWebSocket, UserDataStreamClient};
 use quant_common::types::Position;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
@@ -33,7 +31,10 @@ pub async fn start_binance_market_data(
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        return Err(ApiFailure::new(quant_common::api::code::CONFLICT, "Binance WebSocket already running".to_string()));
+        return Err(ApiFailure::new(
+            quant_common::api::code::CONFLICT,
+            "Binance WebSocket already running".to_string(),
+        ));
     }
 
     let (environment, ws_url) = {
@@ -50,25 +51,34 @@ pub async fn start_binance_market_data(
         serde_json::json!({ "status": "connecting" }),
     );
 
-    ws.start()
-        .await
-        .map_err(|e| {
-            // 启动失败：释放锁，允许重试。
-            state.binance_ws_state.running.store(false, Ordering::SeqCst);
-            ApiFailure::new(quant_common::api::code::BINANCE_API, format!("Failed to start Binance WebSocket: {}", e))
-        })?;
+    ws.start().await.map_err(|e| {
+        // 启动失败：释放锁，允许重试。
+        state
+            .binance_ws_state
+            .running
+            .store(false, Ordering::SeqCst);
+        ApiFailure::new(
+            quant_common::api::code::BINANCE_API,
+            format!("Failed to start Binance WebSocket: {}", e),
+        )
+    })?;
 
     let mut rx = ws.get_receiver().await;
     let app_clone = app.clone();
     let running = state.binance_ws_state.running.clone();
 
     // 导入管线：remote WS 数据 → DB。无 repo（未连接 DB）时不创建 importer。
-    let market_repo = state.app_services.as_ref().and_then(|s| s.market_data.clone());
+    let market_repo = state
+        .app_services
+        .as_ref()
+        .and_then(|s| s.market_data.clone());
     let importer = market_repo.clone().map(MarketImporter::new);
     if importer.is_some() {
         info!("binance market WS import pipeline enabled (batching importer)");
     } else {
-        warn!("binance market WS import pipeline DISABLED (no market_data repo / DB not connected)");
+        warn!(
+            "binance market WS import pipeline DISABLED (no market_data repo / DB not connected)"
+        );
     }
 
     let _ = app_clone.emit(
@@ -131,13 +141,16 @@ pub async fn subscribe_binance_candle(
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
         Some(ws) => {
-            ws
-                .subscribe_candle(&symbol, &interval).await
-                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ws.subscribe_candle(&symbol, &interval).await.map_err(|e| {
+                ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string())
+            })?;
             ok_result(serde_json::Value::Null)
-        },
+        }
 
-        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
+        None => Err(ApiFailure::new(
+            quant_common::api::code::NOT_INITIALIZED,
+            "Binance WebSocket not started".to_string(),
+        )),
     }
 }
 
@@ -149,11 +162,15 @@ pub async fn subscribe_binance_depth(
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
         Some(ws) => {
-            ws.subscribe_depth(&symbol).await
-                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ws.subscribe_depth(&symbol).await.map_err(|e| {
+                ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string())
+            })?;
             ok_result(serde_json::Value::Null)
         }
-        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
+        None => Err(ApiFailure::new(
+            quant_common::api::code::NOT_INITIALIZED,
+            "Binance WebSocket not started".to_string(),
+        )),
     }
 }
 
@@ -165,13 +182,16 @@ pub async fn subscribe_binance_ticker(
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
         Some(ws) => {
-            ws
-                .subscribe_ticker(&symbol).await
-                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ws.subscribe_ticker(&symbol).await.map_err(|e| {
+                ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string())
+            })?;
             ok_result(serde_json::Value::Null)
-        },
+        }
 
-        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
+        None => Err(ApiFailure::new(
+            quant_common::api::code::NOT_INITIALIZED,
+            "Binance WebSocket not started".to_string(),
+        )),
     }
 }
 
@@ -183,13 +203,16 @@ pub async fn subscribe_binance_trades(
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
         Some(ws) => {
-            ws
-                .subscribe_trades(&symbol).await
-                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ws.subscribe_trades(&symbol).await.map_err(|e| {
+                ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string())
+            })?;
             ok_result(serde_json::Value::Null)
-        },
+        }
 
-        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
+        None => Err(ApiFailure::new(
+            quant_common::api::code::NOT_INITIALIZED,
+            "Binance WebSocket not started".to_string(),
+        )),
     }
 }
 
@@ -201,18 +224,23 @@ pub async fn subscribe_binance_orderbook(
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
         Some(ws) => {
-            ws
-                .subscribe_orderbook(&symbol).await
-                .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string()))?;
+            ws.subscribe_orderbook(&symbol).await.map_err(|e| {
+                ApiFailure::new(quant_common::api::code::BINANCE_API, e.to_string())
+            })?;
             ok_result(serde_json::Value::Null)
-        },
+        }
 
-        None => Err(ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, "Binance WebSocket not started".to_string())),
+        None => Err(ApiFailure::new(
+            quant_common::api::code::NOT_INITIALIZED,
+            "Binance WebSocket not started".to_string(),
+        )),
     }
 }
 
 #[tauri::command]
-pub async fn stop_binance_market_data(state: State<'_, AppState>) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+pub async fn stop_binance_market_data(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     {
         let mut guard = state.binance_ws_state.ws.write().await;
         if let Some(ws) = guard.as_ref() {
@@ -228,7 +256,9 @@ pub async fn stop_binance_market_data(state: State<'_, AppState>) -> quant_commo
 }
 
 #[tauri::command]
-pub async fn get_binance_subscriptions(state: State<'_, AppState>) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<String>>> {
+pub async fn get_binance_subscriptions(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<String>>> {
     let guard = state.binance_ws_state.ws.read().await;
     match guard.as_ref() {
         Some(ws) => ok_result(ws.subscriptions().await),
@@ -245,13 +275,20 @@ pub async fn start_binance_user_data_stream(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
+    state
+        .require_auth()
+        .await
+        .map_err(crate::commands::auth_err)?;
     if state
         .binance_ws_state
         .user_data_running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        return Err(ApiFailure::new(quant_common::api::code::CONFLICT, "Binance user data stream already running".to_string()));
+        return Err(ApiFailure::new(
+            quant_common::api::code::CONFLICT,
+            "Binance user data stream already running".to_string(),
+        ));
     }
 
     // WebSocket-API 用户数据流（替换已弃用的 REST listenKey —— 410）。
@@ -268,15 +305,27 @@ pub async fn start_binance_user_data_stream(
     };
 
     let client = UserDataStreamClient::new(ws_api_url, api_key);
-    let listen_key = client
-        .start()
-        .await
-        .map_err(|e| ApiFailure::new(quant_common::api::code::BINANCE_API, format!("Failed to start user data stream: {}", e)))?;
+    let listen_key = match client.start().await {
+        Ok(key) => key,
+        Err(e) => {
+            state
+                .binance_ws_state
+                .user_data_running
+                .store(false, Ordering::SeqCst);
+            return Err(ApiFailure::new(
+                quant_common::api::code::BINANCE_API,
+                format!("Failed to start user data stream: {}", e),
+            ));
+        }
+    };
 
     let mut rx = client.get_receiver().await;
     let app_clone = app.clone();
     let running = state.binance_ws_state.user_data_running.clone();
-    let market_repo = state.app_services.as_ref().and_then(|s| s.market_data.clone());
+    let market_repo = state
+        .app_services
+        .as_ref()
+        .and_then(|s| s.market_data.clone());
     running.store(true, Ordering::SeqCst);
     info!("binance user data stream started (listen_key obtained)");
     tokio::spawn(async move {
@@ -297,7 +346,10 @@ pub async fn start_binance_user_data_stream(
                             .collect();
                         if !new_balances.is_empty() {
                             match repo.upsert_balances(&new_balances).await {
-                                Ok(_) => info!(assets = new_balances.len(), "[user-stream] balances persisted"),
+                                Ok(_) => info!(
+                                    assets = new_balances.len(),
+                                    "[user-stream] balances persisted"
+                                ),
                                 Err(e) => warn!(error = %e, "[user-stream] balances import failed"),
                             }
                         }
@@ -322,7 +374,13 @@ pub async fn start_binance_user_data_stream(
 
 /// 停止用户数据流。
 #[tauri::command]
-pub async fn stop_binance_user_data_stream(state: State<'_, AppState>) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+pub async fn stop_binance_user_data_stream(
+    state: State<'_, AppState>,
+) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
+    state
+        .require_auth()
+        .await
+        .map_err(crate::commands::auth_err)?;
     let mut guard = state.binance_ws_state.user_data_ws.write().await;
     if let Some(ws) = guard.take() {
         ws.stop();
@@ -351,15 +409,18 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            let (Ok(balances), Ok(prices)) = (binance.get_balance().await, binance.get_all_ticker_prices().await)
-            else {
+            let (Ok(balances), Ok(prices)) = (
+                binance.get_balance().await,
+                binance.get_all_ticker_prices().await,
+            ) else {
                 continue;
             };
             let mut equity = rust_decimal::Decimal::ZERO;
             for b in &balances {
                 let asset = b.asset.as_str();
                 let qty = b.free + b.locked;
-                let price = if matches!(asset, "USDT" | "USDC" | "TUSD" | "BUSD" | "FDUSD" | "DAI") {
+                let price = if matches!(asset, "USDT" | "USDC" | "TUSD" | "BUSD" | "FDUSD" | "DAI")
+                {
                     rust_decimal::Decimal::ONE
                 } else {
                     prices
@@ -382,7 +443,11 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                     })
                     .collect();
                 match repo.upsert_balances(&new_balances).await {
-                    Ok(n) => info!(assets = new_balances.len(), rows = n, "[snapshot] balances persisted"),
+                    Ok(n) => info!(
+                        assets = new_balances.len(),
+                        rows = n,
+                        "[snapshot] balances persisted"
+                    ),
                     Err(e) => warn!(error = %e, "[snapshot] balances import failed"),
                 }
                 let mut lp_ok = 0u64;
@@ -395,10 +460,16 @@ pub fn start_equity_snapshot_writer(app_services: &quant_services::AppServices) 
                         .await
                     {
                         Ok(_) => lp_ok += 1,
-                        Err(e) => warn!(error = %e, symbol = %sym, "[snapshot] last_price import failed"),
+                        Err(e) => {
+                            warn!(error = %e, symbol = %sym, "[snapshot] last_price import failed")
+                        }
                     }
                 }
-                info!(prices = prices.len(), wrote = lp_ok, "[snapshot] last_prices persisted");
+                info!(
+                    prices = prices.len(),
+                    wrote = lp_ok,
+                    "[snapshot] last_prices persisted"
+                );
             } else {
                 warn!("[snapshot] market_data repo unavailable; balances/last_prices NOT imported");
             }
@@ -448,7 +519,10 @@ fn build_positions(
             continue;
         }
         let domain = format!("{asset}-USDT");
-        let price = prices.get(&format!("{asset}USDT")).copied().unwrap_or(Decimal::ZERO);
+        let price = prices
+            .get(&format!("{asset}USDT"))
+            .copied()
+            .unwrap_or(Decimal::ZERO);
         let (buy_cost, buy_qty) = cost
             .get(&domain)
             .copied()
@@ -543,18 +617,21 @@ pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::A
                 if last_state.get(&o.order_id) == Some(&key) {
                     continue;
                 }
-                let _ = live_trades
+                if let Err(e) = live_trades
                     .update_status(o.order_id, &o.status, o.executed_qty)
-                    .await;
+                    .await
+                {
+                    warn!(order_id = o.order_id, error = %e, "live trade status sync failed");
+                    continue;
+                }
                 if let Some(status) = map_open_status(&o.status) {
-                    let _ = account_service
-                        .update_order_status(
-                            o.order_id,
-                            status,
-                            o.executed_qty,
-                            Decimal::ZERO,
-                        )
-                        .await;
+                    if let Err(e) = account_service
+                        .update_order_status(o.order_id, "live", status, o.executed_qty, None)
+                        .await
+                    {
+                        warn!(order_id = o.order_id, error = %e, "order status sync failed");
+                        continue;
+                    }
                 }
                 last_state.insert(o.order_id, key);
                 changed = true;
@@ -568,18 +645,32 @@ pub fn start_live_order_monitor(app: AppHandle, app_services: &quant_services::A
                 match binance.get_order(sym, *order_id).await {
                     Ok(o) => {
                         if let Some(status) = map_terminal(&o.status) {
-                            let _ = account_service
+                            if let Err(e) = live_trades
+                                .update_status(*order_id, &o.status, o.executed_qty)
+                                .await
+                            {
+                                warn!(order_id = *order_id, error = %e, "terminal live trade sync failed");
+                                retry.insert(*order_id, sym.clone());
+                                continue;
+                            }
+                            changed = true;
+                            if let Err(e) = account_service
                                 .update_order_status(
                                     *order_id,
+                                    "live",
                                     status,
                                     o.executed_qty,
-                                    Decimal::ZERO,
+                                    None,
                                 )
-                                .await;
-                            let _ = live_trades
-                                .update_status(*order_id, &o.status, o.executed_qty)
-                                .await;
-                            changed = true;
+                                .await
+                            {
+                                warn!(order_id = *order_id, error = %e, "terminal order sync failed");
+                                retry.insert(*order_id, sym.clone());
+                                continue;
+                            }
+                        } else {
+                            retry.insert(*order_id, sym.clone());
+                            continue;
                         }
                         last_state.remove(order_id);
                     }

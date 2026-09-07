@@ -10,9 +10,10 @@ export const useAccountStore = defineStore('account', () => {
   const positions = ref<Position[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
-  let lastFetched = 0
+  const lastFetched = ref(0)
+  let generation = 0
 
-  const isStale = computed(() => Date.now() - lastFetched > CACHE_TTL_MS)
+  const isStale = computed(() => Date.now() - lastFetched.value > CACHE_TTL_MS)
 
   const totalAssets = computed(() => accountInfo.value?.total_assets ?? 0)
   const dailyPnl = computed(() => accountInfo.value?.daily_pnl ?? 0)
@@ -22,42 +23,61 @@ export const useAccountStore = defineStore('account', () => {
 
   async function fetchAccountInfo(force = false) {
     if (!force && accountInfo.value && !isStale.value) return
+    const requestGeneration = generation
     loading.value = true
     error.value = null
     try {
-      accountInfo.value = await getAccountInfo()
-      lastFetched = Date.now()
+      const account = await getAccountInfo()
+      if (requestGeneration !== generation) return
+      accountInfo.value = account
+      lastFetched.value = Date.now()
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.value = '获取账户信息失败'
       console.error('Failed to fetch account info:', err)
     } finally {
-      loading.value = false
+      if (requestGeneration === generation) loading.value = false
     }
   }
 
   async function fetchPositions(force = false) {
     if (!force && positions.value.length > 0 && !isStale.value) return
+    const requestGeneration = generation
     try {
-      positions.value = await getPositions()
+      const result = await getPositions()
+      if (requestGeneration === generation) positions.value = result
     } catch (err) {
+      if (requestGeneration !== generation) return
       console.error('Failed to fetch positions:', err)
     }
   }
 
   async function refreshAll() {
+    const requestGeneration = generation
     error.value = null
     loading.value = true
     try {
       const [account, pos] = await Promise.all([getAccountInfo(), getPositions()])
+      if (requestGeneration !== generation) return
       accountInfo.value = account
       positions.value = pos
-      lastFetched = Date.now()
+      lastFetched.value = Date.now()
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.value = '刷新数据失败'
       console.error('Error refreshing account data:', err)
     } finally {
-      loading.value = false
+      if (requestGeneration === generation) loading.value = false
     }
+  }
+
+  function reset() {
+    generation += 1
+    accountInfo.value = null
+    positions.value = []
+    loading.value = false
+    error.value = null
+    lastFetched.value = 0
   }
 
   return {
@@ -74,5 +94,6 @@ export const useAccountStore = defineStore('account', () => {
     fetchAccountInfo,
     fetchPositions,
     refreshAll,
+    reset,
   }
 })

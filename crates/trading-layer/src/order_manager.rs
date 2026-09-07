@@ -1,3 +1,4 @@
+use crate::execution::ExecutionResult;
 use chrono::Utc;
 use quant_common::types::{Order, OrderStatus};
 use quant_common::{Error, Result};
@@ -64,6 +65,7 @@ impl OrderManager {
         let mut orders = self.orders.write().await;
 
         if let Some(order) = orders.get_mut(&order_id) {
+            Self::validate_status_transition(order, &status)?;
             order.status = status.clone();
             order.updated_at = chrono::Utc::now();
             info!("Order {} updated to status: {:?}", order_id, status);
@@ -72,6 +74,50 @@ impl OrderManager {
             warn!("Order not found: {}", order_id);
             Err(Error::NotFound(format!("Order not found: {}", order_id)))
         }
+    }
+
+    /// 原子同步累计成交事实；重复结果覆盖累计值，不重复计费。
+    pub async fn apply_execution_result(&self, result: &ExecutionResult) -> Result<()> {
+        let mut orders = self.orders.write().await;
+        let order = orders
+            .get_mut(&result.order_id)
+            .ok_or_else(|| Error::NotFound(format!("Order not found: {}", result.order_id)))?;
+        Self::validate_status_transition(order, &result.status)?;
+        if order.status.is_terminal() {
+            if result.filled_quantity == order.filled_quantity
+                && result.commission == order.commission
+            {
+                return Ok(());
+            }
+            return Err(Error::Trading(format!(
+                "Order {} terminal execution facts cannot change",
+                result.order_id
+            )));
+        }
+        if result.commission < order.commission
+            || result.filled_quantity < order.filled_quantity
+            || result.filled_quantity > order.quantity
+        {
+            return Err(Error::Trading(format!(
+                "Order {} execution facts cannot regress or exceed its quantity",
+                result.order_id
+            )));
+        }
+        order.status = result.status.clone();
+        order.filled_quantity = result.filled_quantity;
+        order.commission = result.commission;
+        order.updated_at = result.executed_at;
+        Ok(())
+    }
+
+    fn validate_status_transition(order: &Order, status: &OrderStatus) -> Result<()> {
+        if order.status.is_terminal() && order.status != *status {
+            return Err(Error::Trading(format!(
+                "Order {} is terminal ({:?}), cannot transition to {:?}",
+                order.order_id, order.status, status
+            )));
+        }
+        Ok(())
     }
 
     /// 获取订单
@@ -165,19 +211,22 @@ mod tests {
     async fn test_order_manager() {
         let manager = OrderManager::new();
 
-        let order = Order { order_id: 0,
-        strategy_id: "test_strategy".to_string(),
-        symbol: "TEST".to_string(),
-        order_type: OrderType::Limit,
-        side: OrderSide::Buy,
-        price: Some(dec!(100)),
-        quantity: dec!(10),
-        filled_quantity: dec!(0),
-        status: OrderStatus::Pending,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0), exchange: "paper".to_string(), };
+        let order = Order {
+            order_id: 0,
+            strategy_id: "test_strategy".to_string(),
+            symbol: "TEST".to_string(),
+            order_type: OrderType::Limit,
+            side: OrderSide::Buy,
+            price: Some(dec!(100)),
+            quantity: dec!(10),
+            filled_quantity: dec!(0),
+            status: OrderStatus::Pending,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            commission: dec!(0),
+            slippage: dec!(0),
+            exchange: "paper".to_string(),
+        };
 
         let order_id = manager.submit_order(order).await.unwrap();
         let retrieved_order = manager.get_order(order_id).await.unwrap();

@@ -186,10 +186,7 @@ impl BinanceService {
     /// Exchange instruments metadata.
     pub async fn get_instruments(&self) -> ServiceResult<serde_json::Value> {
         with_binance_client!(self, |client| {
-            client
-                .get_instruments()
-                .await
-                .map_err(map_binance_error)
+            client.get_instruments().await.map_err(map_binance_error)
         })
     }
 

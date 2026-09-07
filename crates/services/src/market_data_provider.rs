@@ -180,7 +180,11 @@ impl MarketDataProvider for RepositoryMarketDataProvider {
 
         // 2. Fall back to the configured live source (implements `MarketDataProvider`).
         match &self.live {
-            Some(source) => source.get_historical_data(symbol, start, end, timeframe).await,
+            Some(source) => {
+                source
+                    .get_historical_data(symbol, start, end, timeframe)
+                    .await
+            }
             None => Err(format!("no market data source available for {}", symbol)),
         }
     }

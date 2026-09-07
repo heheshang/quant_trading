@@ -12,9 +12,7 @@ use thiserror::Error;
 use crate::strategy::Strategy;
 
 mod factories;
-pub use factories::{
-    MacdFactory, MeanReversionFactory, RsiFactory, TrendFollowingFactory,
-};
+pub use factories::{MacdFactory, MeanReversionFactory, RsiFactory, TrendFollowingFactory};
 
 // ─── FactoryError ─────────────────────────────────────────────────────────
 

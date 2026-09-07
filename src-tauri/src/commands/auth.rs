@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use crate::state::AuthedUser;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::State;
 
@@ -10,10 +10,9 @@ struct LoginThrottle {
     fail_count: u32,
     locked_until: Option<Instant>,
 }
-static LOGIN_THROTTLE: LazyLock<Mutex<HashMap<String, LoginThrottle>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static LOGIN_THROTTLE: OnceLock<Mutex<HashMap<String, LoginThrottle>>> = OnceLock::new();
 fn login_throttle() -> &'static Mutex<HashMap<String, LoginThrottle>> {
-    &LOGIN_THROTTLE
+    LOGIN_THROTTLE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 fn check_login_throttle(user: &str) -> Result<(), String> {
     let m = login_throttle().lock().unwrap();
@@ -28,9 +27,10 @@ fn check_login_throttle(user: &str) -> Result<(), String> {
 }
 fn record_login_failure(user: &str) {
     let mut m = login_throttle().lock().unwrap();
-    let e = m
-        .entry(user.to_string())
-        .or_insert(LoginThrottle { fail_count: 0, locked_until: None });
+    let e = m.entry(user.to_string()).or_insert(LoginThrottle {
+        fail_count: 0,
+        locked_until: None,
+    });
     e.fail_count += 1;
     if e.fail_count >= 5 {
         let backoff = 60u64.saturating_mul(1 << e.fail_count.saturating_sub(5).min(5));
@@ -109,7 +109,9 @@ pub async fn login(
             .unwrap_or(None),
         None => None,
     };
-    let audit_user_id = resolved_user_id.map(|id| id.to_string()).unwrap_or_default();
+    let audit_user_id = resolved_user_id
+        .map(|id| id.to_string())
+        .unwrap_or_default();
     let _ = state
         .audit_logger
         .log_login(&audit_user_id, &username, None, success)
@@ -219,7 +221,10 @@ pub async fn update_profile(
         .await;
     match result {
         Ok(v) => ok_result(v),
-        Err(e) => Err(quant_common::api::ApiFailure::new(e.api_code(), e.api_message())),
+        Err(e) => Err(quant_common::api::ApiFailure::new(
+            e.api_code(),
+            e.api_message(),
+        )),
     }
 }
 
@@ -276,7 +281,10 @@ pub async fn change_password(
         .await;
     match result {
         Ok(v) => ok_result(v),
-        Err(e) => Err(quant_common::api::ApiFailure::new(e.api_code(), e.api_message())),
+        Err(e) => Err(quant_common::api::ApiFailure::new(
+            e.api_code(),
+            e.api_message(),
+        )),
     }
 }
 
@@ -288,14 +296,17 @@ pub async fn get_user_profile(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<serde_json::Value>> {
     use crate::commands::{auth_err, not_init_err};
     use quant_common::api::ok_result;
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
+    let user = state.require_auth().await.map_err(auth_err)?;
+    if username.as_ref().is_some_and(|name| name != &user.username) && user.role != "admin" {
+        return Err(auth_err(
+            "Permission denied: profile belongs to another user".to_string(),
+        ));
     }
     let services = state
         .app_services
         .as_ref()
         .ok_or_else(|| not_init_err("应用服务未初始化"))?;
-    let username = username.unwrap_or_else(|| "admin".to_string());
+    let username = username.unwrap_or(user.username);
     let profile = services.auth_service.get_user_profile(&username).await?;
     ok_result(profile)
 }

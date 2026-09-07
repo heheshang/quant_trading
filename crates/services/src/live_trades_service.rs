@@ -20,7 +20,10 @@ impl LiveTradesService {
 
     fn repo_or_err(&self, what: &str) -> ServiceResult<Arc<LiveTradesRepository>> {
         self.repo.clone().ok_or_else(|| {
-            ServiceError::Other(format!("live_trades store not available (no database): {}", what))
+            ServiceError::Other(format!(
+                "live_trades store not available (no database): {}",
+                what
+            ))
         })
     }
 
@@ -54,7 +57,9 @@ impl LiveTradesService {
     /// All live trades, newest first.
     pub async fn list(&self) -> ServiceResult<Vec<LiveTrade>> {
         let repo = self.repo_or_err("list")?;
-        repo.list_all().await.map_err(|e| ServiceError::Other(e.to_string()))
+        repo.list_all()
+            .await
+            .map_err(|e| ServiceError::Other(e.to_string()))
     }
 
     /// Update only status / filled quantity (preserve strategy link).

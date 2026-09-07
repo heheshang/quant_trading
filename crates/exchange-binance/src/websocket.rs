@@ -104,12 +104,12 @@ pub struct BinanceWsOrderUpdate {
     pub symbol: String, // domain symbol, e.g. BTC-USDT
     pub order_id: i64,
     pub client_order_id: String,
-    pub side: String,         // BUY / SELL
-    pub order_type: String,   // LIMIT / MARKET
+    pub side: String,       // BUY / SELL
+    pub order_type: String, // LIMIT / MARKET
     pub price: rust_decimal::Decimal,
     pub quantity: rust_decimal::Decimal,
     pub executed_quantity: rust_decimal::Decimal,
-    pub status: String,       // NEW / FILLED / CANCELED / ...
+    pub status: String, // NEW / FILLED / CANCELED / ...
     pub event_time: i64,
 }
 
@@ -141,10 +141,12 @@ impl BinanceWebSocket {
     }
 
     fn ws_url(&self) -> String {
-        self.ws_url_override.clone().unwrap_or_else(|| match self.environment {
-            BinanceEnvironment::Spot => "wss://stream.binance.com:9443/stream".to_string(),
-            BinanceEnvironment::Futures => "wss://fstream.binance.com/stream".to_string(),
-        })
+        self.ws_url_override
+            .clone()
+            .unwrap_or_else(|| match self.environment {
+                BinanceEnvironment::Spot => "wss://stream.binance.com:9443/stream".to_string(),
+                BinanceEnvironment::Futures => "wss://fstream.binance.com/stream".to_string(),
+            })
     }
 
     /// Track a stream (e.g. `btcusdt@kline_1h`) and queue a subscribe command.
@@ -470,13 +472,19 @@ fn parse_account_position(data: serde_json::Value) -> Option<BinanceWsMessage> {
             let asset = b.get("a")?.as_str()?.to_string();
             let free = parse_decimal_str(b.get("f")?.as_str()?);
             let locked = parse_decimal_str(b.get("l")?.as_str()?);
-            Some(BinanceWsBalance { asset, free, locked })
+            Some(BinanceWsBalance {
+                asset,
+                free,
+                locked,
+            })
         })
         .collect();
-    Some(BinanceWsMessage::AccountPosition(BinanceWsAccountPosition {
-        event_time: data.get("E")?.as_i64()?,
-        balances,
-    }))
+    Some(BinanceWsMessage::AccountPosition(
+        BinanceWsAccountPosition {
+            event_time: data.get("E")?.as_i64()?,
+            balances,
+        },
+    ))
 }
 
 fn parse_order_update(data: serde_json::Value) -> Option<BinanceWsMessage> {

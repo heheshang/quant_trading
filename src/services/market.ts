@@ -27,7 +27,7 @@ export function getSymbols(): Promise<string[]> {
 /** 从数据库读取某标的/周期最新 K 线（remote WS 导入后前端从 DB 读）。 */
 export function getKlines(
   symbol: string,
-  timeframe = '1m',
+  timeframe = '1h',
   limit = 100,
 ): Promise<MarketDataRecord[]> {
   return call<MarketDataRecord[]>('get_klines', { symbol, timeframe, limit })

@@ -48,10 +48,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { saveApiKey, getApiKeys, type MaskedApiKey } from '@/services/apiKey'
+import { useAuthStore } from '@/stores/auth'
 
 defineOptions({ name: 'SettingsExchange' })
 
@@ -59,10 +60,7 @@ const ENVIRONMENT_STORAGE_KEY = 'api_key_environment'
 
 const saving = ref(false)
 const keys = ref<MaskedApiKey[]>([])
-// The current auth session carries no numeric subject (stores/auth.ts sets
-// currentUser.id to 0 until a real JWT subject is decoded). The backend
-// api-key commands require a user_id, so pass 0 for now.
-const userId = 0
+const authStore = useAuthStore()
 
 const credFormRef = ref<FormInstance>()
 const credForm = reactive({
@@ -95,10 +93,17 @@ function persistEnvironment() {
 }
 
 async function fetchKeys() {
+  const user = authStore.currentUser
+  if (!user) {
+    keys.value = []
+    return
+  }
   try {
-    const data = await getApiKeys(userId)
+    const data = await getApiKeys(user.id)
+    if (authStore.currentUser !== user) return
     keys.value = Array.isArray(data) ? data : []
   } catch (error) {
+    if (authStore.currentUser !== user) return
     console.error('Failed to fetch API keys:', error)
     keys.value = []
   }
@@ -106,20 +111,27 @@ async function fetchKeys() {
 
 async function handleSaveCredential() {
   if (!credFormRef.value) return
+  const user = authStore.currentUser
+  if (!user) {
+    ElMessage.error('请先登录')
+    return
+  }
   try {
     await credFormRef.value.validate()
   } catch {
     return
   }
+  if (authStore.currentUser !== user) return;
   saving.value = true
   try {
     const ok = await saveApiKey({
-      user_id: userId,
+      user_id: user.id,
       exchange: 'BINANCE',
       api_key: credForm.apiKey,
       secret: credForm.secret,
       passphrase: null,
     })
+    if (authStore.currentUser !== user) return
     if (ok) {
       ElMessage.success('API 凭据保存成功')
       credForm.secret = ''
@@ -129,12 +141,21 @@ async function handleSaveCredential() {
       ElMessage.error('API 凭据保存失败')
     }
   } catch (error) {
+    if (authStore.currentUser !== user) return
     console.error('Failed to save API key:', error)
     ElMessage.error('保存 API 凭据失败: ' + (error as Error).message)
   } finally {
-    saving.value = false
+    if (authStore.currentUser === user) saving.value = false
   }
 }
+
+watch(() => authStore.currentUser, () => {
+  keys.value = []
+  credForm.apiKey = ''
+  credForm.secret = ''
+  saving.value = false
+  void fetchKeys()
+}, { flush: 'sync' })
 
 onMounted(() => {
   loadEnvironment()

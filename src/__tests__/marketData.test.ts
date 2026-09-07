@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { listen } from '@tauri-apps/api/event'
 import { useMarketDataStore, DEFAULT_MARKET_SYMBOLS } from '@/stores/marketData'
@@ -6,6 +6,7 @@ import { mockInvoke, mockTauriInvoke } from './mock-tauri'
 
 type AnyHandler = (ev: { payload: unknown }) => void
 let capturedHandlers: Record<string, AnyHandler> = {}
+let activeListeners: Map<string, Set<AnyHandler>> = new Map()
 
 function fireEvent(event: string, payload: unknown): void {
   const handler = capturedHandlers[event]
@@ -16,20 +17,38 @@ function fireEvent(event: string, payload: unknown): void {
 function captureListen(): void {
   vi.mocked(listen).mockImplementation((async (event: string, handler: AnyHandler) => {
     capturedHandlers[event] = handler
-    return () => {}
+    const listeners = activeListeners.get(event) ?? new Set<AnyHandler>()
+    listeners.add(handler)
+    activeListeners.set(event, listeners)
+    return () => {
+      listeners.delete(handler)
+      if (capturedHandlers[event] === handler) delete capturedHandlers[event]
+    }
   }) as typeof listen)
 }
 
 
-
-
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
 
 describe('marketData store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     capturedHandlers = {}
+    activeListeners = new Map()
+    vi.useFakeTimers()
     vi.clearAllMocks()
+    mockInvoke.mockResolvedValue(undefined)
     captureListen()
+  })
+
+  afterEach(async () => {
+    mockInvoke.mockResolvedValue(undefined)
+    await useMarketDataStore().stop()
+    vi.useRealTimers()
   })
 
   it('starts the stream, subscribes streams, and flips running', async () => {
@@ -48,7 +67,7 @@ describe('marketData store', () => {
     const active = DEFAULT_MARKET_SYMBOLS[0]
     expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_trades', { symbol: active })
     expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_orderbook', { symbol: active })
-    expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_candle', { symbol: active, interval: '1m' })
+    expect(mockInvoke).toHaveBeenCalledWith('subscribe_binance_candle', { symbol: active, interval: '1h' })
   })
 
   it('loads latest ticker from DB (get_ticker_snapshots)', async () => {
@@ -109,8 +128,8 @@ describe('marketData store', () => {
 
   it('loads candles from DB (get_klines)', async () => {
     mockTauriInvoke('get_klines', [
-      { id: 1, instrument_id: 'BTC-USDT', timeframe: '1m', timestamp: '2024-01-01T00:00:00Z', open: 50000, high: 50050, low: 49900, close: 50020, volume: 1200, created_at: null },
-      { id: 2, instrument_id: 'BTC-USDT', timeframe: '1m', timestamp: '2024-01-01T00:01:00Z', open: 50020, high: 50100, low: 50010, close: 50050, volume: 800, created_at: null },
+      { id: 1, instrument_id: 'BTC-USDT', timeframe: '1h', timestamp: '2024-01-01T00:00:00Z', open: 50000, high: 50050, low: 49900, close: 50020, volume: 1200, created_at: null },
+      { id: 2, instrument_id: 'BTC-USDT', timeframe: '1h', timestamp: '2024-01-01T01:00:00Z', open: 50020, high: 50100, low: 50010, close: 50050, volume: 800, created_at: null },
     ])
     const store = useMarketDataStore()
     await store.start()
@@ -134,11 +153,138 @@ describe('marketData store', () => {
   it('stop detaches listeners and resets running', async () => {
     const store = useMarketDataStore()
     await store.start()
-    const unlisteners: Array<() => void> = []
-    unlisteners.push(() => {})
-
     await store.stop()
     expect(store.running).toBe(false)
     expect(store.status).toBe('idle')
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 0)).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['listen', 'subscribe'])('rolls back failed %s setup and restarts without duplicate listeners', async (failurePoint) => {
+    const store = useMarketDataStore()
+    if (failurePoint === 'listen') {
+      const register = vi.mocked(listen).getMockImplementation()!
+      vi.mocked(listen).mockImplementation((async (event: string, handler: AnyHandler) => {
+        if (event === 'binance:orderbook') throw new Error('listen failed')
+        return register(event, handler)
+      }) as typeof listen)
+    } else {
+      mockInvoke.mockImplementation(async (command) => {
+        if (command === 'subscribe_binance_ticker') throw new Error('subscription failed')
+        return undefined
+      })
+    }
+
+    await store.start()
+    expect(store.running).toBe(false)
+    expect(store.status).toBe('error')
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 0)).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(mockInvoke).toHaveBeenCalledWith('stop_binance_market_data')
+
+    captureListen()
+    mockInvoke.mockResolvedValue(undefined)
+    await store.start()
+    expect(store.running).toBe(true)
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 1)).toBe(true)
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it.each(['backend', 'listen', 'prefetch'])('stop during pending %s startup prevents late resurrection', async (stage) => {
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    if (stage === 'listen') {
+      const register = vi.mocked(listen).getMockImplementation()!
+      vi.mocked(listen).mockImplementation((async (event: string, handler: AnyHandler) => {
+        if (event === 'binance:trade') {
+          entered.resolve()
+          await release.promise
+        }
+        return register(event, handler)
+      }) as typeof listen)
+    } else {
+      mockInvoke.mockImplementation(async (command) => {
+        if (command === (stage === 'backend' ? 'start_binance_market_data' : 'get_klines')) {
+          entered.resolve()
+          await release.promise
+        }
+        return []
+      })
+    }
+    const store = useMarketDataStore()
+    const startup = store.start()
+    await entered.promise
+    const stopping = store.stop()
+    release.resolve()
+    await Promise.all([startup, stopping])
+
+    expect(store.running).toBe(false)
+    expect(store.status).toBe('idle')
+    expect(store.candles).toEqual({})
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 0)).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+
+    captureListen()
+    mockInvoke.mockResolvedValue(undefined)
+    await store.start()
+    expect(store.running).toBe(true)
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 1)).toBe(true)
+  })
+
+  it('a later stop cancels a restart queued behind shutdown', async () => {
+    const store = useMarketDataStore()
+    await store.start()
+    const pendingStop = deferred<void>()
+    mockInvoke.mockImplementation(async (command) => {
+      if (command === 'stop_binance_market_data') return pendingStop.promise
+      return []
+    })
+    const firstStop = store.stop()
+    const restart = store.start()
+    const finalStop = store.stop()
+    pendingStop.resolve()
+    await Promise.all([firstStop, restart, finalStop])
+    expect(store.running).toBe(false)
+    expect(store.status).toBe('idle')
+    expect(vi.getTimerCount()).toBe(0)
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 0)).toBe(true)
+  })
+
+  it('releases local resources even when stopping the backend fails', async () => {
+    const store = useMarketDataStore()
+    await store.start()
+    const lateStatus = capturedHandlers['binance:status']
+    mockInvoke.mockImplementation(async (command) => {
+      if (command === 'stop_binance_market_data') throw new Error('stop failed')
+      return undefined
+    })
+
+    await expect(store.stop()).rejects.toThrow('stop failed')
+    lateStatus({ payload: { status: 'connected' } })
+    expect(store.running).toBe(false)
+    expect(store.status).toBe('idle')
+    expect(store.symbols).toEqual([])
+    expect([...activeListeners.values()].every((listeners) => listeners.size === 0)).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+    await expect(store.stop()).resolves.toBeUndefined()
+  })
+
+  it('does not refill cleared data from an in-flight poll after stop', async () => {
+    mockInvoke.mockResolvedValue([])
+    const store = useMarketDataStore()
+    await store.start()
+    const pendingRows = deferred<unknown[]>()
+    mockInvoke.mockImplementation(async (command) => {
+      if (command === 'get_klines') return pendingRows.promise
+      return []
+    })
+    vi.advanceTimersByTime(5000)
+    await store.stop()
+    pendingRows.resolve([
+      { instrument_id: 'BTC-USDT', timeframe: '1h', timestamp: '2024-01-01T00:00:00Z', open: 1, high: 2, low: 1, close: 2, volume: 1 },
+    ])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(store.candles).toEqual({})
   })
 })

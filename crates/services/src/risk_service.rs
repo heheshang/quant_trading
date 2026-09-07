@@ -1,7 +1,7 @@
 use crate::error::{ServiceError, ServiceResult};
+use data_layer::PostgresClient;
 use quant_common::config::RiskConfig;
 use quant_common::types::{Account, Order, Position};
-use data_layer::PostgresClient;
 use risk_engine::{PreTradeRiskChecker, VaRCalculator};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
@@ -130,12 +130,13 @@ impl RiskService {
             WHERE id = 1
             "#,
         )
-        .fetch_one(client.pool())
+        .fetch_optional(client.pool())
         .await
         .map_err(|e| {
             error!("Failed to fetch risk config: {}", e);
             ServiceError::Database(e)
-        })?;
+        })?
+        .ok_or_else(|| ServiceError::NotFound("Risk config not found".into()))?;
 
         let config = RiskConfig {
             max_position_size: row.get("max_position_size"),
@@ -180,9 +181,11 @@ impl RiskService {
             ServiceError::Database(e)
         })?;
 
-        let updated = affected.rows_affected() > 0;
+        if affected.rows_affected() == 0 {
+            return Err(ServiceError::NotFound("Risk config not found".into()));
+        }
         info!("Risk config updated");
-        Ok(updated)
+        Ok(true)
     }
 
     /// Run pre-trade risk check. Returns (passed, RiskConfig) where passed indicates
@@ -193,21 +196,7 @@ impl RiskService {
         account: &Account,
         positions: &[Position],
     ) -> ServiceResult<(bool, RiskConfig)> {
-        let config = match self.get_risk_config().await {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Falling back to default RiskConfig: {}", e);
-                RiskConfig {
-                    max_position_size: 0.2,
-                    max_daily_loss: 0.05,
-                    max_drawdown: 0.15,
-                    max_concentration: 0.2,
-                    enable_pre_trade_check: true,
-                    enable_real_time_monitor: true,
-                    var_confidence_level: 0.95,
-                }
-            }
-        };
+        let config = self.get_risk_config().await?;
 
         let checker = PreTradeRiskChecker::new(config.clone());
         match checker.check_order(order, account, positions) {
@@ -245,25 +234,6 @@ mod tests {
         }
     }
 
-    fn sample_order_sell_small() -> Order {
-        Order {
-            order_id: 0,
-            strategy_id: "test_strat".into(),
-            symbol: "BTC-USDT".into(),
-            order_type: OrderType::Limit,
-            side: OrderSide::Sell,
-            price: Some(dec!(50000)),
-            quantity: dec!(0.1),
-            filled_quantity: dec!(0),
-            status: OrderStatus::Pending,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            commission: dec!(0),
-            slippage: dec!(0),
-            exchange: "paper".to_string(),
-        }
-    }
-
     fn sample_account_healthy() -> Account {
         Account {
             account_id: 0,
@@ -275,34 +245,6 @@ mod tests {
             daily_pnl: dec!(1000),
             margin: dec!(0),
             margin_ratio: dec!(0),
-            updated_at: chrono::Utc::now(),
-        }
-    }
-
-    fn sample_account_broke() -> Account {
-        Account {
-            account_id: 0,
-            total_assets: dec!(1000),
-            available_cash: dec!(10),
-            frozen_cash: dec!(0),
-            market_value: dec!(990),
-            total_pnl: dec!(-50000),
-            daily_pnl: dec!(-5000),
-            margin: dec!(0),
-            margin_ratio: dec!(0),
-            updated_at: chrono::Utc::now(),
-        }
-    }
-
-    fn sample_position(symbol: &str, quantity: Decimal) -> Position {
-        Position {
-            symbol: symbol.into(),
-            quantity,
-            available_quantity: quantity,
-            avg_price: dec!(50000),
-            market_value: quantity * dec!(50000),
-            unrealized_pnl: dec!(0),
-            realized_pnl: dec!(0),
             updated_at: chrono::Utc::now(),
         }
     }
@@ -355,80 +297,99 @@ mod tests {
         ));
     }
 
-    // ── pre_trade_check (postgres: None → falls back to default config) ────────
-
     #[tokio::test]
-    async fn pre_trade_check_passes_for_safe_sell_order() {
+    async fn pre_trade_check_requires_persisted_configuration() {
         let svc = RiskService::new(None);
-        let order = sample_order_sell_small();
-        let account = sample_account_healthy();
-        // 持有 0.5 BTC，卖出 0.1 BTC 有足够可用持仓
-        let positions = vec![sample_position("BTC-USDT", dec!(0.5))];
-        let (passed, config) = svc
-            .pre_trade_check(&order, &account, &positions)
-            .await
-            .unwrap();
-        assert!(passed);
-        assert_eq!(config.max_position_size, 0.2);
+        assert!(matches!(
+            svc.pre_trade_check(&sample_order_buy(), &sample_account_healthy(), &[])
+                .await,
+            Err(ServiceError::DatabaseNotConnected)
+        ));
     }
 
     #[tokio::test]
-    async fn pre_trade_check_fails_for_insufficient_cash() {
-        let svc = RiskService::new(None);
-        let order = sample_order_buy(); // 0.1 BTC × 50000 = 5000 USDT needed
-        let account = sample_account_broke(); // only 10 USDT available
-        let positions: Vec<Position> = vec![];
-        let (passed, _) = svc
-            .pre_trade_check(&order, &account, &positions)
+    #[ignore = "requires AUDIT_DATABASE_URL pointing to an isolated PostgreSQL database"]
+    async fn risk_config_database_errors_fail_closed() {
+        let url = std::env::var("AUDIT_DATABASE_URL").expect("isolated PostgreSQL URL");
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
             .await
             .unwrap();
-        assert!(!passed);
-    }
-
-    #[tokio::test]
-    async fn pre_trade_check_fails_for_position_limit_exceeded() {
-        let svc = RiskService::new(None);
-        let order = sample_order_buy(); // 买入 0.1 BTC @ 50000 = 5000 USDT
-        let account = sample_account_healthy(); // 总资产 1,000,000
-                                                // 现有 4.0 BTC（市值 200,000）+ 新买 0.1 BTC = 4.1 BTC（205,000），
-                                                // 占总资产 20.5% > max_position_size 20%
-        let positions = vec![sample_position("BTC-USDT", dec!(4.0))];
-        let (passed, _) = svc
-            .pre_trade_check(&order, &account, &positions)
-            .await
-            .unwrap();
-        assert!(!passed);
-    }
-
-    #[tokio::test]
-    async fn pre_trade_check_fails_for_daily_loss_limit() {
-        let svc = RiskService::new(None);
-        let order = sample_order_sell_small();
+        sqlx::raw_sql(
+            "CREATE TEMP TABLE risk_config (
+                id INTEGER PRIMARY KEY,
+                max_position_size DOUBLE PRECISION CHECK (max_position_size <= 0.5),
+                max_daily_loss DOUBLE PRECISION, max_drawdown DOUBLE PRECISION,
+                max_concentration DOUBLE PRECISION, enable_pre_trade_check BOOLEAN,
+                enable_real_time_monitor BOOLEAN, var_confidence_level DOUBLE PRECISION,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            INSERT INTO risk_config VALUES (1, 0.2, 0.05, 0.15, 0.2, true, true, 0.95, NOW());",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let svc = RiskService::new(Some(Arc::new(PostgresClient::from_pool(pool.clone()))));
+        let mut config = svc.get_risk_config().await.unwrap();
+        // This order fits the original limit, but not the persisted tighter one.
         let account = Account {
-            daily_pnl: dec!(-60000),
+            total_assets: dec!(100000),
             ..sample_account_healthy()
         };
-        let positions: Vec<Position> = vec![];
-        let (passed, _) = svc
-            .pre_trade_check(&order, &account, &positions)
-            .await
-            .unwrap();
-        assert!(!passed);
-    }
+        assert!(
+            svc.pre_trade_check(&sample_order_buy(), &account, &[])
+                .await
+                .unwrap()
+                .0
+        );
+        config.max_position_size = 0.01;
+        assert!(svc.update_risk_config(&config).await.unwrap());
+        assert!(
+            !svc.pre_trade_check(&sample_order_buy(), &account, &[])
+                .await
+                .unwrap()
+                .0
+        );
+        config.max_position_size = 0.9;
+        assert!(matches!(
+            svc.update_risk_config(&config).await,
+            Err(ServiceError::Database(_))
+        ));
+        assert!(
+            !svc.pre_trade_check(&sample_order_buy(), &account, &[])
+                .await
+                .unwrap()
+                .0
+        );
 
-    #[tokio::test]
-    async fn pre_trade_check_falls_back_to_default_config() {
-        let svc = RiskService::new(None);
-        let order = sample_order_sell_small();
-        let account = sample_account_healthy();
-        let positions: Vec<Position> = vec![];
-        let (_, config) = svc
-            .pre_trade_check(&order, &account, &positions)
+        sqlx::query("DELETE FROM pg_temp.risk_config")
+            .execute(&pool)
             .await
             .unwrap();
-        assert_eq!(config.max_position_size, 0.2);
-        assert_eq!(config.max_daily_loss, 0.05);
-        assert_eq!(config.max_concentration, 0.2);
-        assert!(config.enable_pre_trade_check);
+        assert!(matches!(
+            svc.update_risk_config(&config).await,
+            Err(ServiceError::NotFound(_))
+        ));
+        assert!(matches!(
+            svc.get_risk_config().await,
+            Err(ServiceError::NotFound(_))
+        ));
+        assert!(matches!(
+            svc.pre_trade_check(&sample_order_buy(), &account, &[])
+                .await,
+            Err(ServiceError::NotFound(_))
+        ));
+
+        pool.close().await;
+        assert!(matches!(
+            svc.get_risk_config().await,
+            Err(ServiceError::Database(_))
+        ));
+        assert!(matches!(
+            svc.pre_trade_check(&sample_order_buy(), &account, &[])
+                .await,
+            Err(ServiceError::Database(_))
+        ));
     }
 }

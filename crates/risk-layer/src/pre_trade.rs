@@ -35,6 +35,12 @@ impl PreTradeRiskChecker {
         positions: &[Position],
         reference_price: Option<Decimal>,
     ) -> Result<()> {
+        if order.quantity <= Decimal::ZERO {
+            return Err(Error::RiskControl(
+                "Order quantity must be positive".to_string(),
+            ));
+        }
+
         let order_price = self.resolve_order_price(order, reference_price)?;
 
         // 1. 资金检查
@@ -61,22 +67,25 @@ impl PreTradeRiskChecker {
         order: &Order,
         reference_price: Option<Decimal>,
     ) -> Result<Decimal> {
-        if let Some(price) = order.price {
-            return Ok(price);
-        }
+        let price = if matches!(order.order_type, quant_common::types::OrderType::Market) {
+            reference_price.ok_or_else(|| {
+                Error::RiskControl(
+                    "Market orders require a reference price for risk checks".to_string(),
+                )
+            })?
+        } else {
+            order.price.ok_or_else(|| {
+                Error::RiskControl("Order price is required for pre-trade risk checks".to_string())
+            })?
+        };
 
-        if matches!(order.order_type, quant_common::types::OrderType::Market) {
-            if let Some(price) = reference_price {
-                return Ok(price);
-            }
+        if price <= Decimal::ZERO {
             return Err(Error::RiskControl(
-                "Market orders require a reference price for risk checks".to_string(),
+                "Order risk-check price must be positive".to_string(),
             ));
         }
 
-        Err(Error::RiskControl(
-            "Order price is required for pre-trade risk checks".to_string(),
-        ))
+        Ok(price)
     }
 
     /// 检查卖出订单是否有足够的可用持仓（避免裸卖空）
@@ -141,17 +150,17 @@ impl PreTradeRiskChecker {
             ));
         }
 
-        let is_sell = matches!(order.side, quant_common::types::OrderSide::Sell);
-        // 卖出用可用量（可卖出部分）；买入用总量。
         let current_qty = positions
             .iter()
             .find(|p| p.symbol == order.symbol)
-            .map(|p| if is_sell { p.available_quantity } else { p.quantity })
+            .map(|p| p.quantity)
             .unwrap_or(Decimal::ZERO);
 
         let new_qty = match order.side {
             quant_common::types::OrderSide::Buy => current_qty + order.quantity,
-            quant_common::types::OrderSide::Sell => (current_qty - order.quantity).max(Decimal::ZERO),
+            quant_common::types::OrderSide::Sell => {
+                (current_qty - order.quantity).max(Decimal::ZERO)
+            }
         };
 
         // 持仓限制按市值占比计算，而非直接比较持仓数量；卖出已被 clamp，无需 .abs()。
@@ -265,19 +274,22 @@ mod tests {
 
         let checker = PreTradeRiskChecker::new(config);
 
-        let order = Order { order_id: 0,
-        strategy_id: "test".to_string(),
-        symbol: "TEST".to_string(),
-        order_type: OrderType::Limit,
-        side: OrderSide::Buy,
-        price: Some(dec!(100)),
-        quantity: dec!(10),
-        filled_quantity: dec!(0),
-        status: quant_common::types::OrderStatus::Pending,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0), exchange: "paper".to_string(), };
+        let order = Order {
+            order_id: 0,
+            strategy_id: "test".to_string(),
+            symbol: "TEST".to_string(),
+            order_type: OrderType::Limit,
+            side: OrderSide::Buy,
+            price: Some(dec!(100)),
+            quantity: dec!(10),
+            filled_quantity: dec!(0),
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: dec!(0),
+            slippage: dec!(0),
+            exchange: "paper".to_string(),
+        };
 
         let account = Account {
             account_id: 0,
@@ -309,19 +321,22 @@ mod tests {
         };
 
         let checker = PreTradeRiskChecker::new(config);
-        let order = Order { order_id: 0,
-        strategy_id: "test".to_string(),
-        symbol: "TEST".to_string(),
-        order_type: OrderType::Market,
-        side: OrderSide::Buy,
-        price: None,
-        quantity: dec!(10),
-        filled_quantity: dec!(0),
-        status: quant_common::types::OrderStatus::Pending,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        commission: dec!(0),
-        slippage: dec!(0), exchange: "paper".to_string(), };
+        let order = Order {
+            order_id: 0,
+            strategy_id: "test".to_string(),
+            symbol: "TEST".to_string(),
+            order_type: OrderType::Market,
+            side: OrderSide::Buy,
+            price: None,
+            quantity: dec!(10),
+            filled_quantity: dec!(0),
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: dec!(0),
+            slippage: dec!(0),
+            exchange: "paper".to_string(),
+        };
         let account = Account {
             account_id: 0,
             total_assets: dec!(10000),
@@ -335,9 +350,186 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        let result = checker.check_order_with_reference_price(&order, &account, &[], None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("reference price"));
+        for price in [None, Some(dec!(1))] {
+            let mut order = order.clone();
+            order.price = price;
+            assert!(matches!(
+                checker.check_order_with_reference_price(&order, &account, &[], None),
+                Err(Error::RiskControl(_))
+            ));
+        }
+    }
+
+    fn risk_case() -> (PreTradeRiskChecker, Order, Account) {
+        let checker = PreTradeRiskChecker::new(RiskConfig {
+            max_position_size: 0.2,
+            max_daily_loss: 0.05,
+            max_drawdown: 0.15,
+            max_concentration: 0.2,
+            enable_pre_trade_check: true,
+            enable_real_time_monitor: true,
+            var_confidence_level: 0.95,
+        });
+        let order = Order {
+            order_id: 0,
+            strategy_id: "test".to_string(),
+            symbol: "TEST".to_string(),
+            order_type: OrderType::Limit,
+            side: OrderSide::Buy,
+            price: Some(dec!(100)),
+            quantity: dec!(1),
+            filled_quantity: Decimal::ZERO,
+            status: quant_common::types::OrderStatus::Pending,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            commission: Decimal::ZERO,
+            slippage: Decimal::ZERO,
+            exchange: "paper".to_string(),
+        };
+        let account = Account {
+            account_id: 0,
+            total_assets: dec!(10000),
+            available_cash: dec!(500),
+            frozen_cash: Decimal::ZERO,
+            market_value: Decimal::ZERO,
+            total_pnl: Decimal::ZERO,
+            daily_pnl: Decimal::ZERO,
+            margin: Decimal::ZERO,
+            margin_ratio: Decimal::ZERO,
+            updated_at: Utc::now(),
+        };
+        (checker, order, account)
+    }
+
+    fn position(quantity: Decimal, available_quantity: Decimal) -> Position {
+        Position {
+            symbol: "TEST".to_string(),
+            quantity,
+            available_quantity,
+            avg_price: dec!(100),
+            market_value: quantity * dec!(100),
+            unrealized_pnl: Decimal::ZERO,
+            realized_pnl: Decimal::ZERO,
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn market_order_cash_check_ignores_attached_price() {
+        let (checker, mut order, mut account) = risk_case();
+        order.order_type = OrderType::Market;
+        order.price = Some(dec!(1));
+        order.quantity = dec!(10);
+
+        // The supplied price would cost 10, but the reference price costs 1000.
+        assert!(matches!(
+            checker.check_order_with_reference_price(&order, &account, &[], Some(dec!(100))),
+            Err(Error::RiskControl(_))
+        ));
+        account.available_cash = dec!(1000);
+        assert!(checker
+            .check_order_with_reference_price(&order, &account, &[], Some(dec!(100)))
+            .is_ok());
+
+        // Even an expensive attached price must not replace the reference price.
+        order.price = Some(dec!(100000));
+        assert!(checker
+            .check_order_with_reference_price(&order, &account, &[], Some(dec!(100)))
+            .is_ok());
+    }
+
+    #[test]
+    fn nonpositive_quantities_are_rejected_for_buys_and_sells() {
+        let (checker, mut order, account) = risk_case();
+        let positions = [position(dec!(10), dec!(10))];
+        for order_type in [OrderType::Market, OrderType::Limit] {
+            order.order_type = order_type;
+            for side in [OrderSide::Buy, OrderSide::Sell] {
+                order.side = side;
+                order.quantity = dec!(1);
+                assert!(
+                    checker
+                        .check_order_with_reference_price(
+                            &order,
+                            &account,
+                            &positions,
+                            Some(dec!(100)),
+                        )
+                        .is_ok()
+                );
+                for quantity in [Decimal::ZERO, dec!(-1)] {
+                    order.quantity = quantity;
+                    assert!(matches!(
+                        checker.check_order_with_reference_price(
+                            &order,
+                            &account,
+                            &positions,
+                            Some(dec!(100)),
+                        ),
+                        Err(Error::RiskControl(_))
+                    ));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn limit_orders_require_positive_price_even_with_reference() {
+        let (checker, mut order, account) = risk_case();
+        assert!(checker.check_order(&order, &account, &[]).is_ok());
+        for price in [None, Some(Decimal::ZERO), Some(dec!(-1))] {
+            order.price = price;
+            assert!(matches!(
+                checker.check_order_with_reference_price(&order, &account, &[], Some(dec!(100))),
+                Err(Error::RiskControl(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn market_orders_require_positive_reference_even_with_attached_price() {
+        let (checker, mut order, account) = risk_case();
+        order.order_type = OrderType::Market;
+        for reference in [None, Some(Decimal::ZERO), Some(dec!(-1))] {
+            assert!(matches!(
+                checker.check_order_with_reference_price(&order, &account, &[], reference),
+                Err(Error::RiskControl(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn sell_position_limit_includes_locked_quantity() {
+        let (mut checker, mut order, account) = risk_case();
+        // Isolate the position limit from the separate concentration policy.
+        checker.config.max_concentration = 1.0;
+        order.side = OrderSide::Sell;
+        order.quantity = dec!(5);
+        let positions = [position(dec!(30), dec!(10))];
+
+        // 25 units remain, including 20 locked units: 25% exceeds the 20% cap.
+        assert!(matches!(
+            checker.check_order(&order, &account, &positions),
+            Err(Error::RiskControl(_))
+        ));
+        order.quantity = dec!(10);
+        assert!(checker.check_order(&order, &account, &positions).is_ok());
+    }
+
+    #[test]
+    fn sell_orders_cannot_spend_locked_quantity() {
+        let (mut checker, mut order, account) = risk_case();
+        checker.config.max_position_size = 1.0;
+        checker.config.max_concentration = 1.0;
+        order.side = OrderSide::Sell;
+        order.quantity = dec!(11);
+        let positions = [position(dec!(30), dec!(10))];
+        assert!(matches!(
+            checker.check_order(&order, &account, &positions),
+            Err(Error::RiskControl(_))
+        ));
+        order.quantity = dec!(10);
+        assert!(checker.check_order(&order, &account, &positions).is_ok());
     }
 
     #[test]

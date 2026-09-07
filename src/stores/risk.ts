@@ -14,13 +14,14 @@ export const useRiskStore = defineStore('risk', () => {
   const config = ref<RiskConfig | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
-  let lastFetchedMetrics = 0
-  let lastFetchedConfig = 0
+  const lastFetchedMetrics = ref(0)
+  const lastFetchedConfig = ref(0)
+  let generation = 0
 
   const isStale = computed(
     () =>
-      Date.now() - lastFetchedMetrics > CACHE_TTL_MS ||
-      Date.now() - lastFetchedConfig > CACHE_TTL_MS,
+      Date.now() - lastFetchedMetrics.value > CACHE_TTL_MS ||
+      Date.now() - lastFetchedConfig.value > CACHE_TTL_MS,
   )
 
   const var95 = computed(() => metrics.value.var_95 ?? 0)
@@ -31,53 +32,77 @@ export const useRiskStore = defineStore('risk', () => {
 
   async function fetchMetrics(force = false) {
     if (!force && Object.keys(metrics.value).length > 0 && !isStale.value) return
+    const requestGeneration = generation
     loading.value = true
     error.value = null
     try {
-      metrics.value = await getRiskMetrics()
-      lastFetchedMetrics = Date.now()
+      const result = await getRiskMetrics()
+      if (requestGeneration !== generation) return
+      metrics.value = result
+      lastFetchedMetrics.value = Date.now()
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.value = '获取风险指标失败'
       console.error('Failed to fetch risk metrics:', err)
     } finally {
-      loading.value = false
+      if (requestGeneration === generation) loading.value = false
     }
   }
 
   async function fetchConfig(force = false) {
     if (!force && config.value && !isStale.value) return
+    const requestGeneration = generation
     try {
-      config.value = await getRiskConfig()
-      lastFetchedConfig = Date.now()
+      const result = await getRiskConfig()
+      if (requestGeneration !== generation) return
+      config.value = result
+      lastFetchedConfig.value = Date.now()
     } catch (err) {
+      if (requestGeneration !== generation) return
       console.error('Failed to fetch risk config:', err)
     }
   }
 
   async function saveConfig(newConfig: RiskConfig) {
+    const requestGeneration = generation
     try {
       await updateRiskConfig(newConfig)
+      if (requestGeneration !== generation) return
       config.value = newConfig
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.value = '保存风控配置失败'
       console.error('Failed to update risk config:', err)
     }
   }
 
   async function refreshAll() {
+    const requestGeneration = generation
     loading.value = true
     error.value = null
     try {
       const [m, c] = await Promise.all([getRiskMetrics(), getRiskConfig()])
+      if (requestGeneration !== generation) return
       metrics.value = m
       config.value = c
-      lastFetchedMetrics = Date.now()
-      lastFetchedConfig = Date.now()
+      lastFetchedMetrics.value = Date.now()
+      lastFetchedConfig.value = Date.now()
     } catch (err) {
+      if (requestGeneration !== generation) return
       error.value = '刷新风控数据失败'
     } finally {
-      loading.value = false
+      if (requestGeneration === generation) loading.value = false
     }
+  }
+
+  function reset() {
+    generation += 1
+    metrics.value = {}
+    config.value = null
+    loading.value = false
+    error.value = null
+    lastFetchedMetrics.value = 0
+    lastFetchedConfig.value = 0
   }
 
   return {
@@ -95,5 +120,6 @@ export const useRiskStore = defineStore('risk', () => {
     fetchConfig,
     saveConfig,
     refreshAll,
+    reset,
   }
 })

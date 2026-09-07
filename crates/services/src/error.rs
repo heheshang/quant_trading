@@ -113,9 +113,9 @@ impl ServiceError {
             Self::InvalidCredentials | Self::TwoFactorRequired | Self::TwoFactorInvalid => {
                 code::UNAUTHORIZED
             }
-            Self::InvalidParameter(_) | Self::Deserialization { .. } | Self::Serialization { .. } => {
-                code::INVALID_PARAM
-            }
+            Self::InvalidParameter(_)
+            | Self::Deserialization { .. }
+            | Self::Serialization { .. } => code::INVALID_PARAM,
             Self::Validation { .. } => code::VALIDATION_FAILED,
             Self::RateLimited(_) => code::RATE_LIMITED,
             Self::ConcurrentModification { .. } | Self::Conflict(_) => code::CONFLICT,
@@ -139,8 +139,13 @@ impl ServiceError {
     }
 
     /// 转为 Tauri `Result<ApiResponse<T>, ApiFailure>`（Err 序列化为 `{code,message}`）。
-    pub fn to_api_result<T>(&self) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<T>> {
-        Err(quant_common::api::ApiFailure::new(self.api_code(), self.api_message()))
+    pub fn to_api_result<T>(
+        &self,
+    ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<T>> {
+        Err(quant_common::api::ApiFailure::new(
+            self.api_code(),
+            self.api_message(),
+        ))
     }
 }
 

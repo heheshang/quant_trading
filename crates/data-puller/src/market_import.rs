@@ -270,7 +270,10 @@ async fn writer_task<S>(
 
         let d = dropped.load(Ordering::Relaxed);
         if d > 0 && !drop_warned {
-            warn!(dropped = d, "market import backpressure: messages dropped (channel full)");
+            warn!(
+                dropped = d,
+                "market import backpressure: messages dropped (channel full)"
+            );
             drop_warned = true;
         }
     }

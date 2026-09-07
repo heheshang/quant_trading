@@ -158,7 +158,7 @@ impl StrategyRepository for PgStrategyRepository {
         let symbols_json = serde_json::to_value(&params.symbols)
             .map_err(|e| RepoError::Database(format!("serialize symbols: {}", e)))?;
 
-        let row: (i32,) = sqlx::query_as(
+        let row: Option<(i32,)> = sqlx::query_as(
             r#"
             INSERT INTO strategies (
                 strategy_id, strategy_name, strategy_type,
@@ -166,15 +166,16 @@ impl StrategyRepository for PgStrategyRepository {
                 max_position, max_daily_loss,
                 status, description, tags, symbols,
                 instance_label,
-                created_at, updated_at, version
+                created_at, updated_at, version, user_id
             ) VALUES (
                 $1, $2, $3,
                 $4, $5,
                 $6, $7,
                 $8, $9, $10, $11,
                 $12,
-                $13, $14, $15
+                $13, $14, $15, $16
             )
+            ON CONFLICT (strategy_id) DO NOTHING
             RETURNING id
             "#,
         )
@@ -193,14 +194,20 @@ impl StrategyRepository for PgStrategyRepository {
         .bind(params.created_at)
         .bind(params.updated_at)
         .bind(params.version)
-        .fetch_one(&*self.pool)
+        .bind(params.user_id)
+        .fetch_optional(&*self.pool)
         .await
         .map_err(|e| {
             error!("Failed to insert strategy {}: {}", params.strategy_id, e);
             RepoError::from(e)
         })?;
 
-        Ok(row.0)
+        row.map(|row| row.0)
+            .ok_or_else(|| RepoError::VersionConflict {
+                entity: "strategy",
+                id: params.strategy_id.clone(),
+                version: 0,
+            })
     }
 
     #[instrument(skip(self, params), fields(strategy_id = %params.strategy_id))]

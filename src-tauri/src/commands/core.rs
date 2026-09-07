@@ -28,10 +28,18 @@ pub async fn secure_encrypt(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
     use quant_common::api::{ok_result, ApiFailure};
     let key = state.config.read().await.security.encryption_key.clone();
-    let de = security::DataEncryption::from_key_string(&key)
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("加密初始化失败: {}", e)))?;
-    let enc = de.encrypt_string(&value)
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("加密失败: {}", e)))?;
+    let de = security::DataEncryption::from_key_string(&key).map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INTERNAL,
+            format!("加密初始化失败: {}", e),
+        )
+    })?;
+    let enc = de.encrypt_string(&value).map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INTERNAL,
+            format!("加密失败: {}", e),
+        )
+    })?;
     ok_result(enc)
 }
 
@@ -43,10 +51,18 @@ pub async fn secure_decrypt(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<String>> {
     use quant_common::api::{ok_result, ApiFailure};
     let key = state.config.read().await.security.encryption_key.clone();
-    let de = security::DataEncryption::from_key_string(&key)
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("解密初始化失败: {}", e)))?;
-    let dec = de.decrypt_string(&value)
-        .map_err(|e| ApiFailure::new(quant_common::api::code::INTERNAL, format!("解密失败: {}", e)))?;
+    let de = security::DataEncryption::from_key_string(&key).map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INTERNAL,
+            format!("解密初始化失败: {}", e),
+        )
+    })?;
+    let dec = de.decrypt_string(&value).map_err(|e| {
+        ApiFailure::new(
+            quant_common::api::code::INTERNAL,
+            format!("解密失败: {}", e),
+        )
+    })?;
     ok_result(dec)
 }
 
@@ -111,7 +127,10 @@ pub async fn get_market_data(
         .app_services
         .as_ref()
         .ok_or_else(|| not_init_err("行情服务未初始化"))?;
-    let data = services.market_service.get_market_data_from_db(&symbol).await?;
+    let data = services
+        .market_service
+        .get_market_data_from_db(&symbol)
+        .await?;
     ok_result(data)
 }
 
@@ -307,7 +326,11 @@ pub async fn get_active_orders(
     }
     // 活跃订单以数据库为准（持久化，重启后仍可读）；可按种类(paper/live/algorithm)过滤。
     if let Some(services) = state.app_services.as_ref() {
-        match services.account_service.get_active_orders(exchange.as_deref()).await {
+        match services
+            .account_service
+            .get_active_orders(exchange.as_deref())
+            .await
+        {
             Ok(orders) => return ok_result(orders),
             Err(_) => {
                 // DB 不可用时降级到内存 OrderManager（保证不阻塞页面）。
@@ -319,10 +342,7 @@ pub async fn get_active_orders(
     ok_result(state.order_manager.get_active_orders().await)
 }
 
-/// 撤销订单（paper / OrderManager 订单）
-///
-/// 对未成交/进行中的订单（Submitted / PartiallyFilled）执行取消：
-/// 优先从内存 `OrderManager` 取消；否则降级到数据库订单表。
+/// 撤销纸面/算法订单：先提交数据库，再同步内存；实盘撤单必须使用交易所接口。
 #[tauri::command]
 pub async fn cancel_order(
     app: tauri::AppHandle,
@@ -358,8 +378,19 @@ pub async fn cancel_order(
 }
 
 pub(crate) async fn cancel_order_core(state: &AppState, order_id: i64) -> Result<bool, String> {
-    // Paper / in-memory orders live in the OrderManager.
+    if let Some(services) = state.app_services.as_ref() {
+        services
+            .order_processor
+            .cancel_order(order_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+    // Explicit service-less offline/test mode only; never cancel live/unknown venues locally.
     if let Ok(order) = state.order_manager.get_order(order_id).await {
+        if !matches!(order.exchange.as_str(), "paper" | "algorithm") {
+            return Err("Only paper/algorithm orders can be cancelled locally".to_string());
+        }
         if !matches!(
             order.status,
             OrderStatus::Submitted | OrderStatus::PartiallyFilled
@@ -371,16 +402,6 @@ pub(crate) async fn cancel_order_core(state: &AppState, order_id: i64) -> Result
         }
         state
             .order_manager
-            .cancel_order(order_id)
-            .await
-            .map_err(|e| e.to_string())?;
-        return Ok(true);
-    }
-
-    // Fallback: order persisted in the database.
-    if let Some(services) = state.app_services.as_ref() {
-        services
-            .account_service
             .cancel_order(order_id)
             .await
             .map_err(|e| e.to_string())?;

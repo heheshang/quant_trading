@@ -46,7 +46,8 @@ const paginatedPositions = computed(() => {
   const start = (positionsPage.value - 1) * positionsPageSize.value
   return positions.value.slice(start, start + positionsPageSize.value)
 })
-const ordersHistory = ref(false)
+// 默认「历史」：无未成交单时也展示最近成交（当前 DB 全部终态，活动页为真·空）。
+const ordersHistory = ref(true)
 const ordersSymbol = ref('BTC-USDT')
 const symbols = ref<string[]>([])
 /** 订单按所选标的过滤（「全部」= 不过滤），仅客户端过滤已加载列表。 */
@@ -84,15 +85,18 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 async function prefillPrice(symbol: string) {
   if (form.value.order_type !== 'Limit') return
   try {
-    const rows = await getKlines(symbol, '1m', 1)
+    const rows = await getKlines(symbol, '1h', 1)
     const last = rows[0]
     if (last) form.value.price = last.close
   } catch {
     // 忽略：预填失败不阻塞操作
   }
 }
-// 选中标的变化时预填最新价（仅限价单）。
-watch(() => form.value.symbol, (sym) => void prefillPrice(sym))
+// 选中标的变化时预填最新价 + 立即刷新实时行情（不依赖 WS 启停）。
+watch(() => form.value.symbol, (sym) => {
+  void prefillPrice(sym)
+  void pollLiveData()
+})
 
 /** DB 行情映射：remote WS 已导入 DB，前端读 DB（removed 依赖 binance:* WS 事件）。 */
 function dbKlineToWs(r: MarketDataRecord): BinanceWsKline {
@@ -113,7 +117,7 @@ function dbOrderbookToWs(r: OrderbookSnapshotRecord): BinanceWsDepth {
 }
 async function pollLiveData() {
   try {
-    const rows = await getKlines(form.value.symbol, '1m', 60)
+    const rows = await getKlines(form.value.symbol, '1h', 60)
     liveKlines.value = rows.map(dbKlineToWs)
   } catch {
     // 忽略：下次轮询重试
@@ -130,6 +134,8 @@ const QUOTES = ['USDT', 'USDC', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 
 /** Binance `BTCUSDT` -> domain `BTC-USDT` for display. */
 function domainSymbol(sym: string): string {
+  // DB 持仓/订单已存 domain 符号（如 `BTC-USDT`），直接显示避免 `BTC--USDT`。
+  if (sym.includes('-')) return sym
   for (const q of QUOTES) {
     if (sym.endsWith(q) && sym.length > q.length) {
       return `${sym.slice(0, -q.length)}-${q}`
@@ -138,8 +144,8 @@ function domainSymbol(sym: string): string {
   return sym
 }
 
-function fmtTime(ms: number): string {
-  return new Date(ms).toLocaleTimeString('zh-CN')
+function fmtTime(ts: number | string): string {
+  return new Date(ts).toLocaleTimeString('zh-CN')
 }
 
 function fmtNumber(value: number | undefined): string {
@@ -154,14 +160,11 @@ function fmtKlineTime(row: BinanceWsKline): string {
 
 async function startStream() {
   try {
-    // 启动后端 WS 并订阅（驱动 remote WS → DB 导入），显示改由 DB 轮询。
-    // 幂等启动：行情图表可能已自启（返回 CONFLICT），忽略以便继续订阅。
+    // 启动后端 WS 并订阅（驱动 remote WS → DB 导入）。幂等启动：行情图表可能已自启（返回 CONFLICT）。
+    // 行情显示由 DB 轮询驱动（挂载即启动），单个订阅失败不阻塞显示。
     await startBinanceMarketData().catch(() => {})
-    await subscribeBinanceCandle(form.value.symbol, '1m')
-    await subscribeBinanceDepth(form.value.symbol)
-    await pollLiveData()
-    if (pollTimer) clearInterval(pollTimer)
-    pollTimer = setInterval(pollLiveData, 5000)
+    await subscribeBinanceCandle(form.value.symbol, '1h').catch(() => {})
+    await subscribeBinanceDepth(form.value.symbol).catch(() => {})
     wsRunning.value = true
   } catch (e) {
     ElMessage.error(`启动实时行情失败: ${e}`)
@@ -170,10 +173,6 @@ async function startStream() {
 
 async function stopStream() {
   try {
-    if (pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
     await stopBinanceMarketData()
     wsRunning.value = false
   } catch (e) {
@@ -264,7 +263,10 @@ onMounted(async () => {
   await Promise.all([loadBalance(), loadPositions(), loadOrders()])
   // 默认限价单预填当前价。
   void prefillPrice(form.value.symbol)
-  // 行情显示改由 DB 轮询（startStream 时启动），不再监听 binance:kline/depth。
+  // 实时行情显示由 DB 轮询驱动（与 WS 启停解耦）：挂载即拉取 + 5s 周期刷新。
+  void pollLiveData()
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = setInterval(pollLiveData, 5000)
 })
 
 onUnmounted(() => {
@@ -317,7 +319,7 @@ onUnmounted(() => {
       </el-table>
       
       <div v-else-if="wsRunning" class="hint">等待 K 线流…</div>
-      <div v-else class="hint">点击「开始」订阅该标的实时行情</div>
+      <div v-else class="hint">暂无 K 线数据</div>
     </el-card>
 
     <BinanceKlineChart v-model:symbol="form.symbol" />
@@ -373,7 +375,7 @@ onUnmounted(() => {
       </template>
       <el-table v-if="filteredOrders.length > 0" :data="paginatedOrders" v-loading="ordersLoading" size="small">
         <el-table-column label="时间">
-          <template #default="{ row }">{{ row.time ? fmtTime(row.time) : '-' }}</template>
+          <template #default="{ row }">{{ row.created_at ? fmtTime(row.created_at) : '-' }}</template>
         </el-table-column>
         <el-table-column label="交易对">
           <template #default="{ row }">{{ domainSymbol(row.symbol) }}</template>
@@ -387,10 +389,14 @@ onUnmounted(() => {
           <template #default="{ row }">{{ fmtNumber(row.quantity ?? row.filled_quantity) }}</template>
         </el-table-column>
         <el-table-column prop="filled_quantity" label="已成交" />
-        <el-table-column prop="status" label="状态" />
-        <el-table-column v-if="!ordersHistory" label="操作">
+        <el-table-column label="操作">
           <template #default="{ row }">
-            <el-button size="small" type="danger" @click="cancelOrder(row)">撤单</el-button>
+            <el-button
+              v-if="!['Filled', 'Cancelled', 'Rejected', 'Expired'].includes(row.status)"
+              size="small"
+              type="danger"
+              @click="cancelOrder(row)"
+            >撤单</el-button>
           </template>
         </el-table-column>
       </el-table>

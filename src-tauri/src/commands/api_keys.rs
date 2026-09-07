@@ -17,7 +17,10 @@ pub async fn save_api_key(
     if let Err(e) = state.require_role("admin").await {
         return Err(auth_err(e));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     services
         .api_key_service
         .save_api_key(user_id, &exchange, &api_key, &secret, passphrase)
@@ -33,10 +36,16 @@ pub async fn get_api_keys(
 ) -> quant_common::api::ApiResult<quant_common::api::ApiResponse<Vec<MaskedApiKey>>> {
     use crate::commands::{auth_err, not_init_err};
     use quant_common::api::ok_result;
-    if let Err(e) = state.require_auth().await {
-        return Err(auth_err(e));
+    let user = state.require_auth().await.map_err(auth_err)?;
+    if user.user_id != user_id && user.role != "admin" {
+        return Err(auth_err(
+            "Permission denied: API keys belong to another user".to_string(),
+        ));
     }
-    let services = state.app_services.as_ref().ok_or_else(|| not_init_err("应用服务未初始化"))?;
+    let services = state
+        .app_services
+        .as_ref()
+        .ok_or_else(|| not_init_err("应用服务未初始化"))?;
     let data = services.api_key_service.get_api_keys(user_id).await?;
     ok_result(data)
 }

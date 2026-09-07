@@ -18,10 +18,10 @@ use data_layer::BinanceDataSource;
 use exchange_binance::types::BinanceEnvironment;
 use exchange_binance::{Client as BinanceClient, ClientInterface as BinanceClientInterface};
 use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
-use tauri::Manager;
 use quant_clients::RedisCache;
 use quant_services::AppServices;
 use state::AppState;
+use tauri::Manager;
 use trading_layer::{BinanceExecutor, OrderManager};
 
 /// Resolve an Ed25519 private-key path relative to the process cwd, falling
@@ -241,12 +241,10 @@ async fn main() {
                 let binance_ds = Arc::new(BinanceDataSource::new(market_data_client));
                 market_data_source =
                     Arc::new(RwLock::new(Some(binance_ds.clone() as Arc<dyn DataSource>)));
-                live_market_data_provider =
-                    Some(binance_ds.clone() as Arc<dyn MarketDataProvider>);
+                live_market_data_provider = Some(binance_ds.clone() as Arc<dyn MarketDataProvider>);
 
-                let executor_client = Arc::new(RwLock::new(
-                    build_client().expect("Binance client built"),
-                ));
+                let executor_client =
+                    Arc::new(RwLock::new(build_client().expect("Binance client built")));
                 binance_executor_shared = Arc::new(RwLock::new(Some(Arc::new(
                     BinanceExecutor::new(executor_client),
                 ))));

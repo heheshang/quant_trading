@@ -112,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Lock, CircleCheck } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -127,10 +127,6 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-// The auth session does not carry a numeric subject yet (stores/auth.ts sets
-// currentUser.id to 0 until a real JWT subject is decoded); callers pass 0
-// for now, matching the existing api-key convention.
-const userId = computed(() => authStore.currentUser?.id ?? 0)
 
 const dialogVisible = computed({
   get: () => props.visible,
@@ -147,19 +143,32 @@ const otpauthUri = ref('')
 const showDisableForm = ref(false)
 const disableCode = ref('')
 
+watch(() => authStore.currentUser, () => {
+  is2FAEnabled.value = false
+  verifying.value = false
+  onVisibilityChange(false)
+}, { flush: 'sync' })
+
 async function startSetup() {
+  const user = authStore.currentUser
+  if (!user) {
+    ElMessage.error('请先登录')
+    return
+  }
   verifying.value = true
   try {
-    const result = await enable2FA(userId.value)
+    const result = await enable2FA(user.id)
+    if (authStore.currentUser !== user) return
     secret.value = result.secret
     otpauthUri.value = result.otpauth_uri
     show2FASetup.value = true
     twoFAStep.value = 1
   } catch (error) {
+    if (authStore.currentUser !== user) return
     console.error('Failed to enable 2FA:', error)
     ElMessage.error('开启双因素认证失败')
   } finally {
-    verifying.value = false
+    if (authStore.currentUser === user) verifying.value = false
   }
 }
 
@@ -172,13 +181,19 @@ function onDisableCodeInput(value: string) {
 }
 
 async function verify() {
+  const user = authStore.currentUser
+  if (!user) {
+    ElMessage.error('请先登录')
+    return
+  }
   if (twoFACode.value.length !== 6) {
     ElMessage.warning('请输入 6 位动态验证码')
     return
   }
   verifying.value = true
   try {
-    const ok = await verify2FACode(userId.value, twoFACode.value)
+    const ok = await verify2FACode(user.id, twoFACode.value)
+    if (authStore.currentUser !== user) return
     if (ok) {
       is2FAEnabled.value = true
       twoFAStep.value = 3
@@ -186,10 +201,11 @@ async function verify() {
       ElMessage.error('验证码错误，请重试')
     }
   } catch (error) {
+    if (authStore.currentUser !== user) return
     console.error('Failed to verify 2FA code:', error)
     ElMessage.error('验证失败')
   } finally {
-    verifying.value = false
+    if (authStore.currentUser === user) verifying.value = false
   }
 }
 
@@ -208,6 +224,11 @@ function cancelDisable() {
 }
 
 async function confirmDisable() {
+  const user = authStore.currentUser
+  if (!user) {
+    ElMessage.error('请先登录')
+    return
+  }
   if (disableCode.value.length !== 6) {
     ElMessage.warning('请输入 6 位动态验证码')
     return
@@ -215,7 +236,8 @@ async function confirmDisable() {
   verifying.value = true
   try {
     // `disable_2fa` validates the code server-side and refuses when invalid.
-    const ok = await disable2FA(userId.value, disableCode.value)
+    const ok = await disable2FA(user.id, disableCode.value)
+    if (authStore.currentUser !== user) return
     if (ok) {
       is2FAEnabled.value = false
       showDisableForm.value = false
@@ -225,10 +247,11 @@ async function confirmDisable() {
       ElMessage.error('验证码错误，禁用已拒绝')
     }
   } catch (error) {
+    if (authStore.currentUser !== user) return
     console.error('Failed to disable 2FA:', error)
     ElMessage.error('禁用失败')
   } finally {
-    verifying.value = false
+    if (authStore.currentUser === user) verifying.value = false
   }
 }
 

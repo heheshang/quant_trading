@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use quant_common::types::{Order, OrderSide, OrderType, ParameterSchema, StrategyParams, StrategyType};
+use quant_common::types::{
+    Order, OrderSide, OrderType, ParameterSchema, StrategyParams, StrategyType,
+};
 use quant_common::Result;
 use rust_decimal::Decimal;
 use tracing::{info, instrument, warn};
@@ -28,19 +30,15 @@ impl MacdStrategy {
     #[instrument]
     pub fn new() -> Self {
         Self {
-            params: StrategyParams::builder(
-                "macd-default",
-                "MACD 交叉策略",
-                StrategyType::Macd,
-            )
-            .params(serde_json::json!({
-                "fast_period": DEFAULT_FAST,
-                "slow_period": DEFAULT_SLOW,
-                "signal_period": DEFAULT_SIGNAL,
-            }))
-            .max_position(Decimal::from(100000))
-            .max_daily_loss(Decimal::from(5000))
-            .build(),
+            params: StrategyParams::builder("macd-default", "MACD 交叉策略", StrategyType::Macd)
+                .params(serde_json::json!({
+                    "fast_period": DEFAULT_FAST,
+                    "slow_period": DEFAULT_SLOW,
+                    "signal_period": DEFAULT_SIGNAL,
+                }))
+                .max_position(Decimal::from(100000))
+                .max_daily_loss(Decimal::from(5000))
+                .build(),
             fast_period: DEFAULT_FAST,
             slow_period: DEFAULT_SLOW,
             signal_period: DEFAULT_SIGNAL,
@@ -113,9 +111,16 @@ impl Strategy for MacdStrategy {
         // Buy when MACD histogram crosses above zero (bullish momentum).
         if hist_prev <= Decimal::ZERO && hist_last > Decimal::ZERO {
             info!(strategy_id = %self.params.strategy_id, %last_close, "MACD buy signal");
-            let quantity = super::net_quantity(context, &symbol, OrderSide::Buy, self.params.max_position, last_close);
+            let quantity = super::net_quantity(
+                context,
+                &symbol,
+                OrderSide::Buy,
+                self.params.max_position,
+                last_close,
+            );
             if quantity > Decimal::ZERO {
-                orders.push(Order { order_id: 0,
+                orders.push(Order {
+                    order_id: 0,
                     strategy_id: self.params.strategy_id.clone(),
                     symbol: symbol.clone(),
                     order_type: OrderType::Limit,
@@ -127,13 +132,22 @@ impl Strategy for MacdStrategy {
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                     commission: Decimal::ZERO,
-                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+                    slippage: Decimal::ZERO,
+                    exchange: "paper".to_string(),
+                });
             }
         } else if hist_prev >= Decimal::ZERO && hist_last < Decimal::ZERO {
             info!(strategy_id = %self.params.strategy_id, %last_close, "MACD sell signal");
-            let quantity = super::net_quantity(context, &symbol, OrderSide::Sell, self.params.max_position, last_close);
+            let quantity = super::net_quantity(
+                context,
+                &symbol,
+                OrderSide::Sell,
+                self.params.max_position,
+                last_close,
+            );
             if quantity > Decimal::ZERO {
-                orders.push(Order { order_id: 0,
+                orders.push(Order {
+                    order_id: 0,
                     strategy_id: self.params.strategy_id.clone(),
                     symbol: symbol.clone(),
                     order_type: OrderType::Limit,
@@ -145,7 +159,9 @@ impl Strategy for MacdStrategy {
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                     commission: Decimal::ZERO,
-                    slippage: Decimal::ZERO, exchange: "paper".to_string() });
+                    slippage: Decimal::ZERO,
+                    exchange: "paper".to_string(),
+                });
             }
         }
 
