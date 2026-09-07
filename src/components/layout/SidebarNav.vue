@@ -7,6 +7,7 @@
         <span class="logo-sub">Quant Trading</span>
       </div>
     </div>
+    <div v-if="!collapse" class="nav-caption">工作空间</div>
     <el-menu
       :default-active="$route.path"
       :collapse="collapse"
@@ -42,7 +43,11 @@
         <el-icon><Monitor /></el-icon>
         <template #title><span>实时监控</span></template>
       </el-menu-item>
-      <el-menu-item index="/settings" @mouseenter="prefetch('/settings')">
+      <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
+        <el-icon><Sell /></el-icon>
+        <template #title><span>币安交易</span></template>
+      </el-menu-item>
+      <el-menu-item class="nav-section-start" index="/settings" @mouseenter="prefetch('/settings')">
         <el-icon><Setting /></el-icon>
         <template #title><span>系统设置</span></template>
       </el-menu-item>
@@ -50,15 +55,15 @@
         <el-icon><User /></el-icon>
         <template #title><span>个人账户</span></template>
       </el-menu-item>
-      <el-menu-item index="/binance" @mouseenter="prefetch('/binance')">
-        <el-icon><Sell /></el-icon>
-        <template #title><span>币安交易</span></template>
-      </el-menu-item>
       <el-menu-item index="/test" @mouseenter="prefetch('/test')">
         <el-icon><Setting /></el-icon>
         <template #title><span>测试页面</span></template>
       </el-menu-item>
     </el-menu>
+    <div v-if="!collapse" class="nav-footer">
+      <span>QUANT TRADING</span>
+      <p>研究策略 · 审慎执行</p>
+    </div>
   </div>
 </template>
 
@@ -96,7 +101,7 @@ const prefetch = (path: string) => {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: 0 var(--space-md);
+  padding: 0 19px;
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap;
@@ -106,11 +111,12 @@ const prefetch = (path: string) => {
 .logo-mark {
   width: 34px;
   height: 34px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-primary), var(--chart-teal));
+  background: #247d76;
   color: #fff;
   font-size: 18px;
   font-weight: 700;
@@ -126,17 +132,40 @@ const prefetch = (path: string) => {
 .logo-title {
   font-size: var(--font-size-md);
   font-weight: 600;
-  color: var(--color-text-sidebar);
+  color: #eef5f8;
 }
 
 .logo-sub {
   font-size: var(--font-size-xs);
-  color: rgba(191, 203, 217, 0.6);
+  color: #94aebd;
 }
 
 .sidebar-menu {
   border-right: none;
   flex: 1;
   overflow-y: auto;
+  padding: var(--space-xs);
 }
+
+.sidebar-menu :deep(.el-menu-item) {
+  height: 46px;
+  margin: 4px 0;
+  border-radius: var(--radius-md);
+}
+
+.sidebar-menu :deep(.el-menu-item.is-active) {
+  background: #24463f;
+  font-weight: 600;
+}
+
+.sidebar-menu :deep(.el-menu-item:hover) {
+  background: #223d49;
+}
+
+.sidebar-menu.el-menu--collapse { width: 72px; }
+.sidebar-menu :deep(.nav-section-start) { margin-top: 24px; }
+.nav-caption { padding: 24px 28px 8px; font-size: 11px; letter-spacing: 0.14em; color: #94aebd; }
+.nav-footer { padding: 20px 24px; border-top: 1px solid #2a3d49; color: #94aebd; }
+.nav-footer span { font-size: 10px; letter-spacing: 0.16em; }
+.nav-footer p { margin-top: 6px; font-size: 12px; }
 </style>

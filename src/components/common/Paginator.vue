@@ -50,5 +50,20 @@ function onSizeChange(size: number) {
   display: flex;
   justify-content: flex-end;
   padding: 16px 0;
+  max-width: 100%;
+}
+
+.paginator-wrapper :deep(.el-pagination) {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+  white-space: normal;
+}
+
+@media (max-width: 768px) {
+  .paginator-wrapper,
+  .paginator-wrapper :deep(.el-pagination) {
+    justify-content: flex-start;
+  }
 }
 </style>

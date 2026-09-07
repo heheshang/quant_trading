@@ -1,19 +1,22 @@
 <template>
   <div class="strategy-management page-stack">
-    <el-row :gutter="20" class="header">
-      <el-col :xs="24" :lg="18">
+    <header class="strategy-heading">
+      <div>
+        <span class="page-eyebrow">STRATEGY LIBRARY</span>
         <h2>策略管理</h2>
-      </el-col>
-      <el-col :xs="24" :lg="6" class="controls">
-        <el-button type="primary" @click="openNewStrategyDialog">新建策略</el-button>
-        <el-button @click="store.fetchStrategies(true)" :loading="store.loading.list">刷新</el-button>
-      </el-col>
-    </el-row>
+        <p class="page-description">从策略配置到回测验证，在一个工作空间内完成。</p>
+      </div>
+      <div class="controls">
+        <el-button @click="store.fetchStrategies(true)" :loading="store.loading.list"><el-icon><Refresh /></el-icon><span>刷新</span></el-button>
+        <el-button type="primary" @click="openNewStrategyDialog"><el-icon><Plus /></el-icon><span>新建策略</span></el-button>
+      </div>
+    </header>
 
-    <el-card class="strategy-list-card">
+    <el-card class="strategy-list-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <span>策略列表</span>
+          <div class="library-title"><h3>策略库</h3><span class="strategy-count">{{ store.strategies.length }}</span></div>
+          <span class="library-caption">配置 · 回测 · 执行</span>
         </div>
       </template>
 
@@ -44,8 +47,9 @@
         @batch-delete="batchDelete"
       />
     </el-card>
+    <p class="risk-note"><el-icon><InfoFilled /></el-icon>交易前请核对持仓与亏损限制；回测表现不代表未来收益。</p>
 
-    <el-drawer v-model="detailPanelVisible" title="策略详情" size="600px">
+    <el-drawer v-model="detailPanelVisible" title="策略详情" size="min(600px, 100vw)">
       <StrategyDetailPanel
         v-if="detailStrategy"
         :strategy-id="detailStrategy.strategy_id"
@@ -319,8 +323,26 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.strategy-management { padding: 20px; }
-.header { align-items: center; }
-.controls { text-align: right; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
+.strategy-management { min-width: 0; gap: 28px; }
+.strategy-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 8px 0; }
+.page-eyebrow { color: var(--color-primary); font-size: 11px; letter-spacing: 0.16em; font-weight: 700; }
+.strategy-heading h2 { margin-top: 8px; font-size: var(--font-size-xxl); line-height: 1.4; letter-spacing: -0.03em; }
+.page-description { margin-top: 8px; color: var(--color-text-secondary); font-size: 14px; line-height: 1.7; }
+.controls { display: flex; flex-shrink: 0; gap: 10px; }
+.controls .el-button { margin-left: 0; }
+.controls .el-icon { margin-right: 6px; }
+.card-header, .library-title { display: flex; align-items: center; gap: 12px; }
+.card-header { justify-content: space-between; }
+.library-title h3 { font-size: 16px; font-weight: 600; }
+.strategy-count { padding: 2px 9px; border-radius: 6px; background: var(--el-color-primary-light-9); color: var(--color-primary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.library-caption { color: var(--color-text-secondary); font-size: 12px; font-weight: 400; }
+.risk-note { display: flex; align-items: flex-start; gap: 8px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.7; }
+.risk-note .el-icon { margin-top: 3px; flex-shrink: 0; }
+@media (max-width: 767px) {
+  .strategy-management { gap: 20px; }
+  .strategy-heading { align-items: stretch; flex-direction: column; gap: 20px; }
+  .strategy-heading h2 { font-size: 26px; }
+  .controls .el-button { flex: 1; }
+  .library-caption { display: none; }
+}
 </style>

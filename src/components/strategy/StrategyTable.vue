@@ -2,6 +2,7 @@
   <div class="strategy-table">
     <div class="table-toolbar">
       <SearchBar
+        class="search-bar"
         :model-value="searchQuery"
         placeholder="搜索策略名称"
         @update:model-value="$emit('update:searchQuery', $event)"
@@ -11,7 +12,7 @@
         :model-value="activeFilters"
         :filters="filterOptions"
         @update:model-value="$emit('update:activeFilters', $event)"
-        @change="onFilterChange"
+        @filter="onFilterChange"
       />
       <div class="batch-actions" v-if="selected.length > 0">
         <el-button size="small" @click="emitBatch('start')">批量启动</el-button>
@@ -28,13 +29,15 @@
       @selection-change="onSelectionChange"
     >
       <el-table-column type="selection" width="50" />
-      <el-table-column prop="strategy_name" label="策略名称" width="180" />
+      <el-table-column prop="strategy_name" label="策略名称" min-width="190" show-overflow-tooltip>
+        <template #default="scope"><span class="strategy-name">{{ scope.row.strategy_name }}</span></template>
+      </el-table-column>
       <el-table-column prop="strategy_type" label="策略类型" width="120">
         <template #default="scope">
           {{ formatStrategyType(scope.row.strategy_type) }}
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="120">
+      <el-table-column label="状态" width="100">
         <template #default="scope">
           <StrategyStatusTag :status="scope.row.status" size="small" />
         </template>
@@ -43,18 +46,17 @@
         <template #default="scope">
           <el-switch
             :model-value="scope.row.enabled"
+            :aria-label="`启用策略 ${scope.row.strategy_name}`"
             @update:model-value="(v: boolean) => emit('toggle', scope.row.strategy_id, v)"
-            active-text="是"
-            inactive-text="否"
           />
         </template>
       </el-table-column>
-      <el-table-column prop="max_position" label="最大持仓" width="120">
+      <el-table-column prop="max_position" label="最大持仓" width="120" align="right">
         <template #default="scope">
           ¥{{ formatCurrency(scope.row.max_position) }}
         </template>
       </el-table-column>
-      <el-table-column prop="max_daily_loss" label="最大日亏损" width="120">
+      <el-table-column prop="max_daily_loss" label="最大日亏损" width="120" align="right">
         <template #default="scope">
           ¥{{ formatCurrency(scope.row.max_daily_loss) }}
         </template>
@@ -64,39 +66,27 @@
           {{ formatDate(scope.row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="270">
+      <el-table-column label="操作" width="136" fixed="right">
         <template #default="scope">
           <div class="action-cell">
-            <el-dropdown trigger="click" @command="(cmd: string) => emit('lifecycle', cmd, scope.row)">
-              <el-button size="small" type="primary" circle class="action-icon-btn">
-                <el-icon><Operation /></el-icon>
-              </el-button>
+            <el-button size="small" text type="primary" @click="emit('detail', scope.row)">详情</el-button>
+            <el-dropdown trigger="click">
+              <el-button size="small" text class="action-menu-btn" :aria-label="`策略操作菜单 ${scope.row.strategy_name}`">更多<el-icon><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="deploy">部署</el-dropdown-item>
-                  <el-dropdown-item command="start">启动</el-dropdown-item>
-                  <el-dropdown-item command="stop">停止</el-dropdown-item>
-                  <el-dropdown-item command="pause">暂停</el-dropdown-item>
-                  <el-dropdown-item command="resume">恢复</el-dropdown-item>
-                  <el-dropdown-item command="archive" divided>归档</el-dropdown-item>
+                  <el-dropdown-item @click="emit('edit', scope.row)">编辑</el-dropdown-item>
+                  <el-dropdown-item @click="emit('backtest', scope.row.strategy_id)">回测</el-dropdown-item>
+                  <el-dropdown-item @click="emit('optimize', scope.row)">参数优化</el-dropdown-item>
+                  <el-dropdown-item divided @click="emit('lifecycle', 'deploy', scope.row)">部署</el-dropdown-item>
+                  <el-dropdown-item @click="emit('lifecycle', 'start', scope.row)">启动</el-dropdown-item>
+                  <el-dropdown-item @click="emit('lifecycle', 'stop', scope.row)">停止</el-dropdown-item>
+                  <el-dropdown-item @click="emit('lifecycle', 'pause', scope.row)">暂停</el-dropdown-item>
+                  <el-dropdown-item @click="emit('lifecycle', 'resume', scope.row)">恢复</el-dropdown-item>
+                  <el-dropdown-item @click="emit('lifecycle', 'archive', scope.row)">归档</el-dropdown-item>
+                  <el-dropdown-item divided class="danger-action" @click="emit('delete', scope.row.strategy_id)">删除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-tooltip content="详情" :teleported="false">
-              <el-button size="small" circle class="action-icon-btn" @click="emit('detail', scope.row)"><el-icon><View /></el-icon></el-button>
-            </el-tooltip>
-            <el-tooltip content="编辑" :teleported="false">
-              <el-button size="small" circle class="action-icon-btn" @click="emit('edit', scope.row)"><el-icon><Edit /></el-icon></el-button>
-            </el-tooltip>
-            <el-tooltip content="回测" :teleported="false">
-              <el-button size="small" circle class="action-icon-btn" type="primary" @click="emit('backtest', scope.row.strategy_id)"><el-icon><TrendCharts /></el-icon></el-button>
-            </el-tooltip>
-            <el-tooltip content="参数优化" :teleported="false">
-              <el-button size="small" circle class="action-icon-btn" type="primary" @click="emit('optimize', scope.row)"><el-icon><Aim /></el-icon></el-button>
-            </el-tooltip>
-            <el-tooltip content="删除" :teleported="false">
-              <el-button size="small" circle class="action-icon-btn" type="danger" @click="emit('delete', scope.row.strategy_id)"><el-icon><Delete /></el-icon></el-button>
-            </el-tooltip>
           </div>
         </template>
       </el-table-column>
@@ -106,8 +96,8 @@
       <Paginator
         :total="total"
         :page-size="pageSize"
-        :current-page="currentPage"
-        @update:current-page="onPageChange"
+        :page="currentPage"
+        @update:page="onPageChange"
         @update:page-size="onPageSizeChange"
       />
     </div>
@@ -117,7 +107,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Operation, View, Edit, TrendCharts, Delete, Aim } from '@element-plus/icons-vue'
 import type { StrategyParams } from '@/services/types'
 import { useFormatting } from '@/composables/useFormatting'
 import StrategyStatusTag from '@/components/strategy/StrategyStatusTag.vue'
@@ -208,19 +197,33 @@ function emitBatch(action: 'start' | 'stop' | 'delete') {
 </script>
 
 <style scoped>
-.strategy-table { width: 100%; }
-.table-toolbar { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 12px; gap: 12px; }
-.table-toolbar :deep(.el-input) { width: 240px; flex-shrink: 0; }
-.batch-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
-.table-footer { margin-top: 16px; display: flex; justify-content: flex-end; }
+.strategy-table { width: 100%; min-width: 0; }
+.table-toolbar { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 24px; gap: 12px; }
+.table-toolbar :deep(.search-bar) { width: 260px; max-width: 100%; }
+.table-toolbar :deep(.filter-panel) { gap: 8px; }
+.table-toolbar :deep(.filter-panel .el-button) { margin-left: 0; }
+.strategy-name { font-weight: 600; color: var(--color-text-primary); }
+.action-menu-btn .el-icon { margin-left: 4px; }
+.strategy-table :deep(.el-table) { border-radius: 8px; }
+.batch-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-left: auto; }
+.table-footer { margin-top: 16px; border-top: 1px solid var(--color-border-light); padding-top: 8px; }
 .action-cell {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
 }
 
-.action-icon-btn {
-  min-width: 32px;
-  min-height: 32px;
+.action-cell :deep(.el-button) { margin-left: 0; }
+.danger-action { color: var(--color-danger); }
+
+@media (max-width: 768px) {
+  .table-toolbar > * { max-width: 100%; }
+  .table-toolbar :deep(.search-bar) { width: 100%; }
+  .table-toolbar :deep(.filter-panel) { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+  .table-toolbar :deep(.filter-item) { width: 100%; min-width: 0; }
+  .table-toolbar :deep(.filter-panel .el-button) { padding-inline: 10px; }
+  .batch-actions { margin-left: 0; }
+  .action-cell { gap: var(--space-xxs); }
+  .action-cell :deep(.el-button) { padding: 8px; }
 }
 </style>

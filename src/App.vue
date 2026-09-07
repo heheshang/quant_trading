@@ -8,25 +8,21 @@
         <SidebarNav :collapse="isCollapse" />
       </el-aside>
 
-        <el-container>
+      <el-container class="workspace">
         <!-- Show header only when authenticated -->
         <el-header class="header" v-if="auth.isAuthenticated">
           <div class="header-content">
             <div class="header-left">
-              <el-button text circle class="menu-toggle" @click="onMenuClick">
+              <el-button text circle class="menu-toggle" aria-label="切换导航菜单" @click="onMenuClick">
                 <el-icon><MenuIcon /></el-icon>
               </el-button>
               <div class="header-titles">
+                <span class="workspace-label">QUANT WORKSPACE</span>
                 <h3>{{ pageTitle }}</h3>
-                <el-breadcrumb separator="/" class="breadcrumb">
-                  <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-                  <el-breadcrumb-item v-if="route.path !== '/dashboard'" :to="{ path: '/dashboard' }">仪表盘</el-breadcrumb-item>
-                  <el-breadcrumb-item v-if="route.path !== '/dashboard'">{{ pageTitle }}</el-breadcrumb-item>
-                </el-breadcrumb>
               </div>
             </div>
             <div class="user-info">
-              <el-button class="theme-toggle" text circle @click="toggleTheme" :title="theme === 'dark' ? '切换亮色' : '切换暗色'">
+              <el-button class="theme-toggle" text circle @click="toggleTheme" :aria-label="theme === 'dark' ? '切换亮色' : '切换暗色'" :title="theme === 'dark' ? '切换亮色' : '切换暗色'">
                 <el-icon><component :is="theme === 'dark' ? Sunny : Moon" /></el-icon>
               </el-button>
               <span class="user-avatar">{{ auth.username?.charAt(0)?.toUpperCase() || 'U' }}</span>
@@ -54,7 +50,7 @@
       v-model="drawerVisible"
       class="nav-drawer"
       direction="ltr"
-      size="220px"
+      size="260px"
       :with-header="false"
     >
       <SidebarNav :collapse="false" @select="drawerVisible = false" />
@@ -76,7 +72,7 @@ const auth = useAuthStore();
 // Navigation structure: desktop = fixed collapsible sidebar; mobile = drawer.
 const COLLAPSE_KEY = 'sidebarCollapse';
 const isCollapse = ref(localStorage.getItem(COLLAPSE_KEY) === 'true');
-const sidebarWidth = computed(() => (isCollapse.value ? '64px' : '200px'));
+const sidebarWidth = computed(() => (isCollapse.value ? '72px' : '224px'));
 const isMobile = ref(window.innerWidth < 768);
 const drawerVisible = ref(false);
 
@@ -92,11 +88,8 @@ function onMenuClick() {
 
 function handleSidebarResize() {
   isMobile.value = window.innerWidth < 768;
-  // Auto-collapse the fixed sidebar on narrow screens when there's room;
-  // restore the saved preference on desktop.
-  if (isMobile.value) {
-    isCollapse.value = true;
-  } else if (localStorage.getItem(COLLAPSE_KEY) !== null) {
+  // Restore the desktop preference after leaving drawer navigation.
+  if (!isMobile.value) {
     isCollapse.value = localStorage.getItem(COLLAPSE_KEY) === 'true';
   }
 }
@@ -186,6 +179,11 @@ const logout = () => {
 <style scoped>
 .layout-container {
   height: 100vh;
+  height: 100dvh;
+}
+
+.workspace {
+  min-width: 0;
 }
 
 .sidebar {
@@ -200,66 +198,16 @@ const logout = () => {
   padding: 0;
 }
 
-.sidebar-menu {
-  border-right: none;
-  height: calc(100% - var(--logo-height));
-  overflow-y: auto;
-}
-
-.sidebar-menu:not(.el-menu--collapse) {
-  width: 200px;
-}
 
 .menu-toggle {
   color: var(--color-text-regular);
   margin-right: var(--space-xs);
 }
 
-.logo {
-  height: var(--logo-height);
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: 0 var(--space-md);
-  color: #fff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  white-space: nowrap;
-}
-
-.logo-mark {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-primary), var(--chart-teal));
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  box-shadow: var(--shadow-sm);
-}
-
-.logo-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.logo-title {
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  color: var(--color-text-sidebar);
-}
-
-.logo-sub {
-  font-size: var(--font-size-xs);
-  color: rgba(191, 203, 217, 0.6);
-}
-
 .header {
+  --el-header-height: var(--header-height);
   background: var(--color-bg-white);
-  box-shadow: var(--shadow-md);
+  border-bottom: 1px solid var(--color-border-light);
   padding: 0 var(--space-xl);
   z-index: 1;
 }
@@ -269,6 +217,7 @@ const logout = () => {
   justify-content: space-between;
   align-items: center;
   height: 100%;
+  gap: var(--space-md);
 }
 
 .header-content h3 {
@@ -282,6 +231,7 @@ const logout = () => {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  flex-shrink: 0;
 }
 
 .theme-toggle {
@@ -295,15 +245,19 @@ const logout = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  background: var(--color-primary);
-  color: #fff;
+  border-radius: var(--radius-md);
+  background: var(--el-color-primary-light-9);
+  color: var(--color-primary);
   font-size: var(--font-size-md);
   font-weight: 600;
 }
 
 .user-name {
   font-size: var(--font-size-sm);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-regular);
 }
 
@@ -313,32 +267,34 @@ const logout = () => {
 
 .main-content {
   background: var(--color-bg-page);
-  padding: var(--space-xl);
+  padding: 32px;
   overflow-y: auto;
+  min-width: 0;
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  min-width: 0;
 }
 
 .header-titles {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .header-titles h3 {
   margin: 0;
 }
 
-.breadcrumb {
-  font-size: var(--font-size-xs);
-}
-
-.breadcrumb .el-breadcrumb__inner {
-  font-size: var(--font-size-xs);
+.workspace-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--color-text-secondary);
 }
 
 /* Route navigation progress bar — indeterminate top loader */
@@ -396,7 +352,7 @@ const logout = () => {
   .header {
     padding: 0 var(--space-sm);
   }
-  .breadcrumb {
+  .workspace-label {
     display: none;
   }
   .user-name {
@@ -463,9 +419,17 @@ body {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+.el-card.is-always-shadow { box-shadow: var(--shadow-sm); }
+.el-card__header { padding: 20px 24px; }
+.el-card__body { padding: 24px; }
+.el-table .el-table__cell { padding: 14px 0; }
+.el-table .cell { font-variant-numeric: tabular-nums; }
+.el-button:not(.is-circle):not(.el-button--small) { min-height: 36px; }
+.el-input__wrapper, .el-select__wrapper { min-height: 36px; }
+
 .el-table {
   --el-table-border-color: var(--color-border-light);
-  --el-table-header-bg-color: #f5f7fa;
+  --el-table-header-bg-color: var(--el-fill-color-light);
   font-size: var(--font-size-sm);
 }
 
@@ -487,6 +451,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+  min-width: 0;
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
 }
 .page-stack > * {
   margin-top: 0 !important;
@@ -571,6 +539,22 @@ body {
   /* Readable labels/values */
   .stat-value {
     font-size: 22px;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-slide-enter-active,
+  .fade-slide-leave-active,
+  .sidebar {
+    transition: none;
+  }
+  .route-progress {
+    animation: none;
   }
 }
 </style>

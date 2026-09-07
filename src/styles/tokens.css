@@ -1,33 +1,24 @@
-/* ═══════════════════════════════════════════
-   Design Token System
-   — Uses Element Plus CSS variables as base
-   — Overrides where EP defaults don't fit
-   ═══════════════════════════════════════════ */
-
+/* Shared application and Element Plus palette. */
 :root {
-  /* ── Colors ── */
-  --color-primary: #409eff;
-  --color-success: #67c23a;
-  --color-warning: #e6a23c;
-  --color-danger: #f56c6c;
-  --color-info: #909399;
-
-  --color-bg-page: #f0f2f5;
+  color-scheme: light;
+  --color-primary: #087f73;
+  --color-success: #23835d;
+  --color-warning: #a76a16;
+  --color-danger: #c74554;
+  --color-info: #64748b;
+  --color-bg-page: #f3f6f8;
   --color-bg-white: #ffffff;
-  --color-bg-sidebar: #304156;
   --color-bg-card: #ffffff;
-
-  --color-text-primary: #303133;
-  --color-text-regular: #606266;
-  --color-text-secondary: #909399;
-  --color-text-placeholder: #c0c4cc;
-  --color-text-sidebar: #bfcbd9;
-  --color-text-sidebar-active: #409eff;
-
-  --color-border: #dcdfe6;
-  --color-border-light: #e4e7ed;
-
-  /* ── Spacing Scale ── */
+  --color-bg-sidebar: #142733;
+  --color-bg-subtle: #f7f9fb;
+  --color-text-primary: #1c2d3b;
+  --color-text-regular: #475c6d;
+  --color-text-secondary: #617586;
+  --color-text-placeholder: #788b99;
+  --color-text-sidebar: #b7c8d2;
+  --color-text-sidebar-active: #b8f3e5;
+  --color-border: #d5dfe6;
+  --color-border-light: #e5ebf0;
   --space-xxs: 4px;
   --space-xs: 8px;
   --space-sm: 12px;
@@ -35,75 +26,94 @@
   --space-lg: 20px;
   --space-xl: 24px;
   --space-xxl: 32px;
-
-  /* ── Typography ── */
-  --font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', Arial, sans-serif;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-base: 14px;
   --font-size-md: 16px;
   --font-size-lg: 18px;
   --font-size-xl: 20px;
-  --font-size-xxl: 24px;
-
-  /* ── Sizing ── */
-  --sidebar-width: 200px;
-  --header-height: 60px;
-  --logo-height: 60px;
-
-  /* ── Border Radius ── */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-
-  /* ── Shadows ── */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 1px 4px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 2px 12px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 15px 35px rgba(0, 0, 0, 0.1);
-
-  /* ── Transitions ── */
-  --transition-fast: 0.2s ease;
-  --transition-normal: 0.25s ease;
-  --transition-slow: 0.3s ease;
+  --font-size-xxl: 28px;
+  --sidebar-width: 224px;
+  --header-height: 72px;
+  --logo-height: 88px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-sm: 0 2px 8px rgb(26 48 64 / 3%);
+  --shadow-md: 0 4px 16px rgb(26 48 64 / 6%);
+  --shadow-lg: 0 8px 28px rgb(26 48 64 / 9%);
+  --shadow-xl: 0 20px 48px rgb(26 48 64 / 14%);
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.25s ease;
+  --chart-blue: #497ea6;
+  --chart-green: #23835d;
+  --chart-red: #c74554;
+  --chart-orange: #b8873b;
+  --chart-purple: #8871b1;
+  --chart-teal: #168b80;
+  --chart-gray: #7c8e9b;
 }
 
-/* ── Chart Color Palette ── */
-:root {
-  --chart-blue: #409eff;
-  --chart-green: #67c23a;
-  --chart-red: #f56c6c;
-  --chart-orange: #e6a23c;
-  --chart-purple: #9b59b6;
-  --chart-teal: #1abc9c;
-  --chart-gray: #95a5a6;
-}
-
-/* ── Dark Theme (html.dark, driven by Element Plus dark variables) ── */
 html.dark {
-  --color-bg-page: #141414;
-  --color-bg-card: #1d1e1f;
-  --color-bg-white: #1d1e1f;
-  --color-bg-sidebar: #17181a;
-
-  --color-text-primary: #e5eaf3;
-  --color-text-regular: #cfd3dc;
-  --color-text-secondary: #a3a6ad;
-  --color-text-placeholder: #6b6e76;
-  --color-text-sidebar: #bfcbd9;
-  --color-text-sidebar-active: #409eff;
-
-  --color-border: #4c4d4f;
-  --color-border-light: #363637;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 1px 4px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 2px 12px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+  --color-primary: #56c7b5;
+  --color-success: #64c69a;
+  --color-warning: #e0b366;
+  --color-danger: #ef8391;
+  --color-info: #99adc1;
+  --color-bg-page: #111c26;
+  --color-bg-card: #1a2936;
+  --color-bg-white: #1a2936;
+  --color-bg-sidebar: #0d1922;
+  --color-bg-subtle: #203140;
+  --color-text-primary: #e4edf4;
+  --color-text-regular: #bdcdd9;
+  --color-text-secondary: #9bb0c0;
+  --color-text-placeholder: #849aaa;
+  --color-border: #3a5061;
+  --color-border-light: #2c4152;
+  --shadow-sm: 0 2px 8px rgb(0 0 0 / 8%);
+  --shadow-md: 0 4px 16px rgb(0 0 0 / 12%);
+  --shadow-lg: 0 8px 28px rgb(0 0 0 / 18%);
 }
 
-html.dark body {
-  background: var(--color-bg-page);
-  color: var(--color-text-primary);
+/* Keep auto-imported component styles on the same semantic palette. */
+html:root, html:root.dark {
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: color-mix(in srgb, var(--color-primary) 75%, var(--color-bg-card));
+  --el-color-primary-light-5: color-mix(in srgb, var(--color-primary) 55%, var(--color-bg-card));
+  --el-color-primary-light-7: color-mix(in srgb, var(--color-primary) 30%, var(--color-bg-card));
+  --el-color-primary-light-8: color-mix(in srgb, var(--color-primary) 20%, var(--color-bg-card));
+  --el-color-primary-light-9: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-card));
+  --el-color-primary-dark-2: color-mix(in srgb, var(--color-primary) 85%, #000);
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-warning);
+  --el-color-danger: var(--color-danger);
+  --el-color-info: var(--color-info);
+  --el-bg-color: var(--color-bg-card);
+  --el-bg-color-page: var(--color-bg-page);
+  --el-bg-color-overlay: var(--color-bg-card);
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text-regular);
+  --el-text-color-secondary: var(--color-text-secondary);
+  --el-text-color-placeholder: var(--color-text-placeholder);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border-light);
+  --el-border-color-lighter: var(--color-border-light);
+  --el-fill-color-blank: var(--color-bg-card);
+  --el-fill-color: var(--color-bg-subtle);
+  --el-fill-color-light: var(--color-bg-subtle);
+  --el-fill-color-lighter: var(--color-bg-subtle);
+  --el-border-radius-base: var(--radius-sm);
+  --el-box-shadow-light: var(--shadow-md);
+  --el-font-family: var(--font-family);
+}
+html.dark .el-button--primary:not(.is-text):not(.is-link):not(.is-plain) {
+  --el-button-text-color: #102b2b;
+  --el-button-hover-text-color: #102b2b;
+  --el-button-active-text-color: #102b2b;
+  --el-button-disabled-text-color: #102b2b;
 }
