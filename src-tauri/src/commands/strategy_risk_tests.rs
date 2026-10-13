@@ -1,11 +1,12 @@
 use super::*;
-use crate::state::{AuthedUser, BinanceWsState};
+use crate::state::{AppState, AuthedUser, BinanceWsState};
 use data_layer::PostgresClient;
 use monitor_layer::{AlertManager, LogBuffer};
 use quant_common::config::AppConfig;
 use quant_services::{AppServices, SharedInfra};
 use security::AuditLogger;
 use std::sync::Arc;
+use tauri::State;
 use tokio::sync::RwLock;
 use trading_layer::OrderManager;
 

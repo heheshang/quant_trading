@@ -40,4 +40,6 @@ pub fn not_init_err(msg: impl Into<String>) -> quant_common::api::ApiFailure {
 }
 
 #[cfg(test)]
+mod strategy_risk_tests;
+#[cfg(test)]
 mod tests;
