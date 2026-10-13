@@ -25,10 +25,6 @@ pub use risk::*;
 pub use strategy::*;
 pub use twofa::*;
 
-// 向后兼容：保留旧模块名作为新模块的别名
-#[deprecated(since = "0.3.0", note = "Use `strategy` and `risk` modules instead")]
-pub mod strategy_risk {}
-
 /// 认证失败的 `ApiFailure`（未登录/会话失效）。
 pub fn auth_err(e: String) -> quant_common::api::ApiFailure {
     quant_common::api::ApiFailure::new(quant_common::api::code::UNAUTHORIZED, e)
@@ -39,7 +35,5 @@ pub fn not_init_err(msg: impl Into<String>) -> quant_common::api::ApiFailure {
     quant_common::api::ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, msg)
 }
 
-#[cfg(test)]
-mod strategy_risk_tests;
 #[cfg(test)]
 mod tests;
