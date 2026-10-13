@@ -1,63 +1,39 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use chrono::Utc;
-use quant_common::config::AppConfig;
-use quant_common::MarketDataProvider;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+// 模块化拆分：
+// - init.rs: 应用初始化（配置、数据库、Redis、Binance）
+// - background.rs: 后台任务管理
+// - commands/: Tauri 命令处理器
 
+mod background;
 mod commands;
+mod init;
 mod prometheus;
 mod state;
 
-use data_layer::market_data::DataSource;
-use data_layer::market_data_repo::MarketDataRepository;
-use data_layer::BinanceDataSource;
-use exchange_binance::types::BinanceEnvironment;
-use exchange_binance::{Client as BinanceClient, ClientInterface as BinanceClientInterface};
-use monitor_layer::{AlertManager, LogBuffer, ACCOUNT_BALANCE, DAILY_PNL, POSITION_VALUE};
-use quant_clients::RedisCache;
-use quant_services::AppServices;
-use state::AppState;
+use init::{init_binance, init_database, init_redis};
+use quant_common::config::AppConfig;
+use std::sync::Arc;
 use tauri::Manager;
-use trading_layer::{BinanceExecutor, OrderManager};
-
-/// Resolve an Ed25519 private-key path relative to the process cwd, falling
-/// back to parent directories. The Tauri dev process often runs from
-/// `src-tauri/` while `.env` and the key live at the project root.
-fn read_private_key(path: Option<&str>) -> Option<String> {
-    let path = path?;
-    let as_path = std::path::Path::new(path);
-    if as_path.is_absolute() {
-        return std::fs::read_to_string(as_path).ok();
-    }
-    let mut dir = std::env::current_dir().ok()?;
-    for _ in 0..6 {
-        if let Ok(txt) = std::fs::read_to_string(dir.join(as_path)) {
-            return Some(txt);
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    None
-}
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    // 加载 .env 环境变量
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 1: 环境变量和配置加载
+    // ─────────────────────────────────────────────────────────────────────────
     dotenv::dotenv().ok();
-
-    // 加载配置；容器部署通过 DATABASE_*/REDIS_* 等环境变量覆盖默认值
     let config = AppConfig::from_env();
-    // 安全密钥必须替换默认占位值，否则拒绝启动（防伪造 JWT / 解密密钥）。
+
+    // 安全密钥必须替换默认占位值，否则拒绝启动（防伪造 JWT / 解密密钥）
     if let Err(e) = config.validate_secrets() {
         panic!("安全配置校验失败，拒绝启动：{}", e);
     }
 
-    // 初始化日志（从 AppConfig 读取，LOG_LEVEL 环境变量可覆写）
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 2: 日志系统初始化
+    // ─────────────────────────────────────────────────────────────────────────
     let log_level =
         std::env::var("LOG_LEVEL").unwrap_or_else(|_| config.monitoring.log_level.clone());
     monitor_layer::logging::init_logging(monitor_layer::logging::LoggingConfig {
@@ -72,277 +48,94 @@ async fn main() {
 
     info!("Starting Quant Trading System...");
 
-    // 初始化应用状态（以便日志记录可用）
-    let log_buffer = Arc::new(LogBuffer::new(1000));
-
-    // 添加初始日志条目
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 3: 日志缓冲区初始化
+    // ─────────────────────────────────────────────────────────────────────────
+    let log_buffer = Arc::new(monitor_layer::LogBuffer::new(1000));
     log_buffer
         .add_entry(quant_common::types::LogEntry {
-            timestamp: Utc::now(),
+            timestamp: chrono::Utc::now(),
             level: "info".to_string(),
             message: "Quant Trading System initialized successfully".to_string(),
             module: Some("main".to_string()),
         })
         .await;
 
-    // Binance is the live exchange for real order execution and market data.
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 4: 数据库初始化
+    // ─────────────────────────────────────────────────────────────────────────
+    let db_config = init_database(&config, &log_buffer).await;
 
-    // 初始化数据库连接池（懒加载，不阻塞 Tauri 启动）。
-    let pg_client = match data_layer::PostgresClient::new_lazy(&config.database) {
-        Ok(client) => {
-            info!("PostgreSQL connection pool configured; migrations will run in background");
-            Some(Arc::new(client))
-        }
-        Err(e) => {
-            warn!("Failed to configure PostgreSQL connection pool: {}", e);
-            None
-        }
-    };
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 5: Redis 缓存初始化
+    // ─────────────────────────────────────────────────────────────────────────
+    let redis_cache = init_redis(&config);
 
-    if let Some(ref client) = pg_client {
-        let migration_client = client.clone();
-        let migration_log = log_buffer.clone();
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 6: OrderManager 初始化
+    // ─────────────────────────────────────────────────────────────────────────
+    let order_manager = trading_layer::OrderManager::new();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 7: Binance 客户端初始化
+    // ─────────────────────────────────────────────────────────────────────────
+    let binance_config = init_binance(&config);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 8: 构建 AppState 和 AppServices
+    // ─────────────────────────────────────────────────────────────────────────
+    let (app_state, monitoring_config) = init::build_app_state(
+        Arc::new(tokio::sync::RwLock::new(config)),
+        db_config,
+        binance_config,
+        redis_cache,
+        log_buffer,
+        order_manager,
+    );
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 9: 启动纸面订单执行调度器
+    // ─────────────────────────────────────────────────────────────────────────
+    if let Some(ref services) = app_state.app_services {
+        services
+            .order_processor
+            .start_paper_execution_scheduler()
+            .await;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 10: 初始化监控指标
+    // ─────────────────────────────────────────────────────────────────────────
+    monitor_layer::MetricsCollector::init();
+    monitor_layer::ACCOUNT_BALANCE.set(0.0);
+    monitor_layer::POSITION_VALUE.set(0.0);
+    monitor_layer::DAILY_PNL.set(0.0);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 11: 启动 Prometheus 服务器
+    // ─────────────────────────────────────────────────────────────────────────
+    if monitoring_config.enable_prometheus {
+        let port = monitoring_config.prometheus_port;
+        info!("Starting Prometheus metrics server on port {}", port);
         tokio::spawn(async move {
-            // 上限重试，避免无限后台循环；达到上限后升级为 error 并停止（不静默 fail-open）。
-            let max_attempts = 60;
-            for attempt in 1..=max_attempts {
-                match migration_client.run_migrations().await {
-                    Ok(()) => {
-                        info!("Database migrations completed successfully");
-                        break;
-                    }
-                    Err(e) => {
-                        if attempt >= max_attempts {
-                            tracing::error!(
-                                "Database migrations failed after {max_attempts} attempts; services may be degraded: {}",
-                                e
-                            );
-                            migration_log
-                                .add_entry(quant_common::types::LogEntry {
-                                    timestamp: Utc::now(),
-                                    level: "error".to_string(),
-                                    message: format!(
-                                        "数据库迁移连续失败({max_attempts}次)，服务可能降级：{}",
-                                        e
-                                    ),
-                                    module: Some("database".to_string()),
-                                })
-                                .await;
-                            break;
-                        }
-                        warn!(
-                            "Database connection/migration failed, will retry in 5s: {}",
-                            e
-                        );
-                        migration_log
-                            .add_entry(quant_common::types::LogEntry {
-                                timestamp: Utc::now(),
-                                level: "warn".to_string(),
-                                message: format!("Database unavailable, retrying in 5s: {}", e),
-                                module: Some("database".to_string()),
-                            })
-                            .await;
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    }
-                }
-            }
+            prometheus::run(port).await;
         });
     } else {
-        warn!("PostgreSQL connection pool unavailable, running without database");
+        info!("Prometheus metrics endpoint disabled");
     }
-
-    // 为 AppServices 创建 data_layer::PostgresClient，复用同一个 PgPool，
-    // 避免为同一数据库打开第二套连接池。
-    let repo_pg_client = pg_client
-        .as_ref()
-        .map(|pg| data_layer::PostgresClient::from_pool(pg.pool().clone()));
-    let repo_pg = repo_pg_client.map(Arc::new);
-    // 告警持久化仓储（有 DB 时注入 AlertManager，无 DB 时降级内存）
-    let alert_repo = repo_pg.as_ref().map(|pg| {
-        Arc::new(data_layer::PgAlertRepository::new(Arc::new(
-            pg.pool().clone(),
-        ))) as Arc<dyn data_layer::AlertRepository>
-    });
-    let alert_manager = Arc::new(AlertManager::new(false, vec![]).with_repository(alert_repo));
-
-    // 行情快照仓储（供市场数据读接口使用）
-    let market_data_repo = pg_client
-        .as_ref()
-        .map(|pg| Arc::new(MarketDataRepository::new(pg.pool().clone())));
-    // 审计日志仓储（有 DB 时持久化，无 DB 时仅内存日志）
-    let audit_repo = repo_pg.as_ref().map(|pg| {
-        Arc::new(data_layer::PgAuditRepository::new(Arc::new(
-            pg.pool().clone(),
-        ))) as Arc<dyn data_layer::AuditRepository>
-    });
-    let audit_logger = Arc::new(security::AuditLogger::new(audit_repo));
-
-    let redis_cache = RedisCache::new(&config.redis).ok();
-    if redis_cache.is_some() {
-        info!("Redis connection established successfully");
-    } else {
-        warn!("Redis connection failed, running without cache");
-    }
-
-    // Create shared OrderManager
-    let order_manager = OrderManager::new();
-
-    // Binance client + executor (optional). Built before `config` is moved into
-    // `config_arc` so we can read `config.binance`. The service client feeds
-    // `BinanceService` (market data); the executor feeds `OrderProcessor` so
-    // real order execution routes through the Binance live exchange. The same
-    // client backs `BinanceDataSource` (the market-data data source supplied to
-    // `MarketService` and the persistence-first live fallback).
-    let binance_client_shared: Arc<RwLock<Option<Arc<dyn BinanceClientInterface + Send + Sync>>>>;
-    let binance_executor_shared: Arc<RwLock<Option<Arc<BinanceExecutor>>>>;
-    let market_data_source: Arc<RwLock<Option<Arc<dyn DataSource>>>>;
-    let live_market_data_provider: Option<Arc<dyn MarketDataProvider>>;
-    if config.binance.enable && !config.binance.api_key.is_empty() {
-        info!(
-            "Binance client initialized in {} mode",
-            config.binance.environment
-        );
-        let environment = BinanceEnvironment::parse(&config.binance.environment);
-        let private_key_pem = read_private_key(config.binance.private_key_path.as_deref());
-        info!(
-            "Binance config: env={} key_type={} base_url={} ws_url={} private_key_loaded={}{}",
-            config.binance.environment,
-            config.binance.key_type,
-            config.binance.base_url.as_deref().unwrap_or("<unset>"),
-            config.binance.ws_url.as_deref().unwrap_or("<unset>"),
-            private_key_pem.is_some(),
-            private_key_pem
-                .as_deref()
-                .map(|p| format!(" ({} bytes)", p.len()))
-                .unwrap_or_default(),
-        );
-
-        // Build the signed client; validate once and reuse the same params for
-        // the market-data and execution clients (identical args → same result).
-        let build_client = || {
-            BinanceClient::new(
-                config.binance.api_key.clone(),
-                config.binance.api_secret.clone(),
-                environment,
-                config.binance.base_url.clone(),
-                config.binance.key_type.clone(),
-                private_key_pem.clone(),
-            )
-        };
-
-        match build_client() {
-            Ok(client) => {
-                let service_client: Arc<dyn BinanceClientInterface + Send + Sync> =
-                    Arc::new(client);
-                let market_data_client: Arc<RwLock<dyn BinanceClientInterface + Send + Sync>> =
-                    Arc::new(RwLock::new(build_client().expect("Binance client built")));
-                binance_client_shared = Arc::new(RwLock::new(Some(service_client)));
-
-                let binance_ds = Arc::new(BinanceDataSource::new(market_data_client));
-                market_data_source =
-                    Arc::new(RwLock::new(Some(binance_ds.clone() as Arc<dyn DataSource>)));
-                live_market_data_provider = Some(binance_ds.clone() as Arc<dyn MarketDataProvider>);
-
-                let executor_client =
-                    Arc::new(RwLock::new(build_client().expect("Binance client built")));
-                binance_executor_shared = Arc::new(RwLock::new(Some(Arc::new(
-                    BinanceExecutor::new(executor_client),
-                ))));
-            }
-            Err(e) => {
-                error!("Binance client initialization failed: {e}");
-                info!("Binance integration disabled");
-                binance_client_shared = Arc::new(RwLock::new(None));
-                binance_executor_shared = Arc::new(RwLock::new(None));
-                market_data_source = Arc::new(RwLock::new(None));
-                live_market_data_provider = None;
-            }
-        }
-    } else {
-        info!("Binance integration disabled");
-        binance_client_shared = Arc::new(RwLock::new(None));
-        binance_executor_shared = Arc::new(RwLock::new(None));
-        market_data_source = Arc::new(RwLock::new(None));
-        live_market_data_provider = None;
-    }
-
-    let config_arc = Arc::new(RwLock::new(config));
-
-    // Create AppServices. Config is loaded from env via dotenv at startup;
-    // the previous `config.toml` file persistence is replaced by dotenv.
-    // Infrastructure is grouped into a single `SharedInfra` bundle (DIP/SRP).
-    let infra = quant_services::SharedInfra {
-        config: config_arc.clone(),
-        postgres: repo_pg.clone(),
-        redis: None,
-        market_data: market_data_repo.clone(),
-        market_data_source,
-        live_market_data_provider,
-        binance_client: binance_client_shared.clone(),
-        binance_executor: binance_executor_shared.clone(),
-        order_manager: Arc::new(order_manager.clone()),
-        log_buffer: log_buffer.clone(),
-    };
-    let app_services = AppServices::new(infra);
-    // 启动纸面订单执行调度器（后台定时任务）：按模拟延迟撮合已到期纸面单，
-    // 以 DB 为事实来源，重启后可恢复。
-    app_services
-        .order_processor
-        .start_paper_execution_scheduler()
-        .await;
-    // Capture the Prometheus monitoring config before `config_arc` is moved
-    // into `AppState` below.
-    let prometheus_cfg = config_arc.read().await.monitoring.clone();
-
-    let app_state = AppState {
-        config: config_arc,
-        alert_manager,
-        log_buffer,
-        audit_logger,
-        pg_client,
-        redis_cache,
-        binance_client: binance_client_shared,
-        order_manager,
-        app_services: Some(app_services),
-        binance_ws_state: state::BinanceWsState::new(),
-        auth_session: Arc::new(RwLock::new(None)),
-    };
-
-    // 初始化指标收集
-    monitor_layer::MetricsCollector::init();
-
-    // Metrics start at 0 — actual values are set by the data poller / account service
-    ACCOUNT_BALANCE.set(0.0);
-    POSITION_VALUE.set(0.0);
-    DAILY_PNL.set(0.0);
 
     info!("Application initialized successfully");
-    // Start the Prometheus /metrics endpoint (if enabled)
-    {
-        let monitoring = prometheus_cfg;
-        if monitoring.enable_prometheus {
-            let port = monitoring.prometheus_port;
-            info!("Starting Prometheus metrics server on port {}", port);
-            tokio::spawn(async move {
-                prometheus::run(port).await;
-            });
-        } else {
-            info!("Prometheus metrics endpoint disabled");
-        }
-    }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 阶段 12: 启动 Tauri 应用
+    // ─────────────────────────────────────────────────────────────────────────
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(app_state)
         .setup(|app| {
-            // 启动实盘订单状态监控（后台轮询 Binance + 同步 live_trades + 推事件）。
             let state = app.state::<state::AppState>();
             if let Some(services) = state.app_services.as_ref() {
-                commands::binance_ws::start_live_order_monitor(app.handle().clone(), services);
-                // 资产曲线后台快照写入器（独立于前端刷新，每 60s 记录权益）。
-                commands::binance_ws::start_equity_snapshot_writer(services);
-                // 指标 Gauge 每 5s 刷新真实账户值（Monitor 指标监控）。
-                commands::binance_ws::start_monitor_metrics(services);
+                background::start_background_tasks(app.handle().clone(), services);
             }
             Ok(())
         })
@@ -409,7 +202,6 @@ async fn main() {
             commands::verify_2fa_code,
             commands::disable_2fa,
             commands::optimize_strategy,
-            // Binance commands
             commands::get_binance_balance,
             commands::get_binance_candles,
             commands::get_binance_ticker_prices,
@@ -422,7 +214,6 @@ async fn main() {
             commands::place_binance_order,
             commands::cancel_binance_order,
             commands::check_binance_status,
-            // Binance WebSocket commands
             commands::start_binance_market_data,
             commands::subscribe_binance_candle,
             commands::subscribe_binance_depth,
