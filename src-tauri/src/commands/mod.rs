@@ -7,8 +7,27 @@ pub mod binance_ws;
 pub mod core;
 pub mod market_data;
 pub mod optimizer;
-pub mod strategy_risk;
+pub mod risk;
+pub mod strategy;
 pub mod twofa;
+
+// 重新导出各模块的命令（扁平化命名空间）
+pub use api_keys::*;
+pub use audit::*;
+pub use auth::*;
+pub use backtest::*;
+pub use binance::*;
+pub use binance_ws::*;
+pub use core::*;
+pub use market_data::*;
+pub use optimizer::*;
+pub use risk::*;
+pub use strategy::*;
+pub use twofa::*;
+
+// 向后兼容：保留旧模块名作为新模块的别名
+#[deprecated(since = "0.3.0", note = "Use `strategy` and `risk` modules instead")]
+pub mod strategy_risk {}
 
 /// 认证失败的 `ApiFailure`（未登录/会话失效）。
 pub fn auth_err(e: String) -> quant_common::api::ApiFailure {
@@ -19,18 +38,6 @@ pub fn auth_err(e: String) -> quant_common::api::ApiFailure {
 pub fn not_init_err(msg: impl Into<String>) -> quant_common::api::ApiFailure {
     quant_common::api::ApiFailure::new(quant_common::api::code::NOT_INITIALIZED, msg)
 }
-
-pub use api_keys::*;
-pub use audit::*;
-pub use auth::*;
-pub use backtest::*;
-pub use binance::*;
-pub use binance_ws::*;
-pub use core::*;
-pub use market_data::*;
-pub use optimizer::*;
-pub use strategy_risk::*;
-pub use twofa::*;
 
 #[cfg(test)]
 mod tests;

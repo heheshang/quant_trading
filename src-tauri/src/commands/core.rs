@@ -224,7 +224,7 @@ pub async fn run_algorithmic_order(
         .as_ref()
         .ok_or_else(|| not_init_err("下单服务未初始化（无数据库连接）"))?;
 
-    let placements = services
+    let placements: Vec<_> = services
         .order_processor
         .place_algorithmic_order(order, &algorithm, &params)
         .await?;
