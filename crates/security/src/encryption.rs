@@ -48,7 +48,7 @@ fn derive_aes_key(key_str: &str) -> [u8; 32] {
             return k;
         }
     }
-    if trimmed.as_bytes().len() >= 32 {
+    if trimmed.len() >= 32 {
         let mut k = [0u8; 32];
         k.copy_from_slice(&trimmed.as_bytes()[..32]);
         return k;

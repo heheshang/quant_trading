@@ -56,7 +56,7 @@ impl RealTimeRiskMonitor {
 
     fn check_drawdown(&mut self, account: &Account) -> Option<Alert> {
         let max_drawdown = Decimal::from_f64_retain(self.config.max_drawdown)
-            .unwrap_or(Decimal::from_f64_retain(DEFAULT_MAX_DRAWDOWN).unwrap());
+            .unwrap_or_else(|| Decimal::from_f64_retain(DEFAULT_MAX_DRAWDOWN).expect("DEFAULT_MAX_DRAWDOWN is not NaN"));
 
         // 跟踪历史最高净值
         self.peak_equity = self.peak_equity.max(account.total_assets);
@@ -84,7 +84,7 @@ impl RealTimeRiskMonitor {
     }
 
     fn check_margin_ratio(&self, account: &Account) -> Option<Alert> {
-        if account.margin_ratio > Decimal::from_f64_retain(MARGIN_RATIO_CRITICAL).unwrap() {
+        if account.margin_ratio > Decimal::from_f64_retain(MARGIN_RATIO_CRITICAL).expect("MARGIN_RATIO_CRITICAL is not NaN") {
             Some(Alert {
                 alert_id: 0,
                 level: AlertLevel::Warning,

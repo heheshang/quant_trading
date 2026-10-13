@@ -34,9 +34,9 @@ pub struct StrategyScheduler {
     circuit_breakers: Arc<RwLock<HashMap<String, CircuitBreaker>>>,
     /// 调度配置
     config: SchedulerConfig,
-    /// 信号流水线执行器
+    /// 信号流水线执行器 (std::sync::RwLock - 支持同步访问)
     pipeline: std::sync::RwLock<Option<Arc<PipelineExecutor>>>,
-    /// 市场数据提供者
+    /// 市场数据提供者 (std::sync::RwLock - 支持同步访问)
     market_data_provider: std::sync::RwLock<Option<Arc<dyn MarketDataProvider>>>,
 }
 
@@ -55,17 +55,16 @@ impl StrategyScheduler {
         }
     }
 
+    /// 设置信号流水线执行器（同步版本，可在任何上下文中调用）
     pub fn set_pipeline(&self, pipeline: Arc<PipelineExecutor>) {
-        if let Ok(mut guard) = self.pipeline.write() {
-            *guard = Some(pipeline);
-        }
+        let mut guard = self.pipeline.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(pipeline);
     }
 
-    /// 设置市场数据提供者
+    /// 设置市场数据提供者（同步版本，可在任何上下文中调用）
     pub fn set_market_data_provider(&self, provider: Arc<dyn MarketDataProvider>) {
-        if let Ok(mut guard) = self.market_data_provider.write() {
-            *guard = Some(provider);
-        }
+        let mut guard = self.market_data_provider.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(provider);
     }
 
     /// 判断调度器是否已具备真实交易能力（调度器启用 + 流水线 + 行情源均已注入）。
@@ -76,16 +75,13 @@ impl StrategyScheduler {
     /// 安全语义：仅当 `SchedulerConfig::enabled` 为真（调度器显式启用）且
     /// 流水线与行情提供者都已注入时才允许进入 Running；否则一律拒绝。
     #[must_use]
-    pub fn trading_ready(&self) -> bool {
+    pub async fn trading_ready(&self) -> bool {
         if !self.config.enabled {
             return false;
         }
+        // 使用 try_read_arc 在异步上下文中安全读取 std::sync::RwLock
         let pipeline_ready = self.pipeline.read().map(|g| g.is_some()).unwrap_or(false);
-        let provider_ready = self
-            .market_data_provider
-            .read()
-            .map(|g| g.is_some())
-            .unwrap_or(false);
+        let provider_ready = self.market_data_provider.read().map(|g| g.is_some()).unwrap_or(false);
         pipeline_ready && provider_ready
     }
 
@@ -121,7 +117,7 @@ impl StrategyScheduler {
         }
 
         // fail-closed: 缺少流水线或行情源时拒绝启动，避免「Running 却空转」。
-        if !self.trading_ready() {
+        if !self.trading_ready().await {
             return Err(SchedulerError::NotConfigured(
                 "signal pipeline and/or market data provider are not wired; refusing to start an idling strategy"
                     .to_string(),
@@ -131,12 +127,8 @@ impl StrategyScheduler {
         let shutdown_rx = self.shutdown_tx.subscribe();
         let tasks = Arc::clone(&self.tasks);
         let cbs = Arc::clone(&self.circuit_breakers);
-        let pipeline = self.pipeline.read().ok().and_then(|g| (*g).clone());
-        let market_data_provider = self
-            .market_data_provider
-            .read()
-            .ok()
-            .and_then(|g| (*g).clone());
+        let pipeline = self.pipeline.read().map(|g| g.clone()).unwrap_or(None);
+        let market_data_provider = self.market_data_provider.read().map(|g| g.clone()).unwrap_or(None);
         let strategy_symbols = strategy.params().symbols.clone();
 
         // Shared metadata updated by the task loop.
@@ -267,7 +259,7 @@ impl StrategyScheduler {
                                 }
                             }
                             {
-                                let mut m = task_meta.lock().unwrap();
+                                let mut m = task_meta.lock().expect("mutex poisoned");
                                 m.last_run_at = Some(chrono::Utc::now());
                                 m.error_count = 0;
                             }
@@ -345,7 +337,7 @@ impl StrategyScheduler {
         tasks
             .iter()
             .map(|(id, handle)| {
-                let m = handle.meta.lock().unwrap();
+                let m = handle.meta.lock().expect("mutex poisoned");
                 SchedulerTaskInfo {
                     strategy_id: id.clone(),
                     strategy_name: m.strategy_name.clone(),

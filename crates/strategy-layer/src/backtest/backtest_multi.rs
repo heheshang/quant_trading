@@ -8,6 +8,7 @@ use quant_common::utils::{
 use quant_common::{Error, Result};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::{BacktestEngine, BacktestOptions, RealizedPnl};
 
@@ -21,6 +22,8 @@ pub struct MultiStrategyResult {
 ///
 /// 若 `market_data` 含多个标的（组合回测）：**按标的拆分**，每个标的用各自历史单独回测
 /// （避免多标的 bar 交错污染指标），再把各标的的结果合并为一个组合结果。初始资本均分到每个标的。
+///
+/// **性能优化**: 同一策略内的多个标的回测并行执行，充分利用多核 CPU。
 pub async fn run_backtest_multi(
     strategies: Vec<(Box<dyn Strategy>, String)>,
     market_data: Vec<MarketData>,
@@ -51,19 +54,46 @@ pub async fn run_backtest_multi(
 
     let mut results = Vec::new();
     for (strategy, label) in strategies {
-        let mut symbol_results: Vec<BacktestResult> = Vec::new();
-        let mut realized_pnl = RealizedPnl::default();
+        // 使用 Arc 共享策略引用，支持并行执行
+        let strategy = Arc::from(strategy);
+
+        // 并行运行所有标的的回测
+        let mut handles = Vec::with_capacity(symbol_order.len());
         for symbol in &symbol_order {
             let data = by_symbol.get(symbol).cloned().unwrap_or_default();
-            let mut engine = BacktestEngine::new(per_capital, commission_rate, slippage);
-            let result = engine
-                .run_with_options(&*strategy, data, BacktestOptions::default())
-                .await?;
-            let symbol_pnl = engine.realized_pnl();
-            realized_pnl.total_profit += symbol_pnl.total_profit;
-            realized_pnl.total_loss += symbol_pnl.total_loss;
-            symbol_results.push(result);
+            let strategy = Arc::clone(&strategy);
+            handles.push(tokio::spawn(async move {
+                // 在独立任务中运行单个标的的回测
+                let mut engine = BacktestEngine::new(per_capital, commission_rate, slippage);
+                let result = engine
+                    .run_with_options(&*strategy, data, BacktestOptions::default())
+                    .await;
+                let realized_pnl = engine.realized_pnl();
+                result.map(|r| (r, realized_pnl))
+            }));
         }
+
+        // 等待所有标的回测完成并收集结果
+        let mut realized_pnl = RealizedPnl::default();
+        let mut symbol_results: Vec<BacktestResult> = Vec::with_capacity(symbol_order.len());
+
+        for handle in handles {
+            match handle.await {
+                Ok(Ok((result, pnl))) => {
+                    realized_pnl.total_profit += pnl.total_profit;
+                    realized_pnl.total_loss += pnl.total_loss;
+                    symbol_results.push(result);
+                }
+                Ok(Err(e)) => return Err(e),
+                Err(e) => {
+                    return Err(Error::Internal(format!(
+                        "Backtest task panicked: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
         let result = aggregate_portfolio(symbol_results, initial_capital, realized_pnl)?;
         results.push((label, result));
     }

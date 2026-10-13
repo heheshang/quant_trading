@@ -138,26 +138,28 @@ impl AppServices {
         strategy_service
     }
 
-    /// Construct `AppServices` from a [`SharedInfra`] bundle (in-memory config).
-    #[instrument(skip_all)]
-    pub fn new(infra: SharedInfra) -> Self {
-        info!("Initializing AppServices");
-        // Non-blocking read: `new` may be called from an async runtime (e.g.
-        // Tauri's `main`), where `blocking_read()` would panic.
+    /// Extract default timeframe from config bars.
+    fn resolve_default_timeframe(config: &AppConfig) -> String {
+        resolve_default_timeframe(&config.data_puller.candle.bars)
+    }
+
+    /// Build scheduler and strategy service from infra (common logic for both constructors).
+    fn build_scheduler_and_service(
+        infra: &SharedInfra,
+    ) -> (Arc<StrategyScheduler>, StrategyService) {
         let scheduler_config = infra
             .config
             .try_read()
             .map(|c| c.scheduler.clone())
             .unwrap_or_default();
         let scheduler = Arc::new(StrategyScheduler::new(scheduler_config));
-        let default_timeframe = {
-            let bars = infra
-                .config
-                .try_read()
-                .map(|c| c.data_puller.candle.bars.clone())
-                .unwrap_or_default();
-            resolve_default_timeframe(&bars)
-        };
+
+        let default_timeframe = infra
+            .config
+            .try_read()
+            .map(|c| Self::resolve_default_timeframe(&c))
+            .unwrap_or_else(|_| "1h".to_string());
+
         let strategy_service = Self::build_strategy_service(
             &infra.postgres,
             &infra.market_data,
@@ -165,6 +167,15 @@ impl AppServices {
             scheduler.clone(),
             infra.live_market_data_provider.clone(),
         );
+
+        (scheduler, strategy_service)
+    }
+
+    /// Construct `AppServices` from a [`SharedInfra`] bundle (in-memory config).
+    #[instrument(skip_all)]
+    pub fn new(infra: SharedInfra) -> Self {
+        info!("Initializing AppServices");
+        let (scheduler, strategy_service) = Self::build_scheduler_and_service(&infra);
         let config_service = ConfigService::new(infra.config.clone());
         Self::assemble(infra, strategy_service, config_service, scheduler)
     }
@@ -176,27 +187,7 @@ impl AppServices {
             "Initializing AppServices with config path: {}",
             config_path.display()
         );
-        let scheduler_config = infra
-            .config
-            .try_read()
-            .map(|c| c.scheduler.clone())
-            .unwrap_or_default();
-        let scheduler = Arc::new(StrategyScheduler::new(scheduler_config));
-        let default_timeframe = {
-            let bars = infra
-                .config
-                .try_read()
-                .map(|c| c.data_puller.candle.bars.clone())
-                .unwrap_or_default();
-            resolve_default_timeframe(&bars)
-        };
-        let strategy_service = Self::build_strategy_service(
-            &infra.postgres,
-            &infra.market_data,
-            default_timeframe,
-            scheduler.clone(),
-            infra.live_market_data_provider.clone(),
-        );
+        let (scheduler, strategy_service) = Self::build_scheduler_and_service(&infra);
         let config_service = ConfigService::with_path(infra.config.clone(), config_path);
         Self::assemble(infra, strategy_service, config_service, scheduler)
     }

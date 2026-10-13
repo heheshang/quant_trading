@@ -1,0 +1,65 @@
+域名访问白名单（登录 → 正常使用）
+======================================
+
+【Cursor】
+https://*.cursor.sh              后端总域
+https://*.cursor-cdn.com         更新分发
+https://*.cursorapi.com          扩展市场
+https://*.cursorvm.com           云端虚拟机
+https://*.cursor.com             论坛状态
+
+【Claude（Anthropic）】
+https://claude.ai                网页主站
+https://claude.com               文档帮助
+https://anthropic.com            官网本体
+https://*.anthropic.com          接口上传
+https://*.workos.com             企业认证
+
+【OpenAI】
+https://chatgpt.com              网页主站
+https://openai.com               官网本体
+https://*.openai.com             登录接口
+https://*.oaistatic.com          网页资源
+https://*.oaiusercontent.com     上传文件
+https://*.backblazeb2.com        文件存储
+https://*.stripe.com             付费订阅
+
+【Google / Gemini】
+https://google.com               主站本体
+https://*.google.com             搜索登录
+https://*.gstatic.com            登录必需
+https://*.googleapis.com         通用接口
+https://*.googleusercontent.com  用户内容
+
+【GitHub】
+https://github.com               主站登录
+https://*.github.com             接口代码
+https://*.githubusercontent.com  资源下载
+https://*.githubassets.com       页面资源
+
+【可选增补】
+https://*.gmail.com              邮箱服务
+https://appleid.apple.com        苹果登录
+https://*.ggpht.com              图片缓存
+https://sentry.io                错误上报
+https://*.statsig.gg             功能开关
+https://*.mixpanel.com           统计埋点
+https://*.microsoftonline.com   微软登录
+https://login.live.com          微软账号
+https://*.slack.com             Slack 登录
+https://api.githubcopilot.com   Copilot 接口
+https://desktop.github.com      桌面客户端
+https://*.github.dev            网页编辑
+https://ghcr.io                  容器镜像
+https://*.todesktop.com         旧版更新
+https://*.amplitude.com         分析埋点
+https://*.bugsnag.com           错误监控
+
+--------------------------------------
+配置要点
+1. 通配不覆盖裸域名本体，google.com、github.com、
+   openai.com、anthropic.com、cursor.com 已单独列出。
+2. 登录链路关键：accounts.google.com（含于 *.google.com）、
+   *.gstatic.com、github.com，勿漏。
+3. Cursor 四组通配（*.cursor.sh 等）须绕过 HTTPS 解密，
+   否则 Agent 流式响应会中断。

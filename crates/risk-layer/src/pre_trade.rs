@@ -237,7 +237,7 @@ impl PreTradeRiskChecker {
 
         let concentration_ratio = new_position_value / account.total_assets;
         let max_concentration = Decimal::from_f64_retain(self.config.max_concentration)
-            .unwrap_or(Decimal::from_f64_retain(DEFAULT_MAX_CONCENTRATION).unwrap());
+            .unwrap_or_else(|| Decimal::from_f64_retain(DEFAULT_MAX_CONCENTRATION).expect("DEFAULT_MAX_CONCENTRATION is not NaN"));
 
         if concentration_ratio > max_concentration {
             warn!(

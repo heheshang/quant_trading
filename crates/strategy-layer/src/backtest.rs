@@ -202,7 +202,12 @@ impl BacktestEngine {
                 }
             }
 
-            tokio::task::yield_now().await;
+            // Yield periodically to prevent blocking the runtime for too long,
+            // but only every YIELD_BATCH iterations to minimize overhead.
+            const YIELD_BATCH: usize = 1000;
+            if i % YIELD_BATCH == 0 {
+                tokio::task::yield_now().await;
+            }
 
             let current_data = data_by_time.get(&timestamp).ok_or_else(|| {
                 error!(%timestamp, "Timestamp not found in data_by_time map");

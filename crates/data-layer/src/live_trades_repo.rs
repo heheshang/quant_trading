@@ -37,6 +37,7 @@ impl LiveTradesRepository {
 
     /// Upsert a live trade by `order_id` (idempotent).
     #[instrument(skip(self), fields(order_id = %order_id, symbol = %symbol))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn upsert(
         &self,
         order_id: i64,

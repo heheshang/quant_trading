@@ -208,6 +208,7 @@ impl AuditLogger {
     }
 
     /// 记录订单提交
+    #[allow(clippy::too_many_arguments)]
     pub async fn log_order_submit(
         &self,
         user_id: &str,

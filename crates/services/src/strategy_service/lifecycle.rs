@@ -202,7 +202,7 @@ impl StrategyService {
         // not wired for live trading, so the UI never shows "Running" while the
         // strategy is actually idling.
         if let Some(ref scheduler) = self.scheduler {
-            if !scheduler.trading_ready() {
+            if !scheduler.trading_ready().await {
                 return Err(ServiceError::Scheduler(
                     "Scheduler not configured for live trading (missing pipeline or market data provider)"
                         .to_string(),
@@ -348,7 +348,7 @@ impl StrategyService {
         // Fail-closed: refuse to mark the strategy Running when the scheduler is
         // not wired for live trading (see `start_strategy`).
         if let Some(ref scheduler) = self.scheduler {
-            if !scheduler.trading_ready() {
+            if !scheduler.trading_ready().await {
                 return Err(ServiceError::Scheduler(
                     "Scheduler not configured for live trading (missing pipeline or market data provider)"
                         .to_string(),

@@ -17,13 +17,18 @@ members = [
 resolver = "2"
 
 [workspace.lints.clippy]
-correctness = "deny"
-suspicious = "deny"
+# 使用 priority = -1 让单独 lint 可以覆盖 group 设置
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
 style = "warn"
 complexity = "warn"
 perf = "warn"
-# 严格 lint 暂缓启用（需先清理测试代码中的 unwrap/expect/切片）：
-# unwrap_used = "deny"
+
+# 渐进式启用严格 lint：
+# 1. unwrap_used: 警告级别（Prometheus metrics 初始化等合法场景使用 unwrap）
+unwrap_used = "warn"
+
+# 以下严格 lint 暂缓启用（需先清理测试代码）：
 # expect_used = "deny"
 # panic_in_result_fn = "deny"
 # indexing_slicing = "deny"
@@ -45,7 +50,18 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 
 # Database dependencies
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "tls-rustls-ring", "postgres", "json", "chrono", "uuid", "migrate", "rust_decimal", "derive", "macros"] }
+sqlx = { version = "0.8", features = [
+    "runtime-tokio-rustls",
+    "tls-rustls-ring",
+    "postgres",
+    "json",
+    "chrono",
+    "uuid",
+    "migrate",
+    "rust_decimal",
+    "derive",
+    "macros",
+] }
 redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
 deadpool-redis = "0.23"
 
@@ -57,7 +73,7 @@ futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "v7", "serde"] }
 rust_decimal = { version = "1.33", features = ["serde-float"] }
-rust_decimal_macros = { version = "1.39.0", features = ["reexportable"]}
+rust_decimal_macros = { version = "1.39.0", features = ["reexportable"] }
 
 # Error handling
 anyhow = "1.0"

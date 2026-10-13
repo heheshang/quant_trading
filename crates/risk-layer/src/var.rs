@@ -50,9 +50,9 @@ impl VaRCalculator {
 
         // Z-score for different confidence levels
         let z_score = match confidence_level {
-            x if x >= 0.99 => Decimal::from_f64_retain(2.33).unwrap(),
-            x if x >= 0.95 => Decimal::from_f64_retain(1.65).unwrap(),
-            _ => Decimal::from_f64_retain(1.28).unwrap(),
+            x if x >= 0.99 => Decimal::from_f64_retain(2.33).expect("2.33 is not NaN"),
+            x if x >= 0.95 => Decimal::from_f64_retain(1.65).expect("1.65 is not NaN"),
+            _ => Decimal::from_f64_retain(1.28).expect("1.28 is not NaN"),
         };
 
         // VaR（损失，正数）= z·σ − μ。原实现 mean + z·σ 计算的是上尾（收益）分位数，

@@ -120,7 +120,7 @@ impl Strategy for MeanReversionStrategy {
 
         let last_close = closes[closes.len() - 1];
         let entry_threshold_dec = Decimal::from_f64(self.entry_threshold)
-            .unwrap_or(Decimal::from_f64(DEFAULT_ENTRY_THRESHOLD).unwrap());
+            .unwrap_or_else(|| Decimal::from_f64(DEFAULT_ENTRY_THRESHOLD).expect("DEFAULT_ENTRY_THRESHOLD is not NaN"));
 
         let mut orders = Vec::new();
 
